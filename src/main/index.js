@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const path = require('path')
 const { getVideoMetadata } = require('../engine/probe')
 const { cutClip, splitIntoReels } = require('../engine/cutter')
+const { validateStartup, activateLicense, deactivateLicense, getLicenseInfo } = require('./license/licenseManager')
 
 // ─── Window ─────────────────────────────────────────────────────────────────
 
@@ -182,4 +183,38 @@ ipcMain.handle('video:split', async (_, opts) => {
 
 ipcMain.on('shell:showItemInFolder', (_, filePath) => {
   shell.showItemInFolder(filePath)
+})
+
+// ─── Licensing & HWID IPC Handlers ───────────────────────────────────────────
+
+ipcMain.handle('license:check', async () => {
+  try {
+    return await validateStartup()
+  } catch (err) {
+    return { isValid: false, error: err.message, reason: 'SYSTEM_ERROR' }
+  }
+})
+
+ipcMain.handle('license:activate', async (_, key) => {
+  try {
+    return await activateLicense(key)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('license:deactivate', async () => {
+  try {
+    return await deactivateLicense()
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('license:getInfo', async () => {
+  try {
+    return await getLicenseInfo()
+  } catch (err) {
+    return { hasLicense: false, isValid: false, error: err.message }
+  }
 })
