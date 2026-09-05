@@ -1,14 +1,14 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
-const path = require('path')
-const fs = require('fs')
-const { getVideoMetadata } = require('../engine/probe')
-const { cutClip, splitIntoReels } = require('../engine/cutter')
-const { resolveDimensions } = require('../engine/formatter')
-const { generateProThumbnail } = require('../engine/thumbnailGenerator')
-const { validateStartup, activateLicense, deactivateLicense, getLicenseInfo } = require('./license/licenseManager')
-const { hasFeature } = require('../shared/features')
-const { getBatchQueueManager } = require('../engine/batchQueue')
-const { getAppUpdater, markJobStarted, markJobFinished } = require('./updater')
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import path from 'path'
+import fs from 'fs'
+import { getVideoMetadata } from '../engine/probe'
+import { cutClip, splitIntoReels } from '../engine/cutter'
+import { resolveDimensions } from '../engine/formatter'
+import { generateProThumbnail } from '../engine/thumbnailGenerator'
+import { validateStartup, activateLicense, deactivateLicense, getLicenseInfo } from './license/licenseManager'
+import { hasFeature } from '../shared/features'
+import { getBatchQueueManager } from '../engine/batchQueue'
+import { getAppUpdater, markJobStarted, markJobFinished } from './updater'
 
 
 // ─── Window ─────────────────────────────────────────────────────────────────
