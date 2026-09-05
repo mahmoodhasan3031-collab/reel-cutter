@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Generated media and splits
+test-videos/*.mp4
+test-videos/splits/
+
+# Logs & OS artifacts
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
