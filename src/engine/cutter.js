@@ -47,6 +47,9 @@ async function cutClip(inputPath, outputPath, options = {}) {
     // Need to build smart crop filter BEFORE starting ffmpeg (async analysis)
     _buildCutCommand(inputPath, outputPath, options, metadata, durationSeconds)
       .then(({ command }) => {
+        if (typeof options.onCommand === 'function') {
+          options.onCommand(command);
+        }
         command
           .output(outputPath)
           .on('progress', (progress) => {

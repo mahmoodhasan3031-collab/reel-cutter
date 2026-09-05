@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   // ── File / Directory Pickers ───────────────────────────────────────────────
   selectFile: () => ipcRenderer.invoke('video:selectFile'),
+  selectFiles: () => ipcRenderer.invoke('video:selectFiles'),
   selectDir: () => ipcRenderer.invoke('video:selectDir'),
   saveFile: (defaultName) => ipcRenderer.invoke('video:saveFile', defaultName),
 
@@ -18,6 +19,16 @@ contextBridge.exposeInMainWorld('api', {
   generateAiThumbnails: (opts) => ipcRenderer.invoke('video:aiThumbnails', opts),
   smartCrop: (opts) => ipcRenderer.invoke('video:smartCrop', opts),
   batchQueue: (opts) => ipcRenderer.invoke('video:batchQueue', opts),
+  batchAdd: (items) => ipcRenderer.invoke('batch:add', items),
+  batchUpdateItem: (id, updates) => ipcRenderer.invoke('batch:updateItem', { id, updates }),
+  batchRemove: (id) => ipcRenderer.invoke('batch:remove', id),
+  batchClearCompleted: () => ipcRenderer.invoke('batch:clearCompleted'),
+  batchStart: (opts) => ipcRenderer.invoke('batch:start', opts),
+  batchPause: () => ipcRenderer.invoke('batch:pause'),
+  batchCancelItem: (id) => ipcRenderer.invoke('batch:cancelItem', id),
+  batchCancelAll: () => ipcRenderer.invoke('batch:cancelAll'),
+  batchGetState: () => ipcRenderer.invoke('batch:getState'),
+  batchSetConcurrency: (concurrency) => ipcRenderer.invoke('batch:setConcurrency', concurrency),
 
   // ── Licensing & Feature Gating ─────────────────────────────────────────────
   checkLicense: () => ipcRenderer.invoke('license:check'),
@@ -31,6 +42,9 @@ contextBridge.exposeInMainWorld('api', {
   onDone: (cb) => ipcRenderer.on('video:done', (_, data) => cb(data)),
   onError: (cb) => ipcRenderer.on('video:error', (_, data) => cb(data)),
   onSegment: (cb) => ipcRenderer.on('video:segment', (_, data) => cb(data)),
+  onBatchItemUpdate: (cb) => ipcRenderer.on('batch:itemUpdate', (_, data) => cb(data)),
+  onBatchQueueUpdate: (cb) => ipcRenderer.on('batch:queueUpdate', (_, data) => cb(data)),
+  onBatchQueueDone: (cb) => ipcRenderer.on('batch:queueDone', (_, data) => cb(data)),
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
   off: (channel) => ipcRenderer.removeAllListeners(channel),

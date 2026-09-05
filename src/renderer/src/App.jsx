@@ -11,6 +11,7 @@ import ActivationScreen from './components/ActivationScreen'
 import OfflineBanner from './components/OfflineBanner'
 import UpgradeModal from './components/UpgradeModal'
 import ProFeaturePlaceholder from './components/ProFeaturePlaceholder'
+import BatchQueuePanel from './components/BatchQueuePanel'
 import { Loader2 } from 'lucide-react'
 import { hasFeature } from './utils/features'
 
@@ -237,11 +238,9 @@ export default function App() {
           {/* Batch Queue Pro View */}
           {view === 'batch_queue' && (
             <div className="flex-1 overflow-y-auto p-6">
-              <ProFeaturePlaceholder
-                type="batch_queue"
-                isUnlocked={isPro}
+              <BatchQueuePanel
+                licenseTier={licenseState.tier}
                 onOpenUpgrade={handleOpenUpgrade}
-                videoPath={videoPath}
               />
             </div>
           )}

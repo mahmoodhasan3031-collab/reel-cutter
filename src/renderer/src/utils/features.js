@@ -36,6 +36,8 @@ const FEATURE_ALIASES = {
   'batch queue': FEATURE_KEYS.BATCH_QUEUE,
   batch_queue: FEATURE_KEYS.BATCH_QUEUE,
   batch: FEATURE_KEYS.BATCH_QUEUE,
+  batchqueue: FEATURE_KEYS.BATCH_QUEUE,
+  batchQueue: FEATURE_KEYS.BATCH_QUEUE,
 };
 
 export const TIER_HIERARCHY = {

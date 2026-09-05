@@ -6,6 +6,8 @@ const { cutClip, splitIntoReels } = require('../engine/cutter')
 const { generateProThumbnail } = require('../engine/thumbnailGenerator')
 const { validateStartup, activateLicense, deactivateLicense, getLicenseInfo } = require('./license/licenseManager')
 const { hasFeature } = require('../shared/features')
+const { getBatchQueueManager } = require('../engine/batchQueue')
+
 
 // ─── Window ─────────────────────────────────────────────────────────────────
 
@@ -45,14 +47,30 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow()
+
+  // Wire BatchQueueManager → renderer IPC push events
+  const bq = getBatchQueueManager()
+  bq.on('itemUpdate', ({ item }) => {
+    mainWindow?.webContents.send('batch:itemUpdate', { item })
+  })
+  bq.on('queueUpdate', (state) => {
+    mainWindow?.webContents.send('batch:queueUpdate', state)
+  })
+  bq.on('queueDone', (state) => {
+    mainWindow?.webContents.send('batch:queueDone', state)
+  })
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
 app.on('window-all-closed', () => {
+  // Cancel all active batch jobs to avoid orphan FFmpeg processes
+  try { getBatchQueueManager().cancelAll() } catch (_) {}
   if (process.platform !== 'darwin') app.quit()
 })
+
 
 // ─── Window Controls (frameless) ─────────────────────────────────────────────
 
@@ -75,6 +93,18 @@ ipcMain.handle('video:selectFile', async () => {
     properties: ['openFile']
   })
   return result.canceled ? null : result.filePaths[0]
+})
+
+ipcMain.handle('video:selectFiles', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Video Files for Batch Processing',
+    filters: [
+      { name: 'Video Files', extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v', 'flv'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile', 'multiSelections']
+  })
+  return result.canceled ? [] : result.filePaths
 })
 
 ipcMain.handle('video:selectDir', async () => {
@@ -335,13 +365,124 @@ ipcMain.handle('video:smartCrop', async (_, opts) => {
   }
 })
 
-ipcMain.handle('video:batchQueue', async (_, opts) => {
+// ─── Pro Features: Batch Queue (Pro Gated) ──────────────────────────────────
+
+async function checkBatchProAccess() {
   const license = await getLicenseInfo()
   const tier = license.isValid ? license.tier : null
   if (!hasFeature(tier, 'batch_queue')) {
-    return { success: false, error: 'Batch Queue feature requires Pro license tier.' }
+    return { authorized: false, error: 'Batch Queue feature requires Pro license tier.' }
   }
-  return { success: true, queuedItems: opts.items || [], status: 'processing' }
+  return { authorized: true, tier }
+}
+
+ipcMain.handle('video:batchQueue', async (_, opts = {}) => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  let added = []
+  if (Array.isArray(opts.items) && opts.items.length > 0) {
+    const rawItems = opts.items.map((it) => (typeof it === 'string' ? { inputPath: it } : it))
+    added = bq.addItems(rawItems)
+  }
+  if (opts.start !== false && added.length > 0) {
+    bq.startQueue()
+  }
+  return { success: true, queuedItems: opts.items || [], status: 'processing', state: bq.getState() }
+})
+
+ipcMain.handle('batch:add', async (_, items) => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  const rawItems = Array.isArray(items) ? items : [items]
+  const created = bq.addItems(rawItems)
+  return { success: true, created, state: bq.getState() }
+})
+
+ipcMain.handle('batch:updateItem', async (_, { id, updates }) => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  const ok = bq.updateItem(id, updates)
+  return { success: ok, state: bq.getState() }
+})
+
+ipcMain.handle('batch:remove', async (_, id) => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  const ok = bq.removeItem(id)
+  return { success: ok, state: bq.getState() }
+})
+
+ipcMain.handle('batch:clearCompleted', async () => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  const cleared = bq.clearCompleted()
+  return { success: true, cleared, state: bq.getState() }
+})
+
+ipcMain.handle('batch:start', async (_, opts = {}) => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  if (opts.concurrency) {
+    bq.setConcurrency(opts.concurrency)
+  }
+  bq.startQueue()
+  return { success: true, state: bq.getState() }
+})
+
+ipcMain.handle('batch:pause', async () => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  bq.pauseQueue()
+  return { success: true, state: bq.getState() }
+})
+
+ipcMain.handle('batch:cancelItem', async (_, id) => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  const ok = bq.cancelItem(id)
+  return { success: ok, state: bq.getState() }
+})
+
+ipcMain.handle('batch:cancelAll', async () => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  bq.cancelAll()
+  return { success: true, state: bq.getState() }
+})
+
+ipcMain.handle('batch:getState', async () => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  return { success: true, state: bq.getState() }
+})
+
+ipcMain.handle('batch:setConcurrency', async (_, concurrency) => {
+  const auth = await checkBatchProAccess()
+  if (!auth.authorized) return { success: false, error: auth.error }
+
+  const bq = getBatchQueueManager()
+  bq.setConcurrency(concurrency)
+  return { success: true, concurrency: bq.getConcurrency(), state: bq.getState() }
 })
 
 // ─── Open in Explorer ─────────────────────────────────────────────────────────
