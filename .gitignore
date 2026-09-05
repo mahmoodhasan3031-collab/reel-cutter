@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
 
+# Electron-vite build outputs
+out/
+dist/
+dist-electron/
+release/
+
 # Generated media and splits
 test-videos/*.mp4
 test-videos/splits/
