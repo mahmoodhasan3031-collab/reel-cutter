@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs')
 const { getVideoMetadata } = require('../engine/probe')
 const { cutClip, splitIntoReels } = require('../engine/cutter')
+const { resolveDimensions } = require('../engine/formatter')
 const { generateProThumbnail } = require('../engine/thumbnailGenerator')
 const { validateStartup, activateLicense, deactivateLicense, getLicenseInfo } = require('./license/licenseManager')
 const { hasFeature } = require('../shared/features')
@@ -222,11 +223,14 @@ ipcMain.handle('video:reel', async (_, opts) => {
 
     markJobStarted()
     try {
+      const { width, height } = resolveDimensions(aspectRatio || '9:16', opts.resolution || '1080p')
       const result = await cutClip(inputPath, outputPath, {
         start: start || 0,
         duration,
         reel: true,
         mode: mode || 'blur',
+        width,
+        height,
         generateThumbnail: !!generateThumbnail,
         thumbnailTitle,
         onProgress: (percent) => {
@@ -348,14 +352,9 @@ ipcMain.handle('video:smartCrop', async (_, opts) => {
 
   // video:smartCrop is used by the UI to run a reel conversion with smart crop mode.
   // The actual face-tracking crop filter is built inside cutter.js / smartCrop.js.
-  // Here we just delegate to the existing video:reel handler logic with mode=smart_crop.
   const { inputPath, outputPath, start, duration, generateThumbnail, thumbnailTitle } = opts
   markJobStarted()
   try {
-    const { getSmartCropFilter } = require('./src/engine/smartCrop')
-    const { getVideoMetadata } = require('./src/engine/probe')
-    const { cutClip } = require('./src/engine/cutter')
-
     const result = await cutClip(inputPath, outputPath, {
       start: start || 0,
       duration,

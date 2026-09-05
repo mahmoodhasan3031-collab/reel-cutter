@@ -29,6 +29,7 @@ const { EventEmitter } = require('events');
 const path = require('path');
 const fs = require('fs');
 const { cutClip, splitIntoReels } = require('./cutter');
+const { resolveDimensions } = require('./formatter');
 
 // ─── Status Constants ─────────────────────────────────────────────────────────
 
@@ -49,24 +50,6 @@ const DEFAULT_CONCURRENCY = 1; // Sequential by default per requirement
 let _idCounter = 0;
 function generateId() {
   return `bq_${Date.now()}_${++_idCounter}`;
-}
-
-/**
- * Resolves width & height from aspect ratio & quality
- */
-function resolveDimensions(aspectRatio = '9:16', quality = '1080p') {
-  const is4k = String(quality || '').toLowerCase().includes('4k');
-  switch (aspectRatio) {
-    case '1:1':
-      return is4k ? { width: 2160, height: 2160 } : { width: 1080, height: 1080 };
-    case '4:5':
-      return is4k ? { width: 2160, height: 2700 } : { width: 1080, height: 1350 };
-    case '16:9':
-      return is4k ? { width: 3840, height: 2160 } : { width: 1920, height: 1080 };
-    case '9:16':
-    default:
-      return is4k ? { width: 2160, height: 3840 } : { width: 1080, height: 1920 };
-  }
 }
 
 function autoOutputPath(inputPath, operation, mode) {

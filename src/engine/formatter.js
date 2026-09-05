@@ -105,9 +105,31 @@ function buildReelFilter(options = {}) {
   }
 }
 
+/**
+ * Resolves width & height from aspect ratio & quality.
+ * @param {string} [aspectRatio='9:16']
+ * @param {string} [quality='1080p']
+ * @returns {{ width: number, height: number }}
+ */
+function resolveDimensions(aspectRatio = '9:16', quality = '1080p') {
+  const is4k = String(quality || '').toLowerCase().includes('4k');
+  switch (aspectRatio) {
+    case '1:1':
+      return is4k ? { width: 2160, height: 2160 } : { width: 1080, height: 1080 };
+    case '4:5':
+      return is4k ? { width: 2160, height: 2700 } : { width: 1080, height: 1350 };
+    case '16:9':
+      return is4k ? { width: 3840, height: 2160 } : { width: 1920, height: 1080 };
+    case '9:16':
+    default:
+      return is4k ? { width: 2160, height: 3840 } : { width: 1080, height: 1920 };
+  }
+}
+
 module.exports = {
   parseTimeToSeconds,
   formatSecondsToTime,
   generateOutputFilename,
   buildReelFilter,
+  resolveDimensions,
 };
