@@ -9,6 +9,7 @@ release/
 
 # Generated media and splits
 test-videos/*.mp4
+test-videos/*.jpg
 test-videos/splits/
 
 # Logs & OS artifacts

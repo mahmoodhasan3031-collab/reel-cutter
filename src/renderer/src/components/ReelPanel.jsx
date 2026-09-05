@@ -70,11 +70,15 @@ export default function ReelPanel({
   const [aspectRatio, setAspectRatio] = useState('9:16')
   const [mode, setMode]               = useState('blur')
   const [outputPath, setOutputPath]   = useState('')
+  const [generateThumbnail, setGenerateThumbnail] = useState(false)
+  const [thumbnailTitle, setThumbnailTitle] = useState('')
+  const [thumbPreviewUrl, setThumbPreviewUrl] = useState(null)
   const [result, setResult]           = useState(null)
   const [error, setError]             = useState(null)
 
   const canAllAspects = hasFeature(licenseTier, 'all_aspect_ratios')
   const canSmartCrop = hasFeature(licenseTier, 'smart_crop')
+  const canThumbnail = hasFeature(licenseTier, 'ai_thumbnails')
 
   const pickOutput = async () => {
     const base = videoPath ? videoPath.replace(/\.[^.]+$/, '') : 'output'
@@ -104,6 +108,7 @@ export default function ReelPanel({
     setProgress(0)
     setResult(null)
     setError(null)
+    setThumbPreviewUrl(null)
 
     const outPath = outputPath || videoPath.replace(/(\.[^.]+)$/, '_reel$1')
 
@@ -115,14 +120,24 @@ export default function ReelPanel({
       outputPath: outPath,
       mode,
       aspectRatio,
+      generateThumbnail: canThumbnail && generateThumbnail,
+      thumbnailTitle: thumbnailTitle.trim() || undefined,
     })
 
     setIsProcessing(false)
     setProgress(0)
     window.api.off('video:progress')
 
-    if (res.success) setResult(res)
-    else setError(res.error)
+    if (res.success) {
+      setResult(res)
+      if (res.thumbnailPath) {
+        window.api.readImageBase64?.(res.thumbnailPath).then(url => {
+          if (url) setThumbPreviewUrl(url)
+        })
+      }
+    } else {
+      setError(res.error)
+    }
   }
 
   return (
@@ -208,6 +223,61 @@ export default function ReelPanel({
         })}
       </div>
 
+      {/* Pro Image Thumbnail Option (Gated by Pro) */}
+      <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 space-y-3">
+        <label className="flex items-center justify-between cursor-pointer">
+          <div className="flex items-start gap-2.5">
+            <div className="p-1.5 rounded-lg bg-brand-500/10 text-brand-400 mt-0.5">
+              <Sparkles size={16} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-zinc-200">Generate Pro Thumbnail</p>
+                {!canThumbnail && (
+                  <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-amber-400/10 text-amber-300 border border-amber-400/20 font-bold flex items-center gap-0.5">
+                    <Lock size={9} /> Pro
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                AI analyzes high-motion frames & composites a bold viral cover image (.jpg)
+              </p>
+            </div>
+          </div>
+          <div
+            onClick={() => {
+              if (!canThumbnail) {
+                onOpenUpgrade?.('pro', 'AI Thumbnail / Pro Image')
+                return
+              }
+              setGenerateThumbnail(v => !v)
+            }}
+            className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
+              canThumbnail && generateThumbnail ? 'bg-brand-600' : 'bg-zinc-700'
+            }`}
+          >
+            <div
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                canThumbnail && generateThumbnail ? 'translate-x-5' : ''
+              }`}
+            />
+          </div>
+        </label>
+
+        {canThumbnail && generateThumbnail && (
+          <div className="pt-2 animate-fade-in space-y-1.5 border-t border-zinc-800/80">
+            <span className="text-[11px] text-zinc-400 font-medium">Custom Cover Title (Optional)</span>
+            <input
+              type="text"
+              value={thumbnailTitle}
+              onChange={e => setThumbnailTitle(e.target.value)}
+              placeholder="e.g. VIRAL REEL (defaults to clip name)"
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500 transition-colors"
+            />
+          </div>
+        )}
+      </div>
+
       {/* Output */}
       <div className="flex gap-2">
         <input
@@ -232,18 +302,52 @@ export default function ReelPanel({
 
       {/* Result */}
       {result && !isProcessing && (
-        <div className="flex items-start gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-xl animate-fade-in">
-          <CheckCircle size={16} className="text-green-400 mt-0.5 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-sm text-green-300 font-medium">Reel created! 🎉</p>
-            <p
-              className="text-xs text-zinc-400 truncate mt-0.5 cursor-pointer hover:text-zinc-200"
-              onClick={() => window.api.showInFolder(result.outputPath)}
-              title={result.outputPath}
-            >
-              {result.outputPath}
-            </p>
+        <div className="space-y-3 animate-fade-in">
+          <div className="flex items-start gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
+            <CheckCircle size={16} className="text-green-400 mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-green-300 font-medium">Reel created! 🎉</p>
+              <p
+                className="text-xs text-zinc-400 truncate mt-0.5 cursor-pointer hover:text-zinc-200"
+                onClick={() => window.api.showInFolder(result.outputPath)}
+                title={result.outputPath}
+              >
+                {result.outputPath}
+              </p>
+            </div>
           </div>
+
+          {result.thumbnailPath && (
+            <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center gap-4">
+              {thumbPreviewUrl ? (
+                <img
+                  src={thumbPreviewUrl}
+                  alt="Pro Thumbnail"
+                  className="w-16 h-20 object-cover rounded-lg border border-zinc-700 shadow-md shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => window.api.showInFolder(result.thumbnailPath)}
+                />
+              ) : (
+                <div className="w-16 h-20 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0 border border-zinc-700">
+                  <Sparkles size={18} className="text-brand-400" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-zinc-200">Pro Thumbnail Created</span>
+                  <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-300 border border-brand-500/30 font-bold">
+                    PRO IMAGE
+                  </span>
+                </div>
+                <p
+                  className="text-xs text-zinc-400 truncate mt-1 cursor-pointer hover:text-zinc-200"
+                  onClick={() => window.api.showInFolder(result.thumbnailPath)}
+                  title={result.thumbnailPath}
+                >
+                  {result.thumbnailPath}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

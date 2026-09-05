@@ -1,7 +1,9 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const path = require('path')
+const fs = require('fs')
 const { getVideoMetadata } = require('../engine/probe')
 const { cutClip, splitIntoReels } = require('../engine/cutter')
+const { generateProThumbnail } = require('../engine/thumbnailGenerator')
 const { validateStartup, activateLicense, deactivateLicense, getLicenseInfo } = require('./license/licenseManager')
 const { hasFeature } = require('../shared/features')
 
@@ -106,7 +108,7 @@ ipcMain.handle('video:probe', async (_, filePath) => {
 // ─── Video: Cut ──────────────────────────────────────────────────────────────
 
 ipcMain.handle('video:cut', async (_, opts) => {
-  const { inputPath, outputPath, start, duration, end, reel, mode, resolution, customDuration } = opts
+  const { inputPath, outputPath, start, duration, end, reel, mode, resolution, customDuration, generateThumbnail, thumbnailTitle } = opts
   try {
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
@@ -124,6 +126,10 @@ ipcMain.handle('video:cut', async (_, opts) => {
       return { success: false, error: 'Custom duration requires Standard or Pro license tier.' }
     }
 
+    if (generateThumbnail && !hasFeature(tier, 'ai_thumbnails')) {
+      return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
+    }
+
     const result = await cutClip(inputPath, outputPath, {
       start,
       duration,
@@ -132,12 +138,19 @@ ipcMain.handle('video:cut', async (_, opts) => {
       mode: mode || 'blur',
       width: resolution === '4k' ? 2160 : opts.width,
       height: resolution === '4k' ? 3840 : opts.height,
+      generateThumbnail: !!generateThumbnail,
+      thumbnailTitle,
       onProgress: (percent) => {
         mainWindow?.webContents.send('video:progress', { percent, operation: 'cut' })
       }
     })
-    mainWindow?.webContents.send('video:done', { operation: 'cut', outputPath: result.outputPath, duration: result.duration })
-    return { success: true, outputPath: result.outputPath, duration: result.duration }
+    mainWindow?.webContents.send('video:done', {
+      operation: 'cut',
+      outputPath: result.outputPath,
+      duration: result.duration,
+      thumbnailPath: result.thumbnailPath,
+    })
+    return { success: true, outputPath: result.outputPath, duration: result.duration, thumbnailPath: result.thumbnailPath }
   } catch (err) {
     mainWindow?.webContents.send('video:error', { operation: 'cut', error: err.message })
     return { success: false, error: err.message }
@@ -147,7 +160,7 @@ ipcMain.handle('video:cut', async (_, opts) => {
 // ─── Video: Reel ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('video:reel', async (_, opts) => {
-  const { inputPath, outputPath, start, duration, mode, aspectRatio } = opts
+  const { inputPath, outputPath, start, duration, mode, aspectRatio, generateThumbnail, thumbnailTitle } = opts
   try {
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
@@ -160,17 +173,28 @@ ipcMain.handle('video:reel', async (_, opts) => {
       return { success: false, error: 'Smart Crop (AI) requires Pro license tier.' }
     }
 
+    if (generateThumbnail && !hasFeature(tier, 'ai_thumbnails')) {
+      return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
+    }
+
     const result = await cutClip(inputPath, outputPath, {
       start: start || 0,
       duration,
       reel: true,
       mode: mode || 'blur',
+      generateThumbnail: !!generateThumbnail,
+      thumbnailTitle,
       onProgress: (percent) => {
         mainWindow?.webContents.send('video:progress', { percent, operation: 'reel' })
       }
     })
-    mainWindow?.webContents.send('video:done', { operation: 'reel', outputPath: result.outputPath, duration: result.duration })
-    return { success: true, outputPath: result.outputPath, duration: result.duration }
+    mainWindow?.webContents.send('video:done', {
+      operation: 'reel',
+      outputPath: result.outputPath,
+      duration: result.duration,
+      thumbnailPath: result.thumbnailPath,
+    })
+    return { success: true, outputPath: result.outputPath, duration: result.duration, thumbnailPath: result.thumbnailPath }
   } catch (err) {
     mainWindow?.webContents.send('video:error', { operation: 'reel', error: err.message })
     return { success: false, error: err.message }
@@ -180,7 +204,7 @@ ipcMain.handle('video:reel', async (_, opts) => {
 // ─── Video: Split ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('video:split', async (_, opts) => {
-  const { inputPath, outputDir, interval, reel, mode } = opts
+  const { inputPath, outputDir, interval, reel, mode, generateThumbnail, thumbnailTitle } = opts
   try {
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
@@ -189,10 +213,16 @@ ipcMain.handle('video:split', async (_, opts) => {
       return { success: false, error: 'Video splitting requires an active license.' }
     }
 
+    if (generateThumbnail && !hasFeature(tier, 'ai_thumbnails')) {
+      return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
+    }
+
     const results = await splitIntoReels(inputPath, outputDir, {
       interval: interval || 30,
       reel: reel !== false,
       mode: mode || 'blur',
+      generateThumbnail: !!generateThumbnail,
+      thumbnailTitle,
       onOverallProgress: ({ current, total, start, duration }) => {
         const percent = Math.round((current / total) * 100)
         mainWindow?.webContents.send('video:progress', {
@@ -214,6 +244,28 @@ ipcMain.handle('video:split', async (_, opts) => {
     mainWindow?.webContents.send('video:error', { operation: 'split', error: err.message })
     return { success: false, error: err.message }
   }
+})
+
+// ─── Standalone Pro Thumbnail & Media Handlers ──────────────────────────────
+
+ipcMain.handle('video:readImageBase64', async (_, filePath) => {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return null
+    const buf = await fs.promises.readFile(filePath)
+    return `data:image/jpeg;base64,${buf.toString('base64')}`
+  } catch {
+    return null
+  }
+})
+
+ipcMain.handle('video:generateThumbnail', async (_, opts) => {
+  const license = await getLicenseInfo()
+  const tier = license.isValid ? license.tier : null
+  if (!hasFeature(tier, 'ai_thumbnails')) {
+    return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
+  }
+  const { videoPath, thumbnailPath, title } = opts
+  return await generateProThumbnail(videoPath, thumbnailPath, { title })
 })
 
 // ─── Pro Features: AI Thumbnails, Smart Crop, Batch Queue ───────────────────

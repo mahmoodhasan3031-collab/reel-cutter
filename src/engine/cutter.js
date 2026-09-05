@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const { ffmpeg, getVideoMetadata } = require('./probe');
 const { parseTimeToSeconds, buildReelFilter, generateOutputFilename } = require('./formatter');
+const { generateProThumbnail } = require('./thumbnailGenerator');
 
 /**
  * Cuts a single clip from a video file with optional 9:16 vertical reel formatting.
@@ -88,18 +89,34 @@ async function cutClip(inputPath, outputPath, options = {}) {
         }
       })
       .on('end', async () => {
+        let thumbnailPath = null;
+        if (options.generateThumbnail) {
+          try {
+            const thumbRes = await generateProThumbnail(outputPath, options.thumbnailPath, {
+              title: options.thumbnailTitle,
+            });
+            if (thumbRes.success) {
+              thumbnailPath = thumbRes.thumbnailPath;
+            }
+          } catch (thumbErr) {
+            console.warn('[Cutter] Graceful fallback: Thumbnail generation error:', thumbErr.message);
+          }
+        }
+
         try {
           const outMeta = await getVideoMetadata(outputPath);
           resolve({
             outputPath,
             duration: outMeta.duration,
             metadata: outMeta,
+            thumbnailPath,
           });
         } catch {
           resolve({
             outputPath,
             duration: durationSeconds,
             metadata: null,
+            thumbnailPath,
           });
         }
       })
@@ -165,12 +182,15 @@ async function splitIntoReels(inputPath, outputDir, options = {}) {
       mode: options.mode || 'blur',
       width: options.width,
       height: options.height,
+      generateThumbnail: options.generateThumbnail,
+      thumbnailTitle: options.thumbnailTitle ? `${options.thumbnailTitle} Part ${i + 1}` : undefined,
     });
 
     results.push({
       index: i + 1,
       outputPath: res.outputPath,
       duration: res.duration,
+      thumbnailPath: res.thumbnailPath || null,
     });
 
     if (options.onSegmentComplete) {

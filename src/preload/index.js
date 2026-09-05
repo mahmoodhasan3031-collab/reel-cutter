@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('api', {
   split: (opts) => ipcRenderer.invoke('video:split', opts),
 
   // ── Pro Video Features (Tier Gated) ───────────────────────────────────────
+  generateThumbnail: (opts) => ipcRenderer.invoke('video:generateThumbnail', opts),
+  readImageBase64: (filePath) => ipcRenderer.invoke('video:readImageBase64', filePath),
   generateAiThumbnails: (opts) => ipcRenderer.invoke('video:aiThumbnails', opts),
   smartCrop: (opts) => ipcRenderer.invoke('video:smartCrop', opts),
   batchQueue: (opts) => ipcRenderer.invoke('video:batchQueue', opts),

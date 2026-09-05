@@ -1,16 +1,30 @@
 import { useState } from 'react'
-import { SplitSquareHorizontal, FolderOpen, CheckCircle, AlertCircle, Film } from 'lucide-react'
+import { SplitSquareHorizontal, FolderOpen, CheckCircle, AlertCircle, Film, Sparkles, Lock, Image } from 'lucide-react'
 import ProgressBar from './ProgressBar'
+import { hasFeature } from '../utils/features'
 
-export default function SplitPanel({ videoPath, metadata, progress, isProcessing, setIsProcessing, setProgress }) {
+export default function SplitPanel({
+  videoPath,
+  metadata,
+  progress,
+  isProcessing,
+  setIsProcessing,
+  setProgress,
+  licenseTier = 'standard',
+  onOpenUpgrade,
+}) {
   const [interval, setInterval]   = useState(30)
   const [asReel, setAsReel]       = useState(true)
   const [mode, setMode]           = useState('blur')
+  const [generateThumbnail, setGenerateThumbnail] = useState(false)
+  const [thumbnailTitle, setThumbnailTitle] = useState('')
   const [outputDir, setOutputDir] = useState('')
   const [segments, setSegments]   = useState([])
   const [splitProgress, setSplitProgress] = useState(null)
   const [error, setError]         = useState(null)
   const [done, setDone]           = useState(false)
+
+  const canThumbnail = hasFeature(licenseTier, 'ai_thumbnails')
 
   const totalDuration  = metadata?.duration || 0
   const estimatedCount = totalDuration > 0 ? Math.ceil(totalDuration / interval) : 0
@@ -48,6 +62,8 @@ export default function SplitPanel({ videoPath, metadata, progress, isProcessing
       interval,
       reel: asReel,
       mode,
+      generateThumbnail: canThumbnail && generateThumbnail,
+      thumbnailTitle: thumbnailTitle.trim() || undefined,
     })
 
     setIsProcessing(false)
@@ -128,6 +144,61 @@ export default function SplitPanel({ videoPath, metadata, progress, isProcessing
         )}
       </div>
 
+      {/* Pro Image Thumbnail Option (Gated by Pro) */}
+      <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 space-y-3">
+        <label className="flex items-center justify-between cursor-pointer">
+          <div className="flex items-start gap-2.5">
+            <div className="p-1.5 rounded-lg bg-brand-500/10 text-brand-400 mt-0.5">
+              <Sparkles size={16} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-zinc-200">Generate Pro Thumbnails</p>
+                {!canThumbnail && (
+                  <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-amber-400/10 text-amber-300 border border-amber-400/20 font-bold flex items-center gap-0.5">
+                    <Lock size={9} /> Pro
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Generate high-engagement cover images (.jpg) for each split segment
+              </p>
+            </div>
+          </div>
+          <div
+            onClick={() => {
+              if (!canThumbnail) {
+                onOpenUpgrade?.('pro', 'AI Thumbnail / Pro Image')
+                return
+              }
+              setGenerateThumbnail(v => !v)
+            }}
+            className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
+              canThumbnail && generateThumbnail ? 'bg-brand-600' : 'bg-zinc-700'
+            }`}
+          >
+            <div
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                canThumbnail && generateThumbnail ? 'translate-x-5' : ''
+              }`}
+            />
+          </div>
+        </label>
+
+        {canThumbnail && generateThumbnail && (
+          <div className="pt-2 animate-fade-in space-y-1.5 border-t border-zinc-800/80">
+            <span className="text-[11px] text-zinc-400 font-medium">Series Title Prefix (Optional)</span>
+            <input
+              type="text"
+              value={thumbnailTitle}
+              onChange={e => setThumbnailTitle(e.target.value)}
+              placeholder="e.g. PODCAST HIGHLIGHT (appends 'Part 1', 'Part 2', etc.)"
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500 transition-colors"
+            />
+          </div>
+        )}
+      </div>
+
       {/* Output dir */}
       <div className="flex gap-2">
         <input
@@ -168,15 +239,20 @@ export default function SplitPanel({ videoPath, metadata, progress, isProcessing
             </div>
           </div>
           {/* Segment list */}
-          <div className="max-h-32 overflow-y-auto space-y-1">
+          <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
             {segments.map(seg => (
               <div key={seg.index}
-                className="flex items-center gap-2 text-xs text-zinc-500 px-2 py-1 rounded hover:bg-zinc-800 cursor-pointer"
+                className="flex items-center gap-2 text-xs text-zinc-400 px-2.5 py-1.5 rounded-lg bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800/60 cursor-pointer transition-colors"
                 onClick={() => window.api.showInFolder(seg.outputPath)}
               >
-                <Film size={11} className="text-brand-500 shrink-0" />
+                <Film size={12} className="text-brand-400 shrink-0" />
                 <span className="truncate">{seg.outputPath.split(/[\\/]/).pop()}</span>
-                <span className="ml-auto shrink-0">{seg.duration?.toFixed(1)}s</span>
+                {seg.thumbnailPath && (
+                  <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-brand-500/20 text-brand-300 font-bold shrink-0 flex items-center gap-1">
+                    <Image size={9} /> JPG
+                  </span>
+                )}
+                <span className="ml-auto shrink-0 text-zinc-500">{seg.duration?.toFixed(1)}s</span>
               </div>
             ))}
           </div>
