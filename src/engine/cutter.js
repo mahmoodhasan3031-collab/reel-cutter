@@ -3,6 +3,7 @@ const fs = require('fs');
 const { ffmpeg, getVideoMetadata } = require('./probe');
 const { parseTimeToSeconds, buildReelFilter, generateOutputFilename } = require('./formatter');
 const { generateProThumbnail } = require('./thumbnailGenerator');
+const { getSmartCropFilter } = require('./smartCrop');
 
 /**
  * Cuts a single clip from a video file with optional 9:16 vertical reel formatting.
@@ -43,88 +44,109 @@ async function cutClip(inputPath, outputPath, options = {}) {
   }
 
   return new Promise((resolve, reject) => {
-    let command = ffmpeg(inputPath);
+    // Need to build smart crop filter BEFORE starting ffmpeg (async analysis)
+    _buildCutCommand(inputPath, outputPath, options, metadata, durationSeconds)
+      .then(({ command }) => {
+        command
+          .output(outputPath)
+          .on('progress', (progress) => {
+            if (options.onProgress) {
+              let percent = progress.percent;
+              if (percent === undefined && progress.timemark && durationSeconds > 0) {
+                const currentSeconds = parseTimeToSeconds(progress.timemark);
+                percent = Math.min(100, Math.round((currentSeconds / durationSeconds) * 100));
+              }
+              options.onProgress(Math.min(100, Math.max(0, Math.round(percent || 0))));
+            }
+          })
+          .on('end', async () => {
+            let thumbnailPath = null;
+            if (options.generateThumbnail) {
+              try {
+                const thumbRes = await generateProThumbnail(outputPath, options.thumbnailPath, {
+                  title: options.thumbnailTitle,
+                });
+                if (thumbRes.success) thumbnailPath = thumbRes.thumbnailPath;
+              } catch (thumbErr) {
+                console.warn('[Cutter] Graceful fallback: Thumbnail generation error:', thumbErr.message);
+              }
+            }
+            try {
+              const outMeta = await getVideoMetadata(outputPath);
+              resolve({ outputPath, duration: outMeta.duration, metadata: outMeta, thumbnailPath });
+            } catch {
+              resolve({ outputPath, duration: durationSeconds, metadata: null, thumbnailPath });
+            }
+          })
+          .on('error', (err, stdout, stderr) => {
+            reject(new Error(`FFmpeg error: ${err.message}\n${stderr || ''}`));
+          })
+          .run();
+      })
+      .catch(reject);
+  });
+}
 
-    if (startSeconds > 0) {
-      command = command.setStartTime(startSeconds);
-    }
-    if (durationSeconds > 0) {
-      command = command.setDuration(durationSeconds);
-    }
+/**
+ * Internal helper: builds the configured ffmpeg command for cutClip.
+ * Extracted so smart_crop can await the async filter before running.
+ */
+async function _buildCutCommand(inputPath, outputPath, options, metadata, durationSeconds) {
+  const startSeconds = parseTimeToSeconds(options.start || 0);
+  let command = ffmpeg(inputPath);
 
-    if (options.reel) {
-      const mode = options.mode || 'blur';
-      const width = options.width || 1080;
-      const height = options.height || 1920;
+  if (startSeconds > 0) command = command.setStartTime(startSeconds);
+  if (durationSeconds > 0) command = command.setDuration(durationSeconds);
 
-      if (mode === 'blur') {
-        const complexFilterStr = `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=20:5[bg];[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2[outv]`;
+  if (options.reel) {
+    const mode = (options.mode || 'blur').toLowerCase();
+    const width = options.width || 1080;
+    const height = options.height || 1920;
+
+    if (mode === 'smart_crop') {
+      // Face-tracking smart crop — async analysis phase
+      try {
+        const smartFilter = await getSmartCropFilter(
+          inputPath,
+          durationSeconds || metadata.duration,
+          metadata.width || 1280,
+          metadata.height || 720,
+          { outWidth: width, outHeight: height }
+        );
         command = command
-          .complexFilter(complexFilterStr)
-          .outputOptions(['-map [outv]', '-map 0:a?', '-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
-      } else {
-        const { filter } = buildReelFilter({ mode, width, height });
+          .videoFilters(smartFilter.filter)
+          .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
+
+        if (smartFilter.fallback) {
+          console.log('[Cutter] Smart Crop fell back to centre crop (no faces detected or error)');
+        }
+      } catch (smartErr) {
+        console.warn('[Cutter] Smart Crop analysis error, using centre crop fallback:', smartErr.message);
+        const { filter } = buildReelFilter({ mode: 'crop', width, height });
         command = command
           .videoFilters(filter)
           .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
       }
-    } else {
+    } else if (mode === 'blur') {
+      const complexFilterStr =
+        `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=20:5[bg];` +
+        `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease[fg];` +
+        `[bg][fg]overlay=(W-w)/2:(H-h)/2[outv]`;
       command = command
+        .complexFilter(complexFilterStr)
+        .outputOptions(['-map [outv]', '-map 0:a?', '-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
+    } else {
+      const { filter } = buildReelFilter({ mode, width, height });
+      command = command
+        .videoFilters(filter)
         .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
     }
+  } else {
+    command = command
+      .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
+  }
 
-    command
-      .output(outputPath)
-      .on('start', (cmdLine) => {
-        // command initiated
-      })
-      .on('progress', (progress) => {
-        if (options.onProgress) {
-          let percent = progress.percent;
-          if (percent === undefined && progress.timemark && durationSeconds > 0) {
-            const currentSeconds = parseTimeToSeconds(progress.timemark);
-            percent = Math.min(100, Math.round((currentSeconds / durationSeconds) * 100));
-          }
-          options.onProgress(Math.min(100, Math.max(0, Math.round(percent || 0))));
-        }
-      })
-      .on('end', async () => {
-        let thumbnailPath = null;
-        if (options.generateThumbnail) {
-          try {
-            const thumbRes = await generateProThumbnail(outputPath, options.thumbnailPath, {
-              title: options.thumbnailTitle,
-            });
-            if (thumbRes.success) {
-              thumbnailPath = thumbRes.thumbnailPath;
-            }
-          } catch (thumbErr) {
-            console.warn('[Cutter] Graceful fallback: Thumbnail generation error:', thumbErr.message);
-          }
-        }
-
-        try {
-          const outMeta = await getVideoMetadata(outputPath);
-          resolve({
-            outputPath,
-            duration: outMeta.duration,
-            metadata: outMeta,
-            thumbnailPath,
-          });
-        } catch {
-          resolve({
-            outputPath,
-            duration: durationSeconds,
-            metadata: null,
-            thumbnailPath,
-          });
-        }
-      })
-      .on('error', (err, stdout, stderr) => {
-        reject(new Error(`FFmpeg error: ${err.message}\n${stderr || ''}`));
-      })
-      .run();
-  });
+  return { command };
 }
 
 /**

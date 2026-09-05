@@ -223,6 +223,20 @@ export default function ReelPanel({
         })}
       </div>
 
+      {/* Smart Crop Info Banner — visible only when smart_crop mode is active */}
+      {mode === 'smart_crop' && (
+        <div className="bg-brand-600/10 border border-brand-500/30 rounded-xl px-4 py-3 flex items-start gap-3">
+          <Sparkles size={16} className="text-brand-400 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-xs font-semibold text-brand-300">Smart Crop (AI) active</p>
+            <p className="text-[10px] text-zinc-400 mt-0.5 leading-relaxed">
+              Face detection runs a pre-pass on sampled frames. The crop window follows the detected subject.
+              If no face is found the crop falls back to centre automatically.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Pro Image Thumbnail Option (Gated by Pro) */}
       <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 space-y-3">
         <label className="flex items-center justify-between cursor-pointer">

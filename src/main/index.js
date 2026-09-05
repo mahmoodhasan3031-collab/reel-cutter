@@ -292,7 +292,47 @@ ipcMain.handle('video:smartCrop', async (_, opts) => {
   if (!hasFeature(tier, 'smart_crop')) {
     return { success: false, error: 'Smart Crop (AI) requires Pro license tier.' }
   }
-  return { success: true, tracking: 'Face and motion center lock active', mode: 'smart_crop' }
+
+  // video:smartCrop is used by the UI to run a reel conversion with smart crop mode.
+  // The actual face-tracking crop filter is built inside cutter.js / smartCrop.js.
+  // Here we just delegate to the existing video:reel handler logic with mode=smart_crop.
+  const { inputPath, outputPath, start, duration, generateThumbnail, thumbnailTitle } = opts
+  try {
+    const { getSmartCropFilter } = require('./src/engine/smartCrop')
+    const { getVideoMetadata } = require('./src/engine/probe')
+    const { cutClip } = require('./src/engine/cutter')
+
+    const result = await cutClip(inputPath, outputPath, {
+      start: start || 0,
+      duration,
+      reel: true,
+      mode: 'smart_crop',
+      generateThumbnail: !!generateThumbnail,
+      thumbnailTitle,
+      onProgress: (percent) => {
+        mainWindow?.webContents.send('video:progress', { percent, operation: 'smartCrop' })
+      },
+    })
+
+    mainWindow?.webContents.send('video:done', {
+      operation: 'smartCrop',
+      outputPath: result.outputPath,
+      duration: result.duration,
+      thumbnailPath: result.thumbnailPath,
+    })
+
+    return {
+      success: true,
+      tracking: 'Face-tracking smart crop applied',
+      mode: 'smart_crop',
+      outputPath: result.outputPath,
+      duration: result.duration,
+      thumbnailPath: result.thumbnailPath,
+    }
+  } catch (err) {
+    mainWindow?.webContents.send('video:error', { operation: 'smartCrop', error: err.message })
+    return { success: false, error: err.message }
+  }
 })
 
 ipcMain.handle('video:batchQueue', async (_, opts) => {

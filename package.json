@@ -21,7 +21,10 @@
   "type": "commonjs",
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-wasm": "^4.22.0",
     "@vitejs/plugin-react": "^4.7.0",
+    "@vladmandic/face-api": "^1.7.15",
     "autoprefixer": "^10.5.5",
     "commander": "^15.0.0",
     "dotenv": "^17.4.2",
