@@ -12,6 +12,7 @@ import OfflineBanner from './components/OfflineBanner'
 import UpgradeModal from './components/UpgradeModal'
 import ProFeaturePlaceholder from './components/ProFeaturePlaceholder'
 import BatchQueuePanel from './components/BatchQueuePanel'
+import UpdateNotification from './components/UpdateNotification'
 import { Loader2 } from 'lucide-react'
 import { hasFeature } from './utils/features'
 
@@ -184,6 +185,9 @@ export default function App() {
     <div className="flex flex-col h-screen overflow-hidden bg-zinc-950 text-zinc-100">
       {/* Custom title bar */}
       <TitleBar />
+
+      {/* Auto-Updater Notification Banner */}
+      <UpdateNotification />
 
       {/* Offline grace period indicator banner if offline */}
       {licenseState.isOffline && (

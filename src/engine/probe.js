@@ -3,11 +3,37 @@ const ffmpegStatic = require('ffmpeg-static');
 const ffprobeStatic = require('ffprobe-static');
 const fs = require('fs');
 
-if (ffmpegStatic) {
-  ffmpeg.setFfmpegPath(ffmpegStatic);
+/**
+ * Resolves the physical path of the bundled ffmpeg binary.
+ * Handles both development and packaged electron (app.asar.unpacked) environments.
+ */
+function getFfmpegPath() {
+  let p = ffmpegStatic;
+  if (typeof p === 'string') {
+    p = p.replace('app.asar', 'app.asar.unpacked');
+  }
+  return p;
 }
-if (ffprobeStatic && ffprobeStatic.path) {
-  ffmpeg.setFfprobePath(ffprobeStatic.path);
+
+/**
+ * Resolves the physical path of the bundled ffprobe binary.
+ * Handles both development and packaged electron (app.asar.unpacked) environments.
+ */
+function getFfprobePath() {
+  let p = ffprobeStatic && ffprobeStatic.path;
+  if (typeof p === 'string') {
+    p = p.replace('app.asar', 'app.asar.unpacked');
+  }
+  return p;
+}
+
+const resolvedFfmpeg = getFfmpegPath();
+if (resolvedFfmpeg) {
+  ffmpeg.setFfmpegPath(resolvedFfmpeg);
+}
+const resolvedFfprobe = getFfprobePath();
+if (resolvedFfprobe) {
+  ffmpeg.setFfprobePath(resolvedFfprobe);
 }
 
 /**
@@ -114,4 +140,6 @@ module.exports = {
   formatSeconds,
   parseFps,
   ffmpeg,
+  getFfmpegPath,
+  getFfprobePath,
 };

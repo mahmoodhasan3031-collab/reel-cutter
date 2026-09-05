@@ -37,6 +37,13 @@ contextBridge.exposeInMainWorld('api', {
   getLicenseInfo: () => ipcRenderer.invoke('license:getInfo'),
   hasFeature: (featureName) => ipcRenderer.invoke('license:hasFeature', featureName),
 
+  // ── Auto-Updater ───────────────────────────────────────────────────────────
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+  getUpdateStatus: () => ipcRenderer.invoke('updater:getStatus'),
+  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+
   // ── Push Events (Main → Renderer) ─────────────────────────────────────────
   onProgress: (cb) => ipcRenderer.on('video:progress', (_, data) => cb(data)),
   onDone: (cb) => ipcRenderer.on('video:done', (_, data) => cb(data)),
@@ -45,6 +52,7 @@ contextBridge.exposeInMainWorld('api', {
   onBatchItemUpdate: (cb) => ipcRenderer.on('batch:itemUpdate', (_, data) => cb(data)),
   onBatchQueueUpdate: (cb) => ipcRenderer.on('batch:queueUpdate', (_, data) => cb(data)),
   onBatchQueueDone: (cb) => ipcRenderer.on('batch:queueDone', (_, data) => cb(data)),
+  onUpdateStatus: (cb) => ipcRenderer.on('updater:status', (_, data) => cb(data)),
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
   off: (channel) => ipcRenderer.removeAllListeners(channel),

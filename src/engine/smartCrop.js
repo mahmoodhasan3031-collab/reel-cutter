@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { execFileSync, spawnSync } = require('child_process');
 const sharp = require('sharp');
-const ffmpegStatic = require('ffmpeg-static');
+const { getFfmpegPath } = require('./probe');
 
 // ─── Lazy-loaded face-api (heavy init, only done once) ────────────────────────
 let faceapi = null;
@@ -14,7 +14,7 @@ const MODEL_DIR = path.join(
   path.dirname(require.resolve('@vladmandic/face-api/dist/face-api.node-wasm.js')),
   '..',
   'model'
-);
+).replace('app.asar', 'app.asar.unpacked');
 
 /**
  * Initialise face-api + WASM TF backend once; safe to call multiple times.
@@ -182,7 +182,7 @@ function extractFrameAt(videoPath, timestampSeconds) {
     const chunks = [];
     const { spawn } = require('child_process');
 
-    const proc = spawn(ffmpegStatic, [
+    const proc = spawn(getFfmpegPath(), [
       '-ss', String(Math.max(0, timestampSeconds)),
       '-i', videoPath,
       '-frames:v', '1',

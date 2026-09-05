@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   Cpu,
@@ -12,17 +11,60 @@ import {
   Lock,
   Check,
   Zap,
+  Download,
+  RotateCcw,
+  Loader2,
+  ArrowUpCircle,
 } from 'lucide-react';
 import { getTierFeatureList } from '../utils/features';
+import ProgressBar from './ProgressBar';
 
 export default function SettingsPanel({ license, onLicenseUpdate, onDeactivate, onOpenUpgrade }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
   const [info, setInfo] = useState(license || {});
+  const [appVersion, setAppVersion] = useState('1.0.0');
+  const [updateStatus, setUpdateStatus] = useState({ status: 'idle', info: null, progress: null, error: null });
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   useEffect(() => {
     refreshInfo();
+    window.api.getAppVersion?.().then((v) => { if (v) setAppVersion(v); });
+    window.api.getUpdateStatus?.().then((s) => { if (s) setUpdateStatus(s); });
+
+    const handleUpdate = (data) => {
+      if (data) {
+        setUpdateStatus(data);
+        if (data.status !== 'checking') setCheckingUpdate(false);
+      }
+    };
+    window.api.onUpdateStatus?.(handleUpdate);
+    return () => {
+      window.api.off?.('updater:status');
+    };
   }, []);
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      await window.api.checkForUpdates?.();
+    } catch (_) {}
+    finally {
+      setTimeout(() => setCheckingUpdate(false), 2000);
+    }
+  };
+
+  const handleDownloadUpdate = async () => {
+    try {
+      await window.api.downloadUpdate?.();
+    } catch (_) {}
+  };
+
+  const handleInstallUpdate = async () => {
+    try {
+      await window.api.installUpdate?.();
+    } catch (_) {}
+  };
 
   const refreshInfo = async () => {
     try {
@@ -271,11 +313,101 @@ export default function SettingsPanel({ license, onLicenseUpdate, onDeactivate, 
         </div>
       </div>
 
+      {/* Application & Updates Card */}
+      <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5 space-y-3 text-xs">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              <ArrowUpCircle size={16} className="text-brand-400" />
+              Application & Updates
+            </h3>
+            <p className="text-[11px] text-zinc-500">
+              Installed Version: <span className="text-zinc-300 font-mono font-medium">v{appVersion}</span> · Channel: <span className="text-zinc-300">Stable (GitHub Releases)</span>
+            </p>
+          </div>
+
+          <button
+            onClick={handleCheckUpdate}
+            disabled={checkingUpdate || updateStatus.status === 'downloading' || updateStatus.status === 'installing'}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 rounded-lg border border-zinc-700 transition-colors"
+          >
+            <RefreshCw size={12} className={checkingUpdate || updateStatus.status === 'checking' ? 'animate-spin' : ''} />
+            <span>{checkingUpdate || updateStatus.status === 'checking' ? 'Checking…' : 'Check for Updates'}</span>
+          </button>
+        </div>
+
+        {/* Status display */}
+        {updateStatus.status === 'not-available' && (
+          <div className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800 flex items-center gap-2 text-zinc-400 text-xs">
+            <CheckCircle size={14} className="text-emerald-400" />
+            <span>Reel Cutter is up to date (v{appVersion}).</span>
+          </div>
+        )}
+
+        {updateStatus.status === 'available' && (
+          <div className="p-3 rounded-xl bg-brand-950/40 border border-brand-500/30 flex items-center justify-between gap-3 flex-wrap">
+            <div className="space-y-0.5">
+              <p className="font-semibold text-zinc-100 flex items-center gap-1.5">
+                <Sparkles size={13} className="text-brand-400" /> Update Available: v{updateStatus.info?.version}
+              </p>
+              <p className="text-[11px] text-zinc-400">
+                {updateStatus.info?.releaseNotes || 'A new release is available.'}
+              </p>
+            </div>
+            <button
+              onClick={handleDownloadUpdate}
+              className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+            >
+              <Download size={13} />
+              <span>Download Update</span>
+            </button>
+          </div>
+        )}
+
+        {updateStatus.status === 'downloading' && (
+          <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-zinc-300 flex items-center gap-1.5">
+                <Loader2 size={13} className="animate-spin text-brand-400" />
+                Downloading v{updateStatus.info?.version}…
+              </span>
+              <span className="text-brand-400 font-mono font-bold">{updateStatus.progress?.percent || 0}%</span>
+            </div>
+            <ProgressBar progress={updateStatus.progress?.percent || 0} />
+          </div>
+        )}
+
+        {updateStatus.status === 'downloaded' && (
+          <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-semibold text-emerald-300 flex items-center gap-1.5">
+                <CheckCircle size={14} /> Ready to Install (v{updateStatus.info?.version})
+              </p>
+              <p className="text-[11px] text-zinc-400">Restart Reel Cutter to apply the update.</p>
+            </div>
+            <button
+              onClick={handleInstallUpdate}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+            >
+              <RotateCcw size={13} />
+              <span>Restart & Install</span>
+            </button>
+          </div>
+        )}
+
+        {updateStatus.status === 'error' && updateStatus.error && (
+          <div className="p-2.5 rounded-xl bg-rose-950/30 border border-rose-800/40 flex items-center gap-2 text-rose-300 text-xs">
+            <AlertTriangle size={14} className="text-rose-400 shrink-0" />
+            <span className="truncate">{updateStatus.error}</span>
+          </div>
+        )}
+      </div>
+
       {/* About Card */}
       <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5 space-y-2 text-xs">
         <p className="font-semibold text-zinc-200">About Reel Cutter</p>
         <p className="text-zinc-500 leading-relaxed">
-          Version 1.0.0 · Powered by FFmpeg & Electron. All video processing is executed 100% locally on your machine for maximum privacy and performance.
+          Version {appVersion} · Powered by FFmpeg & Electron. All video processing is executed 100% locally on your machine for maximum privacy and performance.
         </p>
       </div>
     </div>

@@ -7,6 +7,7 @@ const { generateProThumbnail } = require('../engine/thumbnailGenerator')
 const { validateStartup, activateLicense, deactivateLicense, getLicenseInfo } = require('./license/licenseManager')
 const { hasFeature } = require('../shared/features')
 const { getBatchQueueManager } = require('../engine/batchQueue')
+const { getAppUpdater, markJobStarted, markJobFinished } = require('./updater')
 
 
 // ─── Window ─────────────────────────────────────────────────────────────────
@@ -59,6 +60,13 @@ app.whenReady().then(() => {
   bq.on('queueDone', (state) => {
     mainWindow?.webContents.send('batch:queueDone', state)
   })
+
+  // Wire Auto-Updater
+  const updater = getAppUpdater()
+  updater.setWindow(mainWindow)
+  setTimeout(() => {
+    updater.checkForUpdates().catch(() => {})
+  }, 3000)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -160,27 +168,32 @@ ipcMain.handle('video:cut', async (_, opts) => {
       return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
     }
 
-    const result = await cutClip(inputPath, outputPath, {
-      start,
-      duration,
-      end,
-      reel: reel || false,
-      mode: mode || 'blur',
-      width: resolution === '4k' ? 2160 : opts.width,
-      height: resolution === '4k' ? 3840 : opts.height,
-      generateThumbnail: !!generateThumbnail,
-      thumbnailTitle,
-      onProgress: (percent) => {
-        mainWindow?.webContents.send('video:progress', { percent, operation: 'cut' })
-      }
-    })
-    mainWindow?.webContents.send('video:done', {
-      operation: 'cut',
-      outputPath: result.outputPath,
-      duration: result.duration,
-      thumbnailPath: result.thumbnailPath,
-    })
-    return { success: true, outputPath: result.outputPath, duration: result.duration, thumbnailPath: result.thumbnailPath }
+    markJobStarted()
+    try {
+      const result = await cutClip(inputPath, outputPath, {
+        start,
+        duration,
+        end,
+        reel: reel || false,
+        mode: mode || 'blur',
+        width: resolution === '4k' ? 2160 : opts.width,
+        height: resolution === '4k' ? 3840 : opts.height,
+        generateThumbnail: !!generateThumbnail,
+        thumbnailTitle,
+        onProgress: (percent) => {
+          mainWindow?.webContents.send('video:progress', { percent, operation: 'cut' })
+        }
+      })
+      mainWindow?.webContents.send('video:done', {
+        operation: 'cut',
+        outputPath: result.outputPath,
+        duration: result.duration,
+        thumbnailPath: result.thumbnailPath,
+      })
+      return { success: true, outputPath: result.outputPath, duration: result.duration, thumbnailPath: result.thumbnailPath }
+    } finally {
+      markJobFinished()
+    }
   } catch (err) {
     mainWindow?.webContents.send('video:error', { operation: 'cut', error: err.message })
     return { success: false, error: err.message }
@@ -207,24 +220,29 @@ ipcMain.handle('video:reel', async (_, opts) => {
       return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
     }
 
-    const result = await cutClip(inputPath, outputPath, {
-      start: start || 0,
-      duration,
-      reel: true,
-      mode: mode || 'blur',
-      generateThumbnail: !!generateThumbnail,
-      thumbnailTitle,
-      onProgress: (percent) => {
-        mainWindow?.webContents.send('video:progress', { percent, operation: 'reel' })
-      }
-    })
-    mainWindow?.webContents.send('video:done', {
-      operation: 'reel',
-      outputPath: result.outputPath,
-      duration: result.duration,
-      thumbnailPath: result.thumbnailPath,
-    })
-    return { success: true, outputPath: result.outputPath, duration: result.duration, thumbnailPath: result.thumbnailPath }
+    markJobStarted()
+    try {
+      const result = await cutClip(inputPath, outputPath, {
+        start: start || 0,
+        duration,
+        reel: true,
+        mode: mode || 'blur',
+        generateThumbnail: !!generateThumbnail,
+        thumbnailTitle,
+        onProgress: (percent) => {
+          mainWindow?.webContents.send('video:progress', { percent, operation: 'reel' })
+        }
+      })
+      mainWindow?.webContents.send('video:done', {
+        operation: 'reel',
+        outputPath: result.outputPath,
+        duration: result.duration,
+        thumbnailPath: result.thumbnailPath,
+      })
+      return { success: true, outputPath: result.outputPath, duration: result.duration, thumbnailPath: result.thumbnailPath }
+    } finally {
+      markJobFinished()
+    }
   } catch (err) {
     mainWindow?.webContents.send('video:error', { operation: 'reel', error: err.message })
     return { success: false, error: err.message }
@@ -247,29 +265,34 @@ ipcMain.handle('video:split', async (_, opts) => {
       return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
     }
 
-    const results = await splitIntoReels(inputPath, outputDir, {
-      interval: interval || 30,
-      reel: reel !== false,
-      mode: mode || 'blur',
-      generateThumbnail: !!generateThumbnail,
-      thumbnailTitle,
-      onOverallProgress: ({ current, total, start, duration }) => {
-        const percent = Math.round((current / total) * 100)
-        mainWindow?.webContents.send('video:progress', {
-          percent,
-          operation: 'split',
-          current,
-          total,
-          start,
-          duration
-        })
-      },
-      onSegmentComplete: (segment) => {
-        mainWindow?.webContents.send('video:segment', segment)
-      }
-    })
-    mainWindow?.webContents.send('video:done', { operation: 'split', segments: results, outputDir })
-    return { success: true, segments: results, outputDir }
+    markJobStarted()
+    try {
+      const results = await splitIntoReels(inputPath, outputDir, {
+        interval: interval || 30,
+        reel: reel !== false,
+        mode: mode || 'blur',
+        generateThumbnail: !!generateThumbnail,
+        thumbnailTitle,
+        onOverallProgress: ({ current, total, start, duration }) => {
+          const percent = Math.round((current / total) * 100)
+          mainWindow?.webContents.send('video:progress', {
+            percent,
+            operation: 'split',
+            current,
+            total,
+            start,
+            duration
+          })
+        },
+        onSegmentComplete: (segment) => {
+          mainWindow?.webContents.send('video:segment', segment)
+        }
+      })
+      mainWindow?.webContents.send('video:done', { operation: 'split', segments: results, outputDir })
+      return { success: true, segments: results, outputDir }
+    } finally {
+      markJobFinished()
+    }
   } catch (err) {
     mainWindow?.webContents.send('video:error', { operation: 'split', error: err.message })
     return { success: false, error: err.message }
@@ -327,6 +350,7 @@ ipcMain.handle('video:smartCrop', async (_, opts) => {
   // The actual face-tracking crop filter is built inside cutter.js / smartCrop.js.
   // Here we just delegate to the existing video:reel handler logic with mode=smart_crop.
   const { inputPath, outputPath, start, duration, generateThumbnail, thumbnailTitle } = opts
+  markJobStarted()
   try {
     const { getSmartCropFilter } = require('./src/engine/smartCrop')
     const { getVideoMetadata } = require('./src/engine/probe')
@@ -362,6 +386,8 @@ ipcMain.handle('video:smartCrop', async (_, opts) => {
   } catch (err) {
     mainWindow?.webContents.send('video:error', { operation: 'smartCrop', error: err.message })
     return { success: false, error: err.message }
+  } finally {
+    markJobFinished()
   }
 })
 
@@ -534,3 +560,26 @@ ipcMain.handle('license:hasFeature', async (_, featureName) => {
     return false
   }
 })
+
+// ─── Auto-Updater IPC Handlers ──────────────────────────────────────────────
+
+ipcMain.handle('updater:check', async () => {
+  return await getAppUpdater().checkForUpdates()
+})
+
+ipcMain.handle('updater:download', async () => {
+  return await getAppUpdater().downloadUpdate()
+})
+
+ipcMain.handle('updater:install', async () => {
+  return getAppUpdater().quitAndInstall()
+})
+
+ipcMain.handle('updater:getStatus', async () => {
+  return getAppUpdater().getStatus()
+})
+
+ipcMain.handle('app:getVersion', () => {
+  return app.getVersion()
+})
+

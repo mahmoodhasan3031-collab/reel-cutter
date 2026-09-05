@@ -1,10 +1,10 @@
 const { spawnSync } = require('child_process');
 const path = require('path');
 
-const tests = ['license.test.js', 'features.test.js', 'payment.test.js', 'thumbnail.test.js', 'smartcrop.test.js', 'batchqueue.test.js'];
+const tests = ['license.test.js', 'features.test.js', 'payment.test.js', 'thumbnail.test.js', 'smartcrop.test.js', 'batchqueue.test.js', 'packaging.test.js'];
 
 console.log('======================================================');
-console.log('🚀 Running All Reel Cutter Test Suites (Phase 1-5.3)');
+console.log('🚀 Running All Reel Cutter Test Suites (Phase 1-6)');
 console.log('======================================================\n');
 
 
