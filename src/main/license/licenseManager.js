@@ -1,6 +1,7 @@
 const { getHardwareId, formatShortHwid } = require('./hwid');
 const { saveLicenseData, loadLicenseData, clearLicenseData, hasLicenseData } = require('./store');
 const { fetchLicense, bindLicenseHwid } = require('./supabaseClient');
+const { hasFeature, getTierFeatureList } = require('../../shared/features');
 
 const MAX_OFFLINE_GRACE_PERIOD_HOURS = 72; // 3 days
 
@@ -242,6 +243,7 @@ async function getLicenseInfo(customStorageDir) {
     lastValidatedAt: stored.lastValidatedAt,
     activatedAt: stored.activatedAt,
     gracePeriodRemainingHours: remainingHours,
+    features: getTierFeatureList(stored.tier || 'standard'),
   };
 }
 
@@ -251,5 +253,6 @@ module.exports = {
   deactivateLicense,
   getLicenseInfo,
   maskLicenseKey,
+  hasFeature,
   MAX_OFFLINE_GRACE_PERIOD_HOURS,
 };

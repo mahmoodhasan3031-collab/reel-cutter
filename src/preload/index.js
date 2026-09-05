@@ -12,11 +12,17 @@ contextBridge.exposeInMainWorld('api', {
   reel: (opts) => ipcRenderer.invoke('video:reel', opts),
   split: (opts) => ipcRenderer.invoke('video:split', opts),
 
-  // ── Licensing & Hardware ID ───────────────────────────────────────────────
+  // ── Pro Video Features (Tier Gated) ───────────────────────────────────────
+  generateAiThumbnails: (opts) => ipcRenderer.invoke('video:aiThumbnails', opts),
+  smartCrop: (opts) => ipcRenderer.invoke('video:smartCrop', opts),
+  batchQueue: (opts) => ipcRenderer.invoke('video:batchQueue', opts),
+
+  // ── Licensing & Feature Gating ─────────────────────────────────────────────
   checkLicense: () => ipcRenderer.invoke('license:check'),
   activateLicense: (key) => ipcRenderer.invoke('license:activate', key),
   deactivateLicense: () => ipcRenderer.invoke('license:deactivate'),
   getLicenseInfo: () => ipcRenderer.invoke('license:getInfo'),
+  hasFeature: (featureName) => ipcRenderer.invoke('license:hasFeature', featureName),
 
   // ── Push Events (Main → Renderer) ─────────────────────────────────────────
   onProgress: (cb) => ipcRenderer.on('video:progress', (_, data) => cb(data)),

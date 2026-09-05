@@ -9,10 +9,13 @@ import {
   AlertTriangle,
   Clock,
   Sparkles,
-  Info,
+  Lock,
+  Check,
+  Zap,
 } from 'lucide-react';
+import { getTierFeatureList } from '../utils/features';
 
-export default function SettingsPanel({ license, onLicenseUpdate, onDeactivate }) {
+export default function SettingsPanel({ license, onLicenseUpdate, onDeactivate, onOpenUpgrade }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
   const [info, setInfo] = useState(license || {});
@@ -79,6 +82,10 @@ export default function SettingsPanel({ license, onLicenseUpdate, onDeactivate }
     basic: 'bg-zinc-700/40 text-zinc-300 border-zinc-600',
   };
 
+  const currentTier = (info.tier || 'standard').toLowerCase();
+  const isPro = currentTier === 'pro';
+  const featureList = getTierFeatureList(currentTier);
+
   return (
     <div className="flex flex-col gap-6 animate-slide-up max-w-2xl">
       <div>
@@ -122,14 +129,26 @@ export default function SettingsPanel({ license, onLicenseUpdate, onDeactivate }
             </div>
           </div>
 
-          {/* Tier badge */}
-          <span
-            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wider uppercase border ${
-              tierColors[info.tier?.toLowerCase()] || tierColors.standard
-            }`}
-          >
-            {(info.tier || 'STANDARD')} TIER
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wider uppercase border ${
+                tierColors[currentTier] || tierColors.standard
+              }`}
+            >
+              {currentTier.toUpperCase()} TIER
+            </span>
+
+            {!isPro && (
+              <button
+                type="button"
+                onClick={() => onOpenUpgrade?.('pro', 'Pro Features')}
+                className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-600 hover:bg-brand-500 text-white transition-colors flex items-center gap-1"
+              >
+                <Zap size={10} />
+                Upgrade
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Info Rows */}
@@ -197,6 +216,58 @@ export default function SettingsPanel({ license, onLicenseUpdate, onDeactivate }
             <LogOut size={12} />
             Deactivate Device
           </button>
+        </div>
+      </div>
+
+      {/* Feature Access Matrix (Available vs Locked) */}
+      <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-100">Features on Your Plan</h3>
+            <p className="text-[11px] text-zinc-500">Capabilities enabled for {currentTier.toUpperCase()} tier</p>
+          </div>
+          {!isPro && (
+            <button
+              onClick={() => onOpenUpgrade?.('pro', 'Pro Capabilities')}
+              className="text-xs text-brand-400 hover:text-brand-300 font-semibold flex items-center gap-1"
+            >
+              <Sparkles size={12} />
+              Unlock All with Pro
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          {featureList.map((f) => (
+            <div
+              key={f.key}
+              className={`p-2.5 rounded-xl border flex items-start justify-between text-xs transition-colors ${
+                f.unlocked
+                  ? 'bg-zinc-950/60 border-zinc-800/80 text-zinc-200'
+                  : 'bg-zinc-950/30 border-zinc-800/40 text-zinc-500'
+              }`}
+            >
+              <div className="flex items-start gap-2 min-w-0 pr-2">
+                {f.unlocked ? (
+                  <Check size={14} className="text-green-400 shrink-0 mt-0.5" />
+                ) : (
+                  <Lock size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                )}
+                <div className="min-w-0">
+                  <p className={`font-medium truncate ${f.unlocked ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                    {f.name}
+                  </p>
+                  <p className="text-[10px] text-zinc-500 leading-tight">{f.description}</p>
+                </div>
+              </div>
+
+              {!f.unlocked && (
+                <span className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-amber-300 border border-zinc-700 shrink-0">
+                  {f.minTier}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 

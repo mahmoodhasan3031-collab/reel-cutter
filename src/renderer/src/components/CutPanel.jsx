@@ -1,22 +1,44 @@
 import { useState } from 'react'
-import { Scissors, FolderOpen, CheckCircle, AlertCircle } from 'lucide-react'
+import { Scissors, FolderOpen, CheckCircle, AlertCircle, Lock, Sparkles } from 'lucide-react'
 import ProgressBar from './ProgressBar'
+import { hasFeature } from '../utils/features'
 
-export default function CutPanel({ videoPath, metadata, progress, isProcessing, setIsProcessing, setProgress }) {
-  const [start, setStart]       = useState('0')
-  const [duration, setDuration] = useState('')
-  const [end, setEnd]           = useState('')
-  const [useEnd, setUseEnd]     = useState(false)
-  const [asReel, setAsReel]     = useState(false)
-  const [mode, setMode]         = useState('blur')
-  const [outputPath, setOutputPath] = useState('')
-  const [result, setResult]     = useState(null)
-  const [error, setError]       = useState(null)
+export default function CutPanel({
+  videoPath,
+  metadata,
+  progress,
+  isProcessing,
+  setIsProcessing,
+  setProgress,
+  licenseTier = 'standard',
+  onOpenUpgrade,
+}) {
+  const [start, setStart]             = useState('0')
+  const [duration, setDuration]       = useState('30')
+  const [end, setEnd]                 = useState('')
+  const [useEnd, setUseEnd]           = useState(false)
+  const [asReel, setAsReel]           = useState(false)
+  const [mode, setMode]               = useState('blur')
+  const [resolution, setResolution]   = useState('1080p')
+  const [outputPath, setOutputPath]   = useState('')
+  const [result, setResult]           = useState(null)
+  const [error, setError]             = useState(null)
+
+  const can4K = hasFeature(licenseTier, '4k_export')
+  const canCustomDurations = hasFeature(licenseTier, 'custom_durations')
 
   const pickOutput = async () => {
     const base = videoPath ? videoPath.replace(/\.[^.]+$/, '') : 'output'
     const p = await window.api.saveFile(`${base}_clip.mp4`)
     if (p) setOutputPath(p)
+  }
+
+  const handleSelect4K = () => {
+    if (!can4K) {
+      onOpenUpgrade?.('standard', '4K Ultra HD Export')
+      return
+    }
+    setResolution('4k')
   }
 
   const handleCut = async () => {
@@ -31,6 +53,8 @@ export default function CutPanel({ videoPath, metadata, progress, isProcessing, 
     window.api.off('video:progress')
     window.api.onProgress(({ percent }) => setProgress(percent))
 
+    const isCustom = useEnd || (duration && !['15', '30', '60'].includes(String(duration)))
+
     const res = await window.api.cut({
       inputPath: videoPath,
       outputPath: outPath,
@@ -39,6 +63,8 @@ export default function CutPanel({ videoPath, metadata, progress, isProcessing, 
       end:      useEnd ? end       : undefined,
       reel: asReel,
       mode,
+      resolution,
+      customDuration: isCustom,
     })
 
     setIsProcessing(false)
@@ -58,13 +84,53 @@ export default function CutPanel({ videoPath, metadata, progress, isProcessing, 
         <Scissors size={18} className="text-brand-400" /> Cut Clip
       </h2>
 
-      {/* Time inputs */}
+      {/* Resolution Selector (1080p vs 4K Gated) */}
+      <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 space-y-2">
+        <span className="text-xs text-zinc-400 font-medium">Export Resolution</span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setResolution('1080p')}
+            className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
+              resolution === '1080p'
+                ? 'bg-brand-600/20 border-brand-500/50 text-brand-300'
+                : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            1080p Full HD
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSelect4K}
+            className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
+              resolution === '4k'
+                ? 'bg-brand-600/20 border-brand-500/50 text-brand-300'
+                : !can4K
+                ? 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            {!can4K && <Lock size={12} className="text-amber-400" />}
+            <span>4K Ultra HD</span>
+            {!can4K && (
+              <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-amber-400/10 text-amber-300 border border-amber-400/20">
+                Standard+
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Time & Duration Inputs */}
       <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1.5">
             <span className="text-xs text-zinc-500 font-medium">Start Time</span>
             <input
-              type="text" value={start} onChange={e => setStart(e.target.value)}
+              type="text"
+              value={start}
+              onChange={e => setStart(e.target.value)}
               placeholder="0 or 00:00:10"
               className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-brand-500 transition-colors"
             />
@@ -72,29 +138,83 @@ export default function CutPanel({ videoPath, metadata, progress, isProcessing, 
 
           {useEnd ? (
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-zinc-500 font-medium">End Time</span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-500 font-medium">End Time</span>
+                {!canCustomDurations && (
+                  <span className="text-[9px] text-amber-400 flex items-center gap-0.5">
+                    <Lock size={10} /> Standard+
+                  </span>
+                )}
+              </div>
               <input
-                type="text" value={end} onChange={e => setEnd(e.target.value)}
+                type="text"
+                value={end}
+                disabled={!canCustomDurations}
+                onClick={() => !canCustomDurations && onOpenUpgrade?.('standard', 'Custom Durations')}
+                onChange={e => setEnd(e.target.value)}
                 placeholder="00:01:30"
-                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-brand-500 transition-colors"
+                className="bg-zinc-800 disabled:opacity-60 disabled:cursor-not-allowed border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-brand-500 transition-colors"
               />
             </label>
           ) : (
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-zinc-500 font-medium">Duration</span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-500 font-medium">Duration (seconds)</span>
+                {!canCustomDurations && (
+                  <span className="text-[9px] text-amber-400 flex items-center gap-0.5">
+                    <Lock size={10} /> Standard+
+                  </span>
+                )}
+              </div>
               <input
-                type="text" value={duration} onChange={e => setDuration(e.target.value)}
+                type="text"
+                value={duration}
+                disabled={!canCustomDurations}
+                onClick={() => !canCustomDurations && onOpenUpgrade?.('standard', 'Custom Durations')}
+                onChange={e => setDuration(e.target.value)}
                 placeholder="30 or 00:00:30"
-                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-brand-500 transition-colors"
+                className="bg-zinc-800 disabled:opacity-60 disabled:cursor-not-allowed border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-brand-500 transition-colors"
               />
             </label>
           )}
         </div>
 
+        {/* Preset duration buttons for quick access */}
+        <div className="flex items-center gap-2 pt-1">
+          <span className="text-[11px] text-zinc-500">Presets:</span>
+          {['15', '30', '60'].map((sec) => (
+            <button
+              key={sec}
+              type="button"
+              onClick={() => {
+                setUseEnd(false)
+                setDuration(sec)
+              }}
+              className={`px-2.5 py-1 rounded text-xs border transition-colors ${
+                !useEnd && duration === sec
+                  ? 'bg-brand-600/20 border-brand-500/40 text-brand-300'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {sec}s
+            </button>
+          ))}
+        </div>
+
         <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={useEnd} onChange={e => setUseEnd(e.target.checked)}
-            className="w-4 h-4 rounded accent-brand-600" />
-          <span className="text-xs text-zinc-400">Use end time instead of duration</span>
+          <input
+            type="checkbox"
+            checked={useEnd}
+            onChange={e => {
+              if (!canCustomDurations && e.target.checked) {
+                onOpenUpgrade?.('standard', 'Custom Durations')
+                return
+              }
+              setUseEnd(e.target.checked)
+            }}
+            className="w-4 h-4 rounded accent-brand-600"
+          />
+          <span className="text-xs text-zinc-400">Use end timestamp instead of duration</span>
         </label>
       </div>
 
@@ -133,12 +253,16 @@ export default function CutPanel({ videoPath, metadata, progress, isProcessing, 
       {/* Output */}
       <div className="flex gap-2">
         <input
-          type="text" value={outputPath} onChange={e => setOutputPath(e.target.value)}
+          type="text"
+          value={outputPath}
+          onChange={e => setOutputPath(e.target.value)}
           placeholder="Output path (optional — auto-generated if blank)"
           className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-brand-500 transition-colors"
         />
-        <button onClick={pickOutput}
-          className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors">
+        <button
+          onClick={pickOutput}
+          className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors"
+        >
           <FolderOpen size={16} />
         </button>
       </div>
@@ -154,9 +278,11 @@ export default function CutPanel({ videoPath, metadata, progress, isProcessing, 
           <CheckCircle size={16} className="text-green-400 mt-0.5 shrink-0" />
           <div className="min-w-0">
             <p className="text-sm text-green-300 font-medium">Clip saved!</p>
-            <p className="text-xs text-zinc-400 truncate mt-0.5 cursor-pointer hover:text-zinc-200"
-               onClick={() => window.api.showInFolder(result.outputPath)}
-               title={result.outputPath}>
+            <p
+              className="text-xs text-zinc-400 truncate mt-0.5 cursor-pointer hover:text-zinc-200"
+              onClick={() => window.api.showInFolder(result.outputPath)}
+              title={result.outputPath}
+            >
               {result.outputPath}
             </p>
           </div>

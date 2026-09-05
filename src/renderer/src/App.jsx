@@ -9,14 +9,36 @@ import SplitPanel from './components/SplitPanel'
 import SettingsPanel from './components/SettingsPanel'
 import ActivationScreen from './components/ActivationScreen'
 import OfflineBanner from './components/OfflineBanner'
+import UpgradeModal from './components/UpgradeModal'
+import ProFeaturePlaceholder from './components/ProFeaturePlaceholder'
 import { Loader2 } from 'lucide-react'
+import { hasFeature } from './utils/features'
 
 export default function App() {
-  const [view, setView] = useState('drop') // 'drop' | 'info' | 'cut' | 'reel' | 'split' | 'settings'
+  const [view, setView] = useState('drop') // 'drop' | 'info' | 'cut' | 'reel' | 'split' | 'settings' | 'ai_thumbnails' | 'batch_queue'
   const [videoPath, setVideoPath] = useState(null)
   const [metadata, setMetadata] = useState(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
+
+  // ─── Upgrade Modal State ──────────────────────────────────────────────────
+  const [upgradeModal, setUpgradeModal] = useState({
+    isOpen: false,
+    requiredTier: 'standard',
+    featureName: 'Premium Feature',
+  })
+
+  const handleOpenUpgrade = (requiredTier = 'standard', featureName = 'This feature') => {
+    setUpgradeModal({
+      isOpen: true,
+      requiredTier,
+      featureName,
+    })
+  }
+
+  const handleCloseUpgrade = () => {
+    setUpgradeModal((prev) => ({ ...prev, isOpen: false }))
+  }
 
   // ─── License State ──────────────────────────────────────────────────────────
   const [licenseState, setLicenseState] = useState({
@@ -30,7 +52,6 @@ export default function App() {
     gracePeriodRemainingHours: null,
   })
 
-  // Validate license on startup
   useEffect(() => {
     checkInitialLicense()
   }, [])
@@ -109,7 +130,7 @@ export default function App() {
   const handleFileLoaded = (filePath, meta) => {
     setVideoPath(filePath)
     setMetadata(meta)
-    setView('cut') // jump straight to Cut after loading
+    setView('cut')
   }
 
   const handleChangeFile = () => {
@@ -119,9 +140,20 @@ export default function App() {
   }
 
   const hasVideo = !!videoPath
-  const sharedProps = { videoPath, metadata, progress, isProcessing, setIsProcessing, setProgress }
+  const isPro = hasFeature(licenseState.tier, 'ai_thumbnails')
 
-  // ─── 1. Initial Checking Splash ─────────────────────────────────────────────
+  const sharedProps = {
+    videoPath,
+    metadata,
+    progress,
+    isProcessing,
+    setIsProcessing,
+    setProgress,
+    licenseTier: licenseState.tier,
+    onOpenUpgrade: handleOpenUpgrade,
+  }
+
+  // ─── 1. Checking Splash ─────────────────────────────────────────────────────
   if (licenseState.isChecking) {
     return (
       <div className="flex flex-col h-screen overflow-hidden bg-zinc-950 text-zinc-100">
@@ -166,11 +198,12 @@ export default function App() {
           hasVideo={hasVideo}
           licenseTier={licenseState.tier}
           isOffline={licenseState.isOffline}
+          onOpenUpgrade={handleOpenUpgrade}
         />
 
         {/* Main content area */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Settings View (Accessible anytime) */}
+          {/* Settings View */}
           {view === 'settings' && (
             <div className="flex-1 overflow-y-auto p-6">
               <SettingsPanel
@@ -184,6 +217,31 @@ export default function App() {
                   }))
                 }
                 onDeactivate={handleDeactivate}
+                onOpenUpgrade={handleOpenUpgrade}
+              />
+            </div>
+          )}
+
+          {/* AI Thumbnails Pro View */}
+          {view === 'ai_thumbnails' && (
+            <div className="flex-1 overflow-y-auto p-6">
+              <ProFeaturePlaceholder
+                type="ai_thumbnails"
+                isUnlocked={isPro}
+                onOpenUpgrade={handleOpenUpgrade}
+                videoPath={videoPath}
+              />
+            </div>
+          )}
+
+          {/* Batch Queue Pro View */}
+          {view === 'batch_queue' && (
+            <div className="flex-1 overflow-y-auto p-6">
+              <ProFeaturePlaceholder
+                type="batch_queue"
+                isUnlocked={isPro}
+                onOpenUpgrade={handleOpenUpgrade}
+                videoPath={videoPath}
               />
             </div>
           )}
@@ -194,32 +252,41 @@ export default function App() {
           )}
 
           {/* Video Tool views */}
-          {view !== 'drop' && view !== 'settings' && hasVideo && (
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              {/* Video info card (always visible at top) */}
-              <VideoInfo
-                videoPath={videoPath}
-                metadata={metadata}
-                onChangeFile={handleChangeFile}
-              />
+          {view !== 'drop' &&
+            view !== 'settings' &&
+            view !== 'ai_thumbnails' &&
+            view !== 'batch_queue' &&
+            hasVideo && (
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                <VideoInfo
+                  videoPath={videoPath}
+                  metadata={metadata}
+                  onChangeFile={handleChangeFile}
+                />
 
-              {/* Divider */}
-              <div className="border-t border-zinc-800" />
+                <div className="border-t border-zinc-800" />
 
-              {/* Active tool panel */}
-              {view === 'info' && <InfoPanel metadata={metadata} />}
-              {view === 'cut' && <CutPanel {...sharedProps} />}
-              {view === 'reel' && <ReelPanel {...sharedProps} />}
-              {view === 'split' && <SplitPanel {...sharedProps} />}
-            </div>
-          )}
+                {view === 'info' && <InfoPanel metadata={metadata} />}
+                {view === 'cut' && <CutPanel {...sharedProps} />}
+                {view === 'reel' && <ReelPanel {...sharedProps} />}
+                {view === 'split' && <SplitPanel {...sharedProps} />}
+              </div>
+            )}
         </main>
       </div>
 
-      {/* Global processing overlay (subtle bottom bar) */}
+      {/* Global processing overlay */}
       {isProcessing && (
         <div className="h-1 w-full progress-gradient animate-pulse" />
       )}
+
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        isOpen={upgradeModal.isOpen}
+        onClose={handleCloseUpgrade}
+        requiredTier={upgradeModal.requiredTier}
+        featureName={upgradeModal.featureName}
+      />
     </div>
   )
 }
