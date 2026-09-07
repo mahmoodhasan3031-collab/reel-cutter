@@ -11,6 +11,13 @@ import { getBatchQueueManager } from '../engine/batchQueue'
 import { getAppUpdater, markJobStarted, markJobFinished } from './updater'
 
 
+process.on('uncaughtException', (err) => {
+  try {
+    const logPath = path.join(app.getPath('userData'), 'startup_error.log')
+    fs.writeFileSync(logPath, `[${new Date().toISOString()}] Uncaught Exception: ${err.stack || err}\n`, { flag: 'a' })
+  } catch (_) {}
+})
+
 // ─── Window ─────────────────────────────────────────────────────────────────
 
 let mainWindow = null
