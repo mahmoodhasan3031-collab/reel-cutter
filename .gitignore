@@ -8,9 +8,7 @@ dist-electron/
 release/
 
 # Generated media and splits
-test-videos/*.mp4
-test-videos/*.jpg
-test-videos/splits/
+test-videos/
 
 # Logs & OS artifacts
 *.log
