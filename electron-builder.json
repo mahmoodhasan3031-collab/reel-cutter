@@ -28,7 +28,7 @@
   ],
   "publish": {
     "provider": "github",
-    "owner": "reelcutter",
+    "owner": "mahmoodhasan3031-collab",
     "repo": "reel-cutter"
   },
   "win": {
