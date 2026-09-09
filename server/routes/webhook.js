@@ -1,7 +1,7 @@
 const express = require('express');
 const StripeProvider = require('../providers/stripeProvider');
 const { createLicense } = require('../services/licenseGenerator');
-const { sendLicenseEmail } = require('../services/emailService');
+const { sendLicenseEmail, deliverLicenseEmail } = require('../services/emailService');
 
 const router = express.Router();
 const stripeProvider = new StripeProvider();
@@ -54,12 +54,11 @@ router.post(
         paymentProvider: 'stripe',
       });
 
-      // 5. Send confirmation email with key, tier, and download link
-      await sendLicenseEmail({
-        to: customerEmail,
-        licenseKey: licenseResult.licenseKey,
-        tier: licenseResult.tier,
-      });
+      // 5. Send confirmation email and persist delivery status/attempts
+      const emailResult = await deliverLicenseEmail(licenseResult.id);
+      if (!emailResult.success) {
+        console.warn(`[Webhook:Stripe] License email delivery failed for ${customerEmail}: ${emailResult.error}`);
+      }
 
       // 6. Mark event as processed
       processedEventIds.add(event.id);
@@ -74,6 +73,7 @@ router.post(
         received: true,
         licenseKey: licenseResult.licenseKey,
         tier: licenseResult.tier,
+        emailStatus: emailResult.email_status,
       });
     } catch (err) {
       console.error(`[Webhook:Stripe] Error fulfilling order: ${err.message}`);

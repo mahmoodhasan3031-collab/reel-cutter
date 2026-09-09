@@ -89,12 +89,14 @@ async function sendLicenseEmail({ to, licenseKey, tier, downloadUrl }) {
       if (!response.ok) {
         const errBody = await response.text();
         console.warn('[EmailService] Resend API error:', errBody);
+        return { success: false, error: sanitizeErrorMessage(`Resend error: ${errBody}`) };
       } else {
         const data = await response.json();
         return { success: true, messageId: data.id };
       }
     } catch (err) {
       console.warn('[EmailService] Resend request failed:', err.message);
+      return { success: false, error: sanitizeErrorMessage(`Resend network failure: ${err.message}`) };
     }
   }
 
@@ -121,6 +123,7 @@ async function sendLicenseEmail({ to, licenseKey, tier, downloadUrl }) {
       return { success: true, messageId: info.messageId };
     } catch (err) {
       console.warn('[EmailService] SMTP sendMail failed:', err.message);
+      return { success: false, error: sanitizeErrorMessage(`SMTP failure: ${err.message}`) };
     }
   }
 
@@ -130,6 +133,165 @@ async function sendLicenseEmail({ to, licenseKey, tier, downloadUrl }) {
     messageId: `mock-msg-${Date.now()}`,
     captured: emailRecord,
   };
+}
+
+const MAX_EMAIL_ATTEMPTS = 3;
+
+/**
+ * Sanitizes error messages to strip API keys, secrets, passwords, or auth headers.
+ *
+ * @param {Error|string} err
+ * @returns {string}
+ */
+function sanitizeErrorMessage(err) {
+  if (!err) return 'Unknown email delivery error';
+  let msg = typeof err === 'string' ? err : (err.message || String(err));
+
+  // Strip bearer tokens
+  msg = msg.replace(/Bearer\s+[A-Za-z0-9_\-\.]+/gi, 'Bearer [REDACTED]');
+  // Strip common API key patterns (Resend, Stripe, Supabase)
+  msg = msg.replace(/re_[a-zA-Z0-9_]+/g, '[REDACTED_KEY]');
+  msg = msg.replace(/sk_[a-zA-Z0-9_]+/g, '[REDACTED_KEY]');
+  msg = msg.replace(/whsec_[a-zA-Z0-9_]+/g, '[REDACTED_KEY]');
+  // Strip password patterns
+  msg = msg.replace(/password[:=]\s*[^,\s]+/gi, 'password=[REDACTED]');
+  msg = msg.replace(/pass[:=]\s*[^,\s]+/gi, 'pass=[REDACTED]');
+
+  // Bound length to prevent DB bloat
+  if (msg.length > 500) {
+    msg = msg.slice(0, 497) + '...';
+  }
+  return msg;
+}
+
+/**
+ * Delivers license email and updates license record status in Supabase.
+ *
+ * @param {string} licenseId
+ * @param {Object} [options]
+ * @param {boolean} [options.simulateFailure] Test option to simulate a failure
+ * @param {string} [options.failureMessage] Test option custom failure message
+ * @param {string} [options.downloadUrl] Download URL override
+ * @returns {Promise<{ success: boolean, email_status: 'sent'|'failed', email_attempts: number, email_sent_at?: string, error?: string, licenseId?: string, alreadySent?: boolean }>}
+ */
+async function deliverLicenseEmail(licenseId, options = {}) {
+  const { getLicenseById, updateLicenseEmailStatus } = require('./licenseGenerator');
+  const license = await getLicenseById(licenseId);
+  if (!license) {
+    return { success: false, error: 'License not found' };
+  }
+
+  if (license.email_status === 'sent') {
+    return {
+      success: true,
+      alreadySent: true,
+      email_status: 'sent',
+      licenseId: license.id,
+      email_attempts: license.email_attempts,
+      email_sent_at: license.email_sent_at,
+    };
+  }
+
+  const currentAttempts = (license.email_attempts || 0) + 1;
+  const attemptTimestamp = new Date().toISOString();
+
+  // Handle simulated failure for testing
+  if (options.simulateFailure) {
+    const sanitizedErr = sanitizeErrorMessage(options.failureMessage || 'Simulated provider error');
+    await updateLicenseEmailStatus(license.id, {
+      email_status: 'failed',
+      email_error: sanitizedErr,
+      email_attempts: currentAttempts,
+      email_last_attempt_at: attemptTimestamp,
+    });
+    return {
+      success: false,
+      error: sanitizedErr,
+      email_status: 'failed',
+      email_attempts: currentAttempts,
+      licenseId: license.id,
+    };
+  }
+
+  const sendResult = await sendLicenseEmail({
+    to: license.customer_email,
+    licenseKey: license.license_key,
+    tier: license.tier,
+    downloadUrl: options.downloadUrl,
+  });
+
+  if (sendResult.success) {
+    const sentTimestamp = new Date().toISOString();
+    await updateLicenseEmailStatus(license.id, {
+      email_status: 'sent',
+      email_sent_at: sentTimestamp,
+      email_error: null,
+      email_attempts: currentAttempts,
+      email_last_attempt_at: attemptTimestamp,
+    });
+    return {
+      success: true,
+      email_status: 'sent',
+      email_sent_at: sentTimestamp,
+      email_attempts: currentAttempts,
+      licenseId: license.id,
+      messageId: sendResult.messageId,
+    };
+  } else {
+    const sanitizedErr = sanitizeErrorMessage(sendResult.error);
+    await updateLicenseEmailStatus(license.id, {
+      email_status: 'failed',
+      email_error: sanitizedErr,
+      email_attempts: currentAttempts,
+      email_last_attempt_at: attemptTimestamp,
+    });
+    return {
+      success: false,
+      error: sanitizedErr,
+      email_status: 'failed',
+      email_attempts: currentAttempts,
+      licenseId: license.id,
+    };
+  }
+}
+
+/**
+ * Retries failed license email delivery up to MAX_EMAIL_ATTEMPTS.
+ *
+ * @param {string} licenseId
+ * @param {Object} [options]
+ * @returns {Promise<{ success: boolean, email_status: string, email_attempts: number, error?: string, maxAttemptsReached?: boolean, alreadySent?: boolean, licenseId?: string }>}
+ */
+async function retryLicenseEmail(licenseId, options = {}) {
+  const { getLicenseById } = require('./licenseGenerator');
+  const license = await getLicenseById(licenseId);
+  if (!license) {
+    return { success: false, error: 'License not found' };
+  }
+
+  if (license.email_status === 'sent') {
+    return {
+      success: false,
+      alreadySent: true,
+      error: 'Cannot retry: email is already sent',
+      email_status: 'sent',
+      licenseId: license.id,
+      email_attempts: license.email_attempts,
+    };
+  }
+
+  if ((license.email_attempts || 0) >= MAX_EMAIL_ATTEMPTS) {
+    return {
+      success: false,
+      maxAttemptsReached: true,
+      error: `Maximum delivery attempts (${MAX_EMAIL_ATTEMPTS}) reached`,
+      email_status: license.email_status,
+      licenseId: license.id,
+      email_attempts: license.email_attempts,
+    };
+  }
+
+  return deliverLicenseEmail(licenseId, options);
 }
 
 /**
@@ -148,6 +310,10 @@ function clearSentEmails() {
 
 module.exports = {
   sendLicenseEmail,
+  deliverLicenseEmail,
+  retryLicenseEmail,
+  sanitizeErrorMessage,
+  MAX_EMAIL_ATTEMPTS,
   buildLicenseEmailHtml,
   getSentEmails,
   clearSentEmails,

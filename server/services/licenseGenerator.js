@@ -64,6 +64,11 @@ async function createLicense({ tier = 'standard', customerEmail = null, transact
     customer_email: customerEmail || null,
     transaction_id: transactionId || null,
     payment_provider: paymentProvider || 'stripe',
+    email_status: 'pending',
+    email_sent_at: null,
+    email_error: null,
+    email_attempts: 0,
+    email_last_attempt_at: null,
     hwid: null,
     tier: validTier,
     status: 'active',
@@ -91,6 +96,11 @@ async function createLicense({ tier = 'standard', customerEmail = null, transact
         customerEmail: data.customer_email,
         transactionId: data.transaction_id,
         paymentProvider: data.payment_provider,
+        emailStatus: data.email_status,
+        emailSentAt: data.email_sent_at,
+        emailError: data.email_error,
+        emailAttempts: data.email_attempts,
+        emailLastAttemptAt: data.email_last_attempt_at,
         record: data,
       };
     } catch (err) {
@@ -120,8 +130,92 @@ async function createLicense({ tier = 'standard', customerEmail = null, transact
     customerEmail: record.customer_email,
     transactionId: record.transaction_id,
     paymentProvider: record.payment_provider,
+    emailStatus: record.email_status,
+    emailSentAt: record.email_sent_at,
+    emailError: record.email_error,
+    emailAttempts: record.email_attempts,
+    emailLastAttemptAt: record.email_last_attempt_at,
     record,
   };
+}
+
+/**
+ * Retrieves a license record by ID (or license_key).
+ * @param {string} id
+ * @returns {Promise<Object|null>}
+ */
+async function getLicenseById(id) {
+  if (!id) return null;
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('licenses')
+        .select('*')
+        .or(`id.eq.${id},license_key.eq.${id}`)
+        .single();
+      if (!error && data) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[LicenseGenerator] Remote Supabase getLicenseById failed:', err.message);
+    }
+  }
+
+  for (const record of generatedLicensesRegistry.values()) {
+    if (record.id === id || record.license_key === id) {
+      return record;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Updates email delivery status and attempt tracking for a license.
+ *
+ * @param {string} id License ID (or license_key)
+ * @param {Object} updates Fields to update (email_status, email_sent_at, email_error, email_attempts, email_last_attempt_at)
+ * @returns {Promise<Object|null>}
+ */
+async function updateLicenseEmailStatus(id, updates) {
+  if (!id) return null;
+
+  const cleanUpdates = {
+    ...updates,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('licenses')
+        .update(cleanUpdates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (!error && data) {
+        for (const record of generatedLicensesRegistry.values()) {
+          if (record.id === id || record.license_key === id) {
+            Object.assign(record, cleanUpdates);
+          }
+        }
+        return data;
+      }
+    } catch (err) {
+      console.warn('[LicenseGenerator] Remote Supabase updateLicenseEmailStatus failed:', err.message);
+    }
+  }
+
+  for (const record of generatedLicensesRegistry.values()) {
+    if (record.id === id || record.license_key === id) {
+      Object.assign(record, cleanUpdates);
+      return record;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -131,8 +225,18 @@ function getInMemoryLicenses() {
   return Array.from(generatedLicensesRegistry.values());
 }
 
+/**
+ * For testing: resets the in-memory license registry
+ */
+function clearInMemoryLicenses() {
+  generatedLicensesRegistry.clear();
+}
+
 module.exports = {
   createLicense,
   generateKeyFormat,
+  getLicenseById,
+  updateLicenseEmailStatus,
   getInMemoryLicenses,
+  clearInMemoryLicenses,
 };

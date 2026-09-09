@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS public.licenses (
   customer_email TEXT,
   transaction_id TEXT,
   payment_provider TEXT DEFAULT 'stripe',
+  email_status TEXT NOT NULL DEFAULT 'pending' CHECK (email_status IN ('pending', 'sent', 'failed')),
+  email_sent_at TIMESTAMPTZ,
+  email_error TEXT,
+  email_attempts INTEGER NOT NULL DEFAULT 0,
+  email_last_attempt_at TIMESTAMPTZ,
   hwid TEXT,
   tier TEXT NOT NULL DEFAULT 'standard' CHECK (tier IN ('basic', 'standard', 'pro')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
@@ -21,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.licenses (
 CREATE INDEX IF NOT EXISTS idx_licenses_license_key ON public.licenses (license_key);
 CREATE INDEX IF NOT EXISTS idx_licenses_customer_email ON public.licenses (customer_email);
 CREATE INDEX IF NOT EXISTS idx_licenses_transaction_id ON public.licenses (transaction_id);
+CREATE INDEX IF NOT EXISTS idx_licenses_email_status ON public.licenses (email_status);
 CREATE INDEX IF NOT EXISTS idx_licenses_hwid ON public.licenses (hwid);
 CREATE INDEX IF NOT EXISTS idx_licenses_status ON public.licenses (status);
 
@@ -62,11 +68,22 @@ ON CONFLICT (license_key) DO NOTHING;
 
 -- ==============================================================================
 -- 7. Safe Migration for Existing Databases
--- Run this block if the `licenses` table already exists in your Supabase project:
+-- Run these blocks if the `licenses` table already exists in your Supabase project:
 -- ==============================================================================
+--
+-- STEP 2B MIGRATION (Customer tracking):
 -- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS customer_email TEXT;
 -- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS transaction_id TEXT;
 -- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS payment_provider TEXT DEFAULT 'stripe';
 -- CREATE INDEX IF NOT EXISTS idx_licenses_customer_email ON public.licenses (customer_email);
 -- CREATE INDEX IF NOT EXISTS idx_licenses_transaction_id ON public.licenses (transaction_id);
+--
+-- STEP 2C MIGRATION (Email delivery hardening & status tracking):
+-- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS email_status TEXT NOT NULL DEFAULT 'pending' CHECK (email_status IN ('pending', 'sent', 'failed'));
+-- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMPTZ;
+-- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS email_error TEXT;
+-- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS email_attempts INTEGER NOT NULL DEFAULT 0;
+-- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS email_last_attempt_at TIMESTAMPTZ;
+-- CREATE INDEX IF NOT EXISTS idx_licenses_email_status ON public.licenses (email_status);
+
 

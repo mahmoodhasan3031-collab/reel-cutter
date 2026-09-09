@@ -4,8 +4,16 @@ const path = require('path');
 const Stripe = require('stripe');
 
 const StripeProvider = require('../server/providers/stripeProvider');
-const { createLicense, generateKeyFormat } = require('../server/services/licenseGenerator');
-const { sendLicenseEmail, getSentEmails, clearSentEmails } = require('../server/services/emailService');
+const { createLicense, generateKeyFormat, getLicenseById, clearInMemoryLicenses } = require('../server/services/licenseGenerator');
+const {
+  sendLicenseEmail,
+  deliverLicenseEmail,
+  retryLicenseEmail,
+  sanitizeErrorMessage,
+  MAX_EMAIL_ATTEMPTS,
+  getSentEmails,
+  clearSentEmails,
+} = require('../server/services/emailService');
 const config = require('../server/config');
 
 async function runPaymentTests() {
@@ -116,6 +124,21 @@ async function runPaymentTests() {
     assert.strictEqual(record.record.payment_provider, 'stripe');
   });
 
+  // ─── Test 3c: Email Status Defaults to Pending ────────────────────────────
+  await test('3c. Email Status Initialization: New license email_status defaults to pending', async () => {
+    const record = await createLicense({
+      tier: 'pro',
+      customerEmail: 'pending@example.com',
+      transactionId: 'pi_pending_123',
+    });
+
+    assert.strictEqual(record.emailStatus, 'pending');
+    assert.strictEqual(record.emailAttempts, 0);
+    assert.strictEqual(record.emailSentAt, null);
+    assert.strictEqual(record.emailError, null);
+    assert.strictEqual(record.emailLastAttemptAt, null);
+  });
+
   // ─── Test 4: Customer Email Dispatch ──────────────────────────────────────
   await test('4. Email Dispatch: Dispatches email containing license key, tier, and installer link', async () => {
     clearSentEmails();
@@ -134,6 +157,114 @@ async function runPaymentTests() {
     assert.strictEqual(sent[0].licenseKey, testKey);
     assert.strictEqual(sent[0].tier, 'pro');
     assert.strictEqual(sent[0].downloadUrl, 'https://reelcutter.app/download');
+  });
+
+  // ─── Test 4b: deliverLicenseEmail Status Transition to Sent ───────────────
+  await test('4b. Delivery Success: deliverLicenseEmail updates email_status to sent and records sent_at', async () => {
+    clearSentEmails();
+    const license = await createLicense({
+      tier: 'standard',
+      customerEmail: 'delivered@example.com',
+      transactionId: 'pi_deliv_123',
+    });
+
+    const result = await deliverLicenseEmail(license.id);
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.email_status, 'sent');
+    assert.strictEqual(result.email_attempts, 1);
+    assert(result.email_sent_at, 'email_sent_at must be recorded');
+
+    // Verify persisted record
+    const updated = await getLicenseById(license.id);
+    assert.strictEqual(updated.email_status, 'sent');
+    assert.strictEqual(updated.email_attempts, 1);
+    assert(updated.email_sent_at);
+    assert.strictEqual(updated.email_error, null);
+  });
+
+  // ─── Test 4c: deliverLicenseEmail Status Transition to Failed ─────────────
+  await test('4c. Delivery Failure: Failed email delivery sets email_status to failed and records error', async () => {
+    const license = await createLicense({
+      tier: 'basic',
+      customerEmail: 'failed@example.com',
+      transactionId: 'pi_fail_123',
+    });
+
+    const result = await deliverLicenseEmail(license.id, {
+      simulateFailure: true,
+      failureMessage: 'SMTP connection timeout on host mail.example.com',
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.email_status, 'failed');
+    assert.strictEqual(result.email_attempts, 1);
+    assert(result.error.includes('SMTP connection timeout'));
+
+    // Verify persisted record
+    const updated = await getLicenseById(license.id);
+    assert.strictEqual(updated.email_status, 'failed');
+    assert.strictEqual(updated.email_attempts, 1);
+    assert(updated.email_error.includes('SMTP connection timeout'));
+    assert.strictEqual(updated.email_sent_at, null);
+  });
+
+  // ─── Test 4d: Error Sanitization ──────────────────────────────────────────
+  await test('4d. Credential Scrubbing: sanitizeErrorMessage strips API keys, tokens, and passwords', () => {
+    const leakedMsg = 'Error sending via Resend: Bearer re_live_secret123456789 with password=supersecretpass and sk_live_99999999';
+    const sanitized = sanitizeErrorMessage(leakedMsg);
+    assert(!sanitized.includes('re_live_secret'), 'Must scrub Resend keys');
+    assert(!sanitized.includes('supersecretpass'), 'Must scrub passwords');
+    assert(!sanitized.includes('sk_live_99999999'), 'Must scrub Stripe keys');
+    assert(sanitized.includes('Bearer [REDACTED]'), 'Must replace Bearer token');
+  });
+
+  // ─── Test 4e: Retry Mechanism ─────────────────────────────────────────────
+  await test('4e. Retry Mechanism: Retries failed email without creating duplicate license, enforces max attempts', async () => {
+    const license = await createLicense({
+      tier: 'pro',
+      customerEmail: 'retryuser@example.com',
+      transactionId: 'pi_retry_123',
+    });
+
+    // 1. Initial attempt fails
+    const firstAttempt = await deliverLicenseEmail(license.id, { simulateFailure: true, failureMessage: 'Network blip' });
+    assert.strictEqual(firstAttempt.email_status, 'failed');
+    assert.strictEqual(firstAttempt.email_attempts, 1);
+
+    // 2. Retry 1 (attempt 2) fails
+    const retry1 = await retryLicenseEmail(license.id, { simulateFailure: true, failureMessage: 'Still down' });
+    assert.strictEqual(retry1.email_status, 'failed');
+    assert.strictEqual(retry1.email_attempts, 2);
+    // Verify license key is unchanged
+    const afterRetry1 = await getLicenseById(license.id);
+    assert.strictEqual(afterRetry1.license_key, license.licenseKey, 'License key must remain unchanged');
+
+    // 3. Retry 2 (attempt 3) succeeds!
+    const retry2 = await retryLicenseEmail(license.id);
+    assert.strictEqual(retry2.success, true);
+    assert.strictEqual(retry2.email_status, 'sent');
+    assert.strictEqual(retry2.email_attempts, 3);
+    assert(retry2.email_sent_at);
+
+    // 4. Retry already-sent email is rejected
+    const retryAlreadySent = await retryLicenseEmail(license.id);
+    assert.strictEqual(retryAlreadySent.success, false);
+    assert.strictEqual(retryAlreadySent.alreadySent, true);
+    assert(retryAlreadySent.error.includes('already sent'));
+
+    // 5. Test max attempts limit (attempt >= 3 when failed)
+    const exhaustedLicense = await createLicense({
+      tier: 'basic',
+      customerEmail: 'exhausted@example.com',
+    });
+    await deliverLicenseEmail(exhaustedLicense.id, { simulateFailure: true }); // attempt 1
+    await retryLicenseEmail(exhaustedLicense.id, { simulateFailure: true });   // attempt 2
+    await retryLicenseEmail(exhaustedLicense.id, { simulateFailure: true });   // attempt 3
+
+    const finalRetry = await retryLicenseEmail(exhaustedLicense.id);
+    assert.strictEqual(finalRetry.success, false);
+    assert.strictEqual(finalRetry.maxAttemptsReached, true);
+    assert(finalRetry.error.includes('Maximum delivery attempts (3) reached'));
   });
 
   // ─── Test 5: Stripe Webhook Signature Verification ────────────────────────
