@@ -113,7 +113,7 @@ async function runSuite() {
   await test('6. Publish configuration specifies GitHub releases provider', () => {
     assert.ok(builder.publish, 'Publish config must exist');
     assert.strictEqual(builder.publish.provider, 'github');
-    assert.strictEqual(builder.publish.owner, 'reelcutter');
+    assert.strictEqual(builder.publish.owner, 'mahmoodhasan3031-collab');
     assert.strictEqual(builder.publish.repo, 'reel-cutter');
   });
 

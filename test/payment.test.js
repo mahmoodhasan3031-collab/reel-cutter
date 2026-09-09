@@ -78,17 +78,42 @@ async function runPaymentTests() {
     }
   });
 
-  // ─── Test 3: License Creation & Supabase Insertion ────────────────────────
-  await test('3. Supabase Insertion: Inserts new license with hwid = null and active status', async () => {
+  // ─── Test 3: License Creation & Customer Data Persistence ────────────────
+  await test('3. Supabase Insertion: Inserts new license with customer email, transaction ID, and payment provider', async () => {
     const record = await createLicense({
       tier: 'pro',
       customerEmail: 'testuser@example.com',
       transactionId: 'pi_test_12345',
+      paymentProvider: 'stripe',
     });
 
     assert(record.licenseKey, 'License key must be generated');
     assert.strictEqual(record.tier, 'pro', 'Tier must be pro');
+    assert.strictEqual(record.customerEmail, 'testuser@example.com', 'customerEmail must match');
+    assert.strictEqual(record.transactionId, 'pi_test_12345', 'transactionId must match');
+    assert.strictEqual(record.paymentProvider, 'stripe', 'paymentProvider must be stripe');
+    assert.strictEqual(record.record.customer_email, 'testuser@example.com', 'record.customer_email must be persisted');
+    assert.strictEqual(record.record.transaction_id, 'pi_test_12345', 'record.transaction_id must be persisted');
+    assert.strictEqual(record.record.payment_provider, 'stripe', 'record.payment_provider must be persisted');
+    assert.strictEqual(record.record.hwid, null, 'hwid must initially be null');
+    assert.strictEqual(record.record.status, 'active', 'status must be active');
     assert(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(record.licenseKey));
+  });
+
+  // ─── Test 3b: Backward Compatibility ──────────────────────────────────────
+  await test('3b. Backward Compatibility: Generates active license even when customer email / transaction ID are omitted', async () => {
+    const record = await createLicense({
+      tier: 'standard',
+    });
+
+    assert(record.licenseKey, 'License key must be generated');
+    assert.strictEqual(record.tier, 'standard');
+    assert.strictEqual(record.customerEmail, null);
+    assert.strictEqual(record.transactionId, null);
+    assert.strictEqual(record.paymentProvider, 'stripe');
+    assert.strictEqual(record.record.customer_email, null);
+    assert.strictEqual(record.record.transaction_id, null);
+    assert.strictEqual(record.record.payment_provider, 'stripe');
   });
 
   // ─── Test 4: Customer Email Dispatch ──────────────────────────────────────

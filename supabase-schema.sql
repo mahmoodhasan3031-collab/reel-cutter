@@ -7,6 +7,9 @@
 CREATE TABLE IF NOT EXISTS public.licenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   license_key TEXT NOT NULL UNIQUE,
+  customer_email TEXT,
+  transaction_id TEXT,
+  payment_provider TEXT DEFAULT 'stripe',
   hwid TEXT,
   tier TEXT NOT NULL DEFAULT 'standard' CHECK (tier IN ('basic', 'standard', 'pro')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
@@ -14,8 +17,10 @@ CREATE TABLE IF NOT EXISTS public.licenses (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
--- 2. Indexes for performance
+-- 2. Indexes for performance and customer support lookups
 CREATE INDEX IF NOT EXISTS idx_licenses_license_key ON public.licenses (license_key);
+CREATE INDEX IF NOT EXISTS idx_licenses_customer_email ON public.licenses (customer_email);
+CREATE INDEX IF NOT EXISTS idx_licenses_transaction_id ON public.licenses (transaction_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_hwid ON public.licenses (hwid);
 CREATE INDEX IF NOT EXISTS idx_licenses_status ON public.licenses (status);
 
@@ -54,3 +59,14 @@ VALUES
   ('BAS-REEL-1234-IJKL-9012', 'basic', 'active'),
   ('PRO-REEL-REVOKED-9999', 'pro', 'revoked')
 ON CONFLICT (license_key) DO NOTHING;
+
+-- ==============================================================================
+-- 7. Safe Migration for Existing Databases
+-- Run this block if the `licenses` table already exists in your Supabase project:
+-- ==============================================================================
+-- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS customer_email TEXT;
+-- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS transaction_id TEXT;
+-- ALTER TABLE public.licenses ADD COLUMN IF NOT EXISTS payment_provider TEXT DEFAULT 'stripe';
+-- CREATE INDEX IF NOT EXISTS idx_licenses_customer_email ON public.licenses (customer_email);
+-- CREATE INDEX IF NOT EXISTS idx_licenses_transaction_id ON public.licenses (transaction_id);
+

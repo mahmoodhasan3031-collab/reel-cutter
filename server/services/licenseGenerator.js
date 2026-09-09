@@ -45,11 +45,12 @@ function generateKeyFormat() {
  *
  * @param {Object} params
  * @param {'basic'|'standard'|'pro'} params.tier
- * @param {string} [params.customerEmail]
- * @param {string} [params.transactionId]
- * @returns {Promise<{ licenseKey: string, tier: string, id: string }>}
+ * @param {string|null} [params.customerEmail]
+ * @param {string|null} [params.transactionId]
+ * @param {string} [params.paymentProvider]
+ * @returns {Promise<{ licenseKey: string, tier: string, id: string, customerEmail: string|null, transactionId: string|null, paymentProvider: string, record: Object }>}
  */
-async function createLicense({ tier = 'standard', customerEmail = '', transactionId = '' }) {
+async function createLicense({ tier = 'standard', customerEmail = null, transactionId = null, paymentProvider = 'stripe' }) {
   const validTier = ['basic', 'standard', 'pro'].includes(tier.toLowerCase())
     ? tier.toLowerCase()
     : 'standard';
@@ -60,6 +61,9 @@ async function createLicense({ tier = 'standard', customerEmail = '', transactio
   const record = {
     id: crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'),
     license_key: licenseKey,
+    customer_email: customerEmail || null,
+    transaction_id: transactionId || null,
+    payment_provider: paymentProvider || 'stripe',
     hwid: null,
     tier: validTier,
     status: 'active',
@@ -84,6 +88,10 @@ async function createLicense({ tier = 'standard', customerEmail = '', transactio
         id: data.id,
         licenseKey: data.license_key,
         tier: data.tier,
+        customerEmail: data.customer_email,
+        transactionId: data.transaction_id,
+        paymentProvider: data.payment_provider,
+        record: data,
       };
     } catch (err) {
       console.warn('[LicenseGenerator] Remote Supabase insert failed, caching locally:', err.message);
@@ -109,6 +117,10 @@ async function createLicense({ tier = 'standard', customerEmail = '', transactio
     id: record.id,
     licenseKey: record.license_key,
     tier: record.tier,
+    customerEmail: record.customer_email,
+    transactionId: record.transaction_id,
+    paymentProvider: record.payment_provider,
+    record,
   };
 }
 

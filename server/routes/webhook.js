@@ -51,6 +51,7 @@ router.post(
         tier,
         customerEmail,
         transactionId,
+        paymentProvider: 'stripe',
       });
 
       // 5. Send confirmation email with key, tier, and download link
