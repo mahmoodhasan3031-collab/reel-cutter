@@ -56,6 +56,44 @@ export default function App() {
 
   useEffect(() => {
     checkInitialLicense()
+
+    const handleStatusChanged = (res) => {
+      if (!res) return
+      if (res.isValid) {
+        setLicenseState((prev) => ({
+          ...prev,
+          isValid: true,
+          tier: res.tier || prev.tier,
+          status: res.status || 'active',
+          maskedKey: res.maskedKey || prev.maskedKey,
+          shortHwid: res.shortHwid || prev.shortHwid,
+          isOffline: !!res.isOffline,
+          gracePeriodRemainingHours: res.gracePeriodRemainingHours,
+        }))
+      } else {
+        setLicenseState((prev) => ({
+          ...prev,
+          isValid: false,
+          status: res.reason || 'unactivated',
+          isOffline: false,
+          gracePeriodRemainingHours: null,
+        }))
+      }
+    }
+
+    window.api.onLicenseStatusChanged?.(handleStatusChanged)
+
+    const handleOnline = () => {
+      window.api.notifyOnline?.().then((res) => {
+        if (res) handleStatusChanged(res)
+      }).catch(() => {})
+    }
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      window.api.off?.('license:statusChanged')
+      window.removeEventListener('online', handleOnline)
+    }
   }, [])
 
   const checkInitialLicense = async () => {

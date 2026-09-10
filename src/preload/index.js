@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('api', {
   deactivateLicense: () => ipcRenderer.invoke('license:deactivate'),
   getLicenseInfo: () => ipcRenderer.invoke('license:getInfo'),
   hasFeature: (featureName) => ipcRenderer.invoke('license:hasFeature', featureName),
+  notifyOnline: () => ipcRenderer.invoke('license:networkOnline'),
+  onLicenseStatusChanged: (cb) => ipcRenderer.on('license:statusChanged', (_, data) => cb(data)),
 
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),

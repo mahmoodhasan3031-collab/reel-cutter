@@ -4,6 +4,9 @@ const { fetchLicense, bindLicenseHwid } = require('./supabaseClient');
 const { hasFeature, getTierFeatureList } = require('../../shared/features');
 
 const MAX_OFFLINE_GRACE_PERIOD_HOURS = 72; // 3 days
+const CLOCK_DRIFT_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes tolerance for legitimate NTP adjustments
+
+let heartbeatTimer = null;
 
 /**
  * Masks a license key for safe display in the UI.
@@ -18,6 +21,39 @@ function maskLicenseKey(key) {
   if (clean.length <= 4) return '••••';
   const suffix = clean.slice(-4);
   return `••••-••••-••••-${suffix}`;
+}
+
+/**
+ * Checks if the system clock has been tampered with (e.g. rolled backwards).
+ *
+ * @param {Object} stored License data stored on disk
+ * @param {number} [now] Current timestamp ms (default: Date.now())
+ * @returns {{ isTampered: boolean, reason?: string, error?: string }}
+ */
+function checkClockRollback(stored, now = Date.now()) {
+  if (!stored) return { isTampered: false };
+
+  const lastValidated = new Date(stored.lastValidatedAt || stored.activatedAt || 0).getTime();
+  if (lastValidated > 0 && now < lastValidated - CLOCK_DRIFT_TOLERANCE_MS) {
+    return {
+      isTampered: true,
+      reason: 'CLOCK_TAMPERED',
+      error: 'System clock rollback detected. Connect to the internet to validate your license.',
+    };
+  }
+
+  if (stored.lastSeenAt) {
+    const lastSeen = new Date(stored.lastSeenAt).getTime();
+    if (lastSeen > 0 && now < lastSeen - CLOCK_DRIFT_TOLERANCE_MS) {
+      return {
+        isTampered: true,
+        reason: 'CLOCK_TAMPERED',
+        error: 'System clock rollback detected. Connect to the internet to validate your license.',
+      };
+    }
+  }
+
+  return { isTampered: false };
 }
 
 /**
@@ -51,12 +87,30 @@ async function validateStartup(customStorageDir) {
   const { data, error, isOffline } = await fetchLicense(stored.licenseKey);
 
   if (isOffline) {
+    const now = Date.now();
+
+    // Check clock rollback protection
+    const clockCheck = checkClockRollback(stored, now);
+    if (clockCheck.isTampered) {
+      return {
+        isValid: false,
+        reason: clockCheck.reason,
+        error: clockCheck.error,
+      };
+    }
+
     // Check 3-day offline grace period
     const lastValidated = new Date(stored.lastValidatedAt || stored.activatedAt || 0).getTime();
-    const now = Date.now();
     const hoursElapsed = (now - lastValidated) / (1000 * 60 * 60);
 
-    if (hoursElapsed <= MAX_OFFLINE_GRACE_PERIOD_HOURS) {
+    if (hoursElapsed >= 0 && hoursElapsed <= MAX_OFFLINE_GRACE_PERIOD_HOURS) {
+      // Update monotonic lastSeenAt
+      const updatedData = {
+        ...stored,
+        lastSeenAt: new Date(Math.max(now, new Date(stored.lastSeenAt || 0).getTime())).toISOString(),
+      };
+      saveLicenseData(updatedData, customStorageDir);
+
       const remainingHours = Math.max(0, Math.round(MAX_OFFLINE_GRACE_PERIOD_HOURS - hoursElapsed));
       return {
         isValid: true,
@@ -106,12 +160,14 @@ async function validateStartup(customStorageDir) {
     };
   }
 
-  // 4. Update local cache with fresh validation timestamp
+  // 4. Update local cache with fresh validation and lastSeen timestamps
+  const currentTimestamp = new Date().toISOString();
   const updatedData = {
     ...stored,
     tier: data.tier || stored.tier || 'standard',
     status: data.status || 'active',
-    lastValidatedAt: new Date().toISOString(),
+    lastValidatedAt: currentTimestamp,
+    lastSeenAt: currentTimestamp,
   };
   saveLicenseData(updatedData, customStorageDir);
 
@@ -185,6 +241,7 @@ async function activateLicense(rawKey, customStorageDir) {
     status: 'active',
     activatedAt: now,
     lastValidatedAt: now,
+    lastSeenAt: now,
   };
 
   saveLicenseData(licensePayload, customStorageDir);
@@ -212,7 +269,7 @@ async function deactivateLicense(customStorageDir) {
 }
 
 /**
- * Returns current license details safely for UI consumption.
+ * Returns current license details safely for UI consumption and IPC feature gating.
  *
  * @param {string} [customStorageDir]
  * @returns {Promise<Object>}
@@ -229,22 +286,97 @@ async function getLicenseInfo(customStorageDir) {
     };
   }
 
-  const hoursElapsed = (Date.now() - new Date(stored.lastValidatedAt || 0).getTime()) / (1000 * 60 * 60);
+  const now = Date.now();
+  const clockCheck = checkClockRollback(stored, now);
+  const lastValidated = new Date(stored.lastValidatedAt || stored.activatedAt || 0).getTime();
+  const hoursElapsed = (now - lastValidated) / (1000 * 60 * 60);
+  const isGraceExpired = hoursElapsed > MAX_OFFLINE_GRACE_PERIOD_HOURS || hoursElapsed < -0.1;
   const remainingHours = Math.max(0, Math.round(MAX_OFFLINE_GRACE_PERIOD_HOURS - hoursElapsed));
+
+  const isValid =
+    stored.status === 'active' &&
+    stored.hwid === currentHwid &&
+    !clockCheck.isTampered &&
+    !isGraceExpired;
 
   return {
     hasLicense: true,
-    isValid: stored.status === 'active' && stored.hwid === currentHwid,
+    isValid,
     tier: stored.tier || 'standard',
-    status: stored.status || 'active',
+    status: clockCheck.isTampered
+      ? 'clock_tampered'
+      : isGraceExpired
+      ? 'grace_period_expired'
+      : stored.status || 'active',
+    reason: clockCheck.isTampered
+      ? 'CLOCK_TAMPERED'
+      : isGraceExpired
+      ? 'GRACE_PERIOD_EXPIRED'
+      : null,
     maskedKey: maskLicenseKey(stored.licenseKey),
     shortHwid: formatShortHwid(currentHwid),
     hwidStatus: stored.hwid === currentHwid ? 'Bound to this device' : 'HWID mismatch',
     lastValidatedAt: stored.lastValidatedAt,
     activatedAt: stored.activatedAt,
-    gracePeriodRemainingHours: remainingHours,
-    features: getTierFeatureList(stored.tier || 'standard'),
+    lastSeenAt: stored.lastSeenAt,
+    gracePeriodRemainingHours: isGraceExpired ? 0 : remainingHours,
+    features: isValid ? getTierFeatureList(stored.tier || 'standard') : {},
   };
+}
+
+let isRevalidating = false;
+
+/**
+ * Silently revalidates the license with Supabase when internet connectivity is restored.
+ * Prevents concurrent redundant validation requests if multiple network events fire rapidly.
+ *
+ * @param {string} [customStorageDir]
+ * @returns {Promise<Object|null>}
+ */
+async function revalidateOnlineSilently(customStorageDir) {
+  if (isRevalidating) return null;
+  isRevalidating = true;
+  try {
+    return await validateStartup(customStorageDir);
+  } finally {
+    isRevalidating = false;
+  }
+}
+
+/**
+ * Starts periodic background license heartbeat to monitor grace-period expiration
+ * and clock tampering while the app remains running.
+ *
+ * @param {Function} onStatusChange Callback invoked when license status changes
+ * @param {number} [intervalMs=600000] Interval in ms (default: 10 minutes)
+ */
+function startBackgroundLicenseHeartbeat(onStatusChange, intervalMs = 10 * 60 * 1000) {
+  stopBackgroundLicenseHeartbeat();
+
+  heartbeatTimer = setInterval(async () => {
+    try {
+      const status = await validateStartup();
+      if (typeof onStatusChange === 'function') {
+        onStatusChange(status);
+      }
+    } catch (err) {
+      console.warn('[LicenseHeartbeat] Error during periodic check:', err.message);
+    }
+  }, intervalMs);
+
+  if (heartbeatTimer.unref) {
+    heartbeatTimer.unref();
+  }
+}
+
+/**
+ * Stops the periodic background license heartbeat.
+ */
+function stopBackgroundLicenseHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
 }
 
 module.exports = {
@@ -254,5 +386,10 @@ module.exports = {
   getLicenseInfo,
   maskLicenseKey,
   hasFeature,
+  checkClockRollback,
+  revalidateOnlineSilently,
+  startBackgroundLicenseHeartbeat,
+  stopBackgroundLicenseHeartbeat,
   MAX_OFFLINE_GRACE_PERIOD_HOURS,
+  CLOCK_DRIFT_TOLERANCE_MS,
 };

@@ -5,7 +5,15 @@ import { getVideoMetadata } from '../engine/probe'
 import { cutClip, splitIntoReels } from '../engine/cutter'
 import { resolveDimensions } from '../engine/formatter'
 import { generateProThumbnail } from '../engine/thumbnailGenerator'
-import { validateStartup, activateLicense, deactivateLicense, getLicenseInfo } from './license/licenseManager'
+import {
+  validateStartup,
+  activateLicense,
+  deactivateLicense,
+  getLicenseInfo,
+  revalidateOnlineSilently,
+  startBackgroundLicenseHeartbeat,
+  stopBackgroundLicenseHeartbeat,
+} from './license/licenseManager'
 import { hasFeature } from '../shared/features'
 import { getBatchQueueManager } from '../engine/batchQueue'
 import { getAppUpdater, markJobStarted, markJobFinished } from './updater'
@@ -76,12 +84,18 @@ app.whenReady().then(() => {
     updater.checkForUpdates().catch(() => {})
   }, 3000)
 
+  // Wire Background License Heartbeat (monitors grace period & clock tampering)
+  startBackgroundLicenseHeartbeat((status) => {
+    mainWindow?.webContents.send('license:statusChanged', status)
+  })
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
 app.on('window-all-closed', () => {
+  stopBackgroundLicenseHeartbeat()
   // Cancel all active batch jobs to avoid orphan FFmpeg processes
   try { getBatchQueueManager().cancelAll() } catch (_) {}
   if (process.platform !== 'darwin') app.quit()
@@ -215,6 +229,10 @@ ipcMain.handle('video:reel', async (_, opts) => {
   try {
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
+
+    if (!hasFeature(tier, 'cutting')) {
+      return { success: false, error: 'Reel creation requires an active license.' }
+    }
 
     if (aspectRatio && aspectRatio !== '9:16' && !hasFeature(tier, 'all_aspect_ratios')) {
       return { success: false, error: `Aspect ratio ${aspectRatio} requires Standard or Pro license tier.` }
@@ -564,6 +582,18 @@ ipcMain.handle('license:hasFeature', async (_, featureName) => {
     return hasFeature(tier, featureName)
   } catch {
     return false
+  }
+})
+
+ipcMain.handle('license:networkOnline', async () => {
+  try {
+    const result = await revalidateOnlineSilently()
+    if (result) {
+      mainWindow?.webContents.send('license:statusChanged', result)
+    }
+    return result
+  } catch (err) {
+    return { isValid: false, error: err.message }
   }
 })
 

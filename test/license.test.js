@@ -12,6 +12,7 @@ const {
   deactivateLicense,
   getLicenseInfo,
   maskLicenseKey,
+  revalidateOnlineSilently,
   MAX_OFFLINE_GRACE_PERIOD_HOURS,
 } = require('../src/main/license/licenseManager');
 
@@ -163,6 +164,108 @@ async function runTests() {
     assert(preloadSource.includes('checkLicense'), 'checkLicense IPC method exposed');
     assert(preloadSource.includes('activateLicense'), 'activateLicense IPC method exposed');
     assert(preloadSource.includes('getLicenseInfo'), 'getLicenseInfo IPC method exposed');
+  });
+
+  // ─── Test 11: Clock rollback protection in validateStartup ───────────────
+  await test('11. Clock rollback: Rejects offline startup if system clock is moved behind lastValidatedAt', async () => {
+    cleanup();
+    resetMockDb();
+    await activateLicense('PRO-REEL-7890-ABCD-1234', TEST_DIR);
+
+    // Manipulate stored license so lastValidatedAt is in the future relative to simulated check
+    const stored = loadLicenseData(TEST_DIR);
+    const oneHourInFuture = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    stored.lastValidatedAt = oneHourInFuture;
+    stored.lastSeenAt = oneHourInFuture;
+    saveLicenseData(stored, TEST_DIR);
+
+    setSimulateOffline(true);
+    const result = await validateStartup(TEST_DIR);
+    setSimulateOffline(false);
+
+    assert.strictEqual(result.isValid, false, 'Should fail validation when clock rolled back');
+    assert.strictEqual(result.reason, 'CLOCK_TAMPERED', 'Reason must be CLOCK_TAMPERED');
+    assert(result.error.toLowerCase().includes('rollback') || result.error.toLowerCase().includes('clock'), 'Error must mention clock rollback');
+  });
+
+  // ─── Test 12: Monotonic lastSeenAt tracking ──────────────────────────────
+  await test('12. Clock rollback: Rejects offline startup if clock is behind lastSeenAt even if within 72h', async () => {
+    cleanup();
+    resetMockDb();
+    await activateLicense('PRO-REEL-7890-ABCD-1234', TEST_DIR);
+
+    // Stored was validated 10h ago, but lastSeen was 30m in the future
+    const stored = loadLicenseData(TEST_DIR);
+    stored.lastValidatedAt = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
+    stored.lastSeenAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    saveLicenseData(stored, TEST_DIR);
+
+    setSimulateOffline(true);
+    const result = await validateStartup(TEST_DIR);
+    setSimulateOffline(false);
+
+    assert.strictEqual(result.isValid, false, 'Should fail when now < lastSeenAt');
+    assert.strictEqual(result.reason, 'CLOCK_TAMPERED');
+  });
+
+  // ─── Test 13: getLicenseInfo offline grace-period expiry enforcement ─────
+  await test('13. IPC feature gating: getLicenseInfo returns isValid = false when grace period is expired (> 72h)', async () => {
+    cleanup();
+    resetMockDb();
+    await activateLicense('PRO-REEL-7890-ABCD-1234', TEST_DIR);
+
+    // Manipulate lastValidatedAt to 75 hours ago
+    const stored = loadLicenseData(TEST_DIR);
+    stored.lastValidatedAt = new Date(Date.now() - 75 * 60 * 60 * 1000).toISOString();
+    stored.lastSeenAt = stored.lastValidatedAt;
+    saveLicenseData(stored, TEST_DIR);
+
+    const info = await getLicenseInfo(TEST_DIR);
+    assert.strictEqual(info.isValid, false, 'getLicenseInfo must be invalid when grace period expired');
+    assert.strictEqual(info.reason, 'GRACE_PERIOD_EXPIRED');
+    assert.strictEqual(info.gracePeriodRemainingHours, 0);
+    assert.deepStrictEqual(info.features, {}, 'Features must be empty when invalid');
+  });
+
+  // ─── Test 14: getLicenseInfo clock rollback enforcement ──────────────────
+  await test('14. IPC feature gating: getLicenseInfo returns isValid = false when clock rollback detected', async () => {
+    cleanup();
+    resetMockDb();
+    await activateLicense('PRO-REEL-7890-ABCD-1234', TEST_DIR);
+
+    const stored = loadLicenseData(TEST_DIR);
+    stored.lastSeenAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2h in future
+    saveLicenseData(stored, TEST_DIR);
+
+    const info = await getLicenseInfo(TEST_DIR);
+    assert.strictEqual(info.isValid, false, 'getLicenseInfo must be invalid when clock rolled back');
+    assert.strictEqual(info.reason, 'CLOCK_TAMPERED');
+    assert.strictEqual(info.status, 'clock_tampered');
+    assert.deepStrictEqual(info.features, {}, 'Features must be empty when invalid');
+  });
+
+  // ─── Test 15: Silent online revalidation ─────────────────────────────────
+  await test('15. Silent revalidation: Revalidates online with Supabase and resets grace window', async () => {
+    cleanup();
+    resetMockDb();
+    await activateLicense('PRO-REEL-7890-ABCD-1234', TEST_DIR);
+
+    // Simulate was offline for 24h
+    const stored = loadLicenseData(TEST_DIR);
+    stored.lastValidatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    stored.lastSeenAt = stored.lastValidatedAt;
+    saveLicenseData(stored, TEST_DIR);
+
+    // Call silent revalidation while online
+    const result = await revalidateOnlineSilently(TEST_DIR);
+    assert.strictEqual(result.isValid, true);
+    assert.strictEqual(result.isOffline, false);
+    assert.strictEqual(result.gracePeriodRemainingHours, MAX_OFFLINE_GRACE_PERIOD_HOURS);
+
+    // Verify stored timestamp was updated to recent timestamp
+    const updated = loadLicenseData(TEST_DIR);
+    const updatedDiff = Math.abs(Date.now() - new Date(updated.lastValidatedAt).getTime());
+    assert(updatedDiff < 5000, 'lastValidatedAt must be updated to recent timestamp');
   });
 
   // Clean up test directory
