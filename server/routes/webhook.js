@@ -2,6 +2,7 @@ const express = require('express');
 const StripeProvider = require('../providers/stripeProvider');
 const { createLicense } = require('../services/licenseGenerator');
 const { sendLicenseEmail, deliverLicenseEmail } = require('../services/emailService');
+const { maskEmail } = require('../services/emailService');
 
 const router = express.Router();
 const stripeProvider = new StripeProvider();
@@ -44,7 +45,7 @@ router.post(
     try {
       const { customerEmail, tier, transactionId, eventId } = paymentDetails;
 
-      console.log(`[Webhook:Stripe] Processing payment for ${customerEmail || 'unknown'}: tier = ${tier}`);
+      console.log(`[Webhook:Stripe] Processing payment for ${maskEmail(customerEmail)}: tier = ${tier}`);
 
       // 4. Generate unique XXXX-XXXX-XXXX-XXXX license and insert into Supabase
       const licenseResult = await createLicense({
@@ -57,7 +58,7 @@ router.post(
       // 5. Send confirmation email and persist delivery status/attempts
       const emailResult = await deliverLicenseEmail(licenseResult.id);
       if (!emailResult.success) {
-        console.warn(`[Webhook:Stripe] License email delivery failed for ${customerEmail}: ${emailResult.error}`);
+        console.warn(`[Webhook:Stripe] License email delivery failed for ${maskEmail(customerEmail)}: ${emailResult.error}`);
       }
 
       // 6. Mark event as processed

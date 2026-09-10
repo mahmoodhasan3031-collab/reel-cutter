@@ -11,6 +11,7 @@ const tests = [
   'packaging.test.js',
   'qa_comprehensive.test.js',
   'e2e-payment-email.test.js',
+  'crash-reporter.test.js',
 ];
 
 console.log('======================================================');

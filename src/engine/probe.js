@@ -94,7 +94,11 @@ function getVideoMetadata(filePath) {
 
     ffmpeg.ffprobe(filePath, (err, metadata) => {
       if (err) {
-        return reject(err);
+        // Limit error message length to avoid enormous strings in IPC responses
+        const errMsg = err.message && err.message.length > 500
+          ? err.message.slice(0, 497) + '...'
+          : (err.message || 'FFprobe error');
+        return reject(new Error(errMsg));
       }
 
       const videoStream = metadata.streams.find((s) => s.codec_type === 'video') || {};

@@ -81,8 +81,10 @@ async function cutClip(inputPath, outputPath, options = {}) {
               resolve({ outputPath, duration: durationSeconds, metadata: null, thumbnailPath });
             }
           })
-          .on('error', (err, stdout, stderr) => {
-            reject(new Error(`FFmpeg error: ${err.message}\n${stderr || ''}`));
+          .on('error', (err, _stdout, stderr) => {
+            // Limit stderr to last 500 chars to avoid enormous error strings
+            const stderrSnippet = stderr ? stderr.slice(-500).trim() : '';
+            reject(new Error(`FFmpeg error: ${err.message}${stderrSnippet ? '\n' + stderrSnippet : ''}`));
           })
           .run();
       })

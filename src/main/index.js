@@ -17,14 +17,50 @@ import {
 import { hasFeature } from '../shared/features'
 import { getBatchQueueManager } from '../engine/batchQueue'
 import { getAppUpdater, markJobStarted, markJobFinished } from './updater'
+// CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
+const logger = require('./logger')
 
+
+// ─── Global Process Error Handlers ───────────────────────────────────────────
+
+// Guard: prevent recursive error-handler crashes from unbounded recursion
+let _inCrashHandler = false;
 
 process.on('uncaughtException', (err) => {
+  if (_inCrashHandler) return;
+  _inCrashHandler = true;
   try {
-    const logPath = path.join(app.getPath('userData'), 'startup_error.log')
-    fs.writeFileSync(logPath, `[${new Date().toISOString()}] Uncaught Exception: ${err.stack || err}\n`, { flag: 'a' })
-  } catch (_) {}
+    const msg = `Uncaught Exception: ${err && err.stack ? err.stack : String(err)}`;
+    logger.error('Process', msg);
+  } catch (_) {
+    // Handler must never throw
+  } finally {
+    _inCrashHandler = false;
+  }
+  // Note: we continue running; Electron apps with a main window can often
+  // survive main-process exceptions that originate in non-critical paths.
+  // Truly fatal exceptions (heap corruption, etc.) will terminate the process
+  // regardless of this handler.
 })
+
+process.on('unhandledRejection', (reason) => {
+  if (_inCrashHandler) return;
+  _inCrashHandler = true;
+  try {
+    const msg = reason instanceof Error
+      ? `Unhandled Rejection: ${reason.stack || reason.message}`
+      : `Unhandled Rejection: ${String(reason)}`;
+    logger.error('Process', msg);
+  } catch (_) {
+    // Handler must never throw
+  } finally {
+    _inCrashHandler = false;
+  }
+})
+
+// Crash-loop guard for renderer auto-reload
+let _lastRendererCrashAt = 0;
+const RENDERER_CRASH_RELOAD_COOLDOWN_MS = 10_000; // 10 seconds
 
 // ─── Window ─────────────────────────────────────────────────────────────────
 
@@ -58,11 +94,39 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => mainWindow.show())
   mainWindow.on('closed', () => { mainWindow = null })
+
+  // ─── Renderer Crash Detection ──────────────────────────────────────────────
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    const { reason, exitCode } = details
+    logger.error('Renderer', `render-process-gone: reason=${reason}, exitCode=${exitCode}`)
+
+    const now = Date.now()
+    const timeSinceLast = now - _lastRendererCrashAt
+    _lastRendererCrashAt = now
+
+    if (timeSinceLast > RENDERER_CRASH_RELOAD_COOLDOWN_MS) {
+      // Safe to attempt one reload
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          logger.info('Renderer', 'Attempting renderer reload after crash')
+          mainWindow.reload()
+        }
+      } catch (reloadErr) {
+        logger.error('Renderer', `Reload failed after crash: ${reloadErr.message}`)
+      }
+    } else {
+      logger.error('Renderer', 'Crash-loop detected — suppressing auto-reload to prevent infinite loop')
+    }
+  })
 }
 
 // ─── App Lifecycle ───────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  // Lock in the production log directory now that Electron is ready
+  logger.setLogDir(app.getPath('userData'))
+  logger.info('App', `Reel Cutter started (version ${app.getVersion()})`)
+
   createWindow()
 
   // Wire BatchQueueManager → renderer IPC push events

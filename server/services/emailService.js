@@ -138,6 +138,20 @@ async function sendLicenseEmail({ to, licenseKey, tier, downloadUrl }) {
 const MAX_EMAIL_ATTEMPTS = 3;
 
 /**
+ * Masks a customer email address for safe log output.
+ * "customer@example.com" → "c***@example.com"
+ *
+ * @param {string} email
+ * @returns {string}
+ */
+function maskEmail(email) {
+  if (!email || typeof email !== 'string') return '[unknown]';
+  const at = email.indexOf('@');
+  if (at < 1) return '[masked]';
+  return email.slice(0, 1) + '***' + email.slice(at);
+}
+
+/**
  * Sanitizes error messages to strip API keys, secrets, passwords, or auth headers.
  *
  * @param {Error|string} err
@@ -313,6 +327,7 @@ module.exports = {
   deliverLicenseEmail,
   retryLicenseEmail,
   sanitizeErrorMessage,
+  maskEmail,
   MAX_EMAIL_ATTEMPTS,
   buildLicenseEmailHtml,
   getSentEmails,
