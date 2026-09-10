@@ -10,6 +10,7 @@ const tests = [
   'batchqueue.test.js',
   'packaging.test.js',
   'qa_comprehensive.test.js',
+  'e2e-payment-email.test.js',
 ];
 
 console.log('======================================================');
