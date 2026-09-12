@@ -211,10 +211,17 @@ export default function SplitPanel({
         disabled={isProcessing}
       />
 
-      {/* Bulk Multi-Profile Export Plan (Phase 2C-1) */}
+      {/* Bulk Multi-Profile Export Plan (Phase 2C-1 / 2C-2) */}
       <MultiProfileSelector
         videoPath={videoPath}
         exportType="split"
+        exportOptions={{
+          interval,
+          reel: true,
+          mode,
+          generateThumbnail: canThumbnail && generateThumbnail,
+          thumbnailTitle,
+        }}
         disabled={isProcessing}
       />
 

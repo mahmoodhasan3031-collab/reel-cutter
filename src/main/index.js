@@ -27,6 +27,7 @@ import {
   setSelectedProfile,
 } from './profiles/profileManager'
 import { createBulkExportPlan } from './profiles/exportPlan'
+import { executeBulkExport, cancelBulkExport, cancelBulkJob } from './profiles/bulkExecutor'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -822,6 +823,33 @@ ipcMain.handle('profile:createPlan', async (_, options) => {
   try {
     const plan = createBulkExportPlan(options)
     return { success: true, plan }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:executePlan', async (_, { plan, options } = {}) => {
+  try {
+    const result = await executeBulkExport(plan, options)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:cancelPlan', async (_, planId) => {
+  try {
+    const result = cancelBulkExport(planId)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:cancelJob', async (_, jobId) => {
+  try {
+    const result = cancelBulkJob(jobId)
+    return { success: true, ...result }
   } catch (err) {
     return { success: false, error: err.message }
   }

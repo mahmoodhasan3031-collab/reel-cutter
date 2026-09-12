@@ -65,7 +65,8 @@ function generateOutputFilename(inputPath, options = {}) {
   const outDir = options.outputDir || parsed.dir || '.';
   const indexStr = options.index !== undefined ? `_${String(options.index).padStart(2, '0')}` : '';
   const suffix = options.suffix ? `_${options.suffix}` : '';
-  const filename = `${parsed.name}${indexStr}${suffix}${parsed.ext || '.mp4'}`;
+  const baseName = options.baseName || parsed.name;
+  const filename = `${baseName}${indexStr}${suffix}${parsed.ext || '.mp4'}`;
   return path.join(outDir, filename);
 }
 

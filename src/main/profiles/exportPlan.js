@@ -9,6 +9,7 @@
  */
 
 const path = require('path');
+const fs = require('fs');
 const { loadProfiles, resolveProfilePreset } = require('./profileManager');
 const { validateProductVariationConfig } = require('../../engine/variation/validator');
 
@@ -67,7 +68,7 @@ function sanitizeFilename(rawName) {
  * @returns {{ filename: string, outputPath: string }}
  */
 function generateBulkOutputFilename(opts = {}) {
-  const { sourcePath, profileName, exportType = 'cut', outputDir } = opts;
+  const { sourcePath, profileName, exportType = 'cut', outputDir, index, checkCollision = true } = opts;
 
   if (!sourcePath || typeof sourcePath !== 'string') {
     throw new Error('sourcePath is required for output filename generation');
@@ -77,13 +78,17 @@ function generateBulkOutputFilename(opts = {}) {
   const cleanSourceBase = sanitizeFilename(sourceBase);
   const cleanProfile = sanitizeFilename(profileName || 'profile');
   const typeSuffix = exportType === 'reel' ? 'reel' : exportType === 'split' ? 'split' : 'clip';
+  const indexStr = index !== undefined ? String(index).padStart(2, '0') : null;
 
-  // Deterministic naming pattern: OriginalName__ProfileName.mp4
-  const filename = `${cleanSourceBase}__${cleanProfile}_${typeSuffix}.mp4`;
+  // Deterministic naming pattern: <source-name>__<profile-name>__<index>.mp4 (per section 5)
+  // Or if index is omitted, fall back to <source-name>__<profile-name>_<suffix>.mp4 for backwards compatibility
+  let filename = indexStr
+    ? `${cleanSourceBase}__${cleanProfile}__${indexStr}.mp4`
+    : `${cleanSourceBase}__${cleanProfile}_${typeSuffix}.mp4`;
 
   // Target directory resolution
   const targetDir = outputDir ? path.resolve(outputDir) : path.dirname(path.resolve(sourcePath));
-  const resolvedOutputPath = path.resolve(targetDir, filename);
+  let resolvedOutputPath = path.resolve(targetDir, filename);
 
   // Path traversal verification: output path must reside strictly inside targetDir
   const relative = path.relative(targetDir, resolvedOutputPath);
@@ -95,11 +100,26 @@ function generateBulkOutputFilename(opts = {}) {
   const resolvedSource = path.resolve(sourcePath);
   if (resolvedOutputPath.toLowerCase() === resolvedSource.toLowerCase()) {
     // Append conflict resolution suffix
-    const safeFilename = `${cleanSourceBase}__${cleanProfile}_${typeSuffix}_export.mp4`;
-    return {
-      filename: safeFilename,
-      outputPath: path.resolve(targetDir, safeFilename),
-    };
+    const safeBase = indexStr
+      ? `${cleanSourceBase}__${cleanProfile}__${indexStr}`
+      : `${cleanSourceBase}__${cleanProfile}_${typeSuffix}`;
+    filename = `${safeBase}_export.mp4`;
+    resolvedOutputPath = path.resolve(targetDir, filename);
+  }
+
+  // Collision safety: prevent silent overwrite of existing disk files
+  if (checkCollision && fs.existsSync(resolvedOutputPath)) {
+    const baseWithoutExt = path.basename(filename, path.extname(filename));
+    let counter = 1;
+    let candidatePath = resolvedOutputPath;
+    let candidateFilename = filename;
+    while (fs.existsSync(candidatePath)) {
+      candidateFilename = `${baseWithoutExt}_${counter}.mp4`;
+      candidatePath = path.resolve(targetDir, candidateFilename);
+      counter++;
+    }
+    filename = candidateFilename;
+    resolvedOutputPath = candidatePath;
   }
 
   return {
@@ -182,6 +202,8 @@ function createBulkExportPlan(input = {}, customDir) {
       profileName: profile.name,
       exportType,
       outputDir,
+      index: i + 1,
+      checkCollision: input.checkCollision !== false,
     });
 
     // Take an independent immutable snapshot
@@ -303,14 +325,18 @@ function planToBatchQueueItems(plan, extraOptions = {}) {
     operation: plan.exportType === 'split' ? 'split' : plan.exportType === 'reel' ? 'reel' : 'cut',
     variation: JSON.parse(JSON.stringify(job.variationPreset)),
     aspectRatio: extraOptions.aspectRatio || (plan.exportType === 'reel' ? '9:16' : undefined),
-    mode: job.variationPreset?.mode || extraOptions.mode || 'blur',
-    start: extraOptions.start || 0,
-    duration: extraOptions.duration || undefined,
-    interval: extraOptions.interval || 30,
+    mode: extraOptions.mode || 'blur',
+    start: extraOptions.start !== undefined ? extraOptions.start : 0,
+    duration: extraOptions.duration !== undefined ? extraOptions.duration : undefined,
+    interval: extraOptions.interval !== undefined ? extraOptions.interval : 30,
     generateThumbnail: Boolean(extraOptions.generateThumbnail),
     thumbnailTitle: `${job.profileName} - ${path.basename(plan.sourceFile, path.extname(plan.sourceFile))}`,
+    bulkPlanId: plan.planId,
+    bulkJobId: job.jobId,
     profileId: job.profileId,
     profileName: job.profileName,
+    platform: job.platform,
+    orderIndex: job.orderIndex,
   }));
 }
 
@@ -325,3 +351,6 @@ module.exports = {
   reorderJobsInPlan,
   planToBatchQueueItems,
 };
+
+const bulkExec = require('./bulkExecutor');
+Object.assign(module.exports, bulkExec);

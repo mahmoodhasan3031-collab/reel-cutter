@@ -304,10 +304,16 @@ export default function ReelPanel({
         disabled={isProcessing}
       />
 
-      {/* Bulk Multi-Profile Export Plan (Phase 2C-1) */}
+      {/* Bulk Multi-Profile Export Plan (Phase 2C-1 / 2C-2) */}
       <MultiProfileSelector
         videoPath={videoPath}
         exportType="reel"
+        exportOptions={{
+          aspectRatio,
+          mode,
+          generateThumbnail: canThumbnail && generateThumbnail,
+          thumbnailTitle,
+        }}
         disabled={isProcessing}
       />
 

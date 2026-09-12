@@ -329,10 +329,19 @@ export default function CutPanel({
         disabled={isProcessing}
       />
 
-      {/* Bulk Multi-Profile Export Plan (Phase 2C-1) */}
+      {/* Bulk Multi-Profile Export Plan (Phase 2C-1 / 2C-2) */}
       <MultiProfileSelector
         videoPath={videoPath}
         exportType="cut"
+        exportOptions={{
+          start,
+          duration: useEnd ? undefined : duration,
+          end: useEnd ? end : undefined,
+          reel: asReel,
+          mode,
+          generateThumbnail: canThumbnail && generateThumbnail,
+          thumbnailTitle,
+        }}
         disabled={isProcessing}
       />
 

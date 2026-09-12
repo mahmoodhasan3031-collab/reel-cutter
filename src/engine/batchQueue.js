@@ -38,6 +38,7 @@ const STATUS = {
   PROCESSING: 'PROCESSING',
   DONE: 'DONE',
   ERROR: 'ERROR',
+  CANCELLED: 'CANCELLED',
 };
 
 // ─── Configuration ────────────────────────────────────────────────────────────
@@ -132,6 +133,12 @@ class BatchQueueManager extends EventEmitter {
         generateThumbnail: !!(raw.generateThumbnail || raw.useThumbnail),
         thumbnailTitle: raw.thumbnailTitle || path.basename(raw.inputPath, path.extname(raw.inputPath)),
         variation: raw.variation || null,
+        bulkPlanId: raw.bulkPlanId || null,
+        bulkJobId: raw.bulkJobId || raw.jobId || null,
+        profileId: raw.profileId || null,
+        profileName: raw.profileName || null,
+        platform: raw.platform || null,
+        orderIndex: raw.orderIndex || null,
         status: STATUS.WAITING,
         progress: 0,
         currentSegment: null,
@@ -224,7 +231,14 @@ class BatchQueueManager extends EventEmitter {
     if (!item) return false;
 
     if (item.status === STATUS.WAITING) {
-      return this.removeItem(id);
+      item.status = STATUS.CANCELLED;
+      item.error = 'Cancelled by user';
+      item.finishedAt = Date.now();
+      this._emitItemUpdate(item);
+      this._items.delete(id);
+      this._order = this._order.filter((i) => i !== id);
+      this._emitQueueUpdate();
+      return true;
     }
 
     if (item.status === STATUS.PROCESSING) {
@@ -255,9 +269,13 @@ class BatchQueueManager extends EventEmitter {
       }
     }
 
-    // Remove waiting items
+    // Mark and remove waiting items
     for (const [id, item] of this._items) {
       if (item.status === STATUS.WAITING) {
+        item.status = STATUS.CANCELLED;
+        item.error = 'Cancelled by user';
+        item.finishedAt = Date.now();
+        this._emitItemUpdate(item);
         this._items.delete(id);
         this._order = this._order.filter((i) => i !== id);
       }
@@ -294,6 +312,10 @@ class BatchQueueManager extends EventEmitter {
     const waitingCount = items.filter((i) => i.status === STATUS.WAITING).length;
     const doneCount = items.filter((i) => i.status === STATUS.DONE).length;
     const errorCount = items.filter((i) => i.status === STATUS.ERROR).length;
+    const cancelledCount = items.filter((i) => i.status === STATUS.CANCELLED).length;
+
+    const completedProgress = items.reduce((sum, it) => sum + (it.progress || 0), 0);
+    const overallProgress = totalCount > 0 ? Math.round(completedProgress / totalCount) : 0;
 
     return {
       items,
@@ -302,6 +324,8 @@ class BatchQueueManager extends EventEmitter {
       waitingCount,
       doneCount,
       errorCount,
+      cancelledCount,
+      overallProgress,
       isRunning: this._running,
       concurrency: this._concurrency,
       maxConcurrency: MAX_CONCURRENCY,
@@ -355,12 +379,16 @@ class BatchQueueManager extends EventEmitter {
 
       if (op === 'split') {
         const outDir = item.outputDir || path.dirname(item.inputPath);
+        const splitBaseName = item.outputPath
+          ? path.basename(item.outputPath, path.extname(item.outputPath))
+          : undefined;
         const segments = await splitIntoReels(item.inputPath, outDir, {
           interval: item.interval || 30,
           reel: true,
           mode: item.mode || 'blur',
           width: item.width,
           height: item.height,
+          baseName: splitBaseName,
           generateThumbnail: item.generateThumbnail,
           thumbnailTitle: item.thumbnailTitle || undefined,
           variation: item.variation || undefined,
@@ -400,8 +428,9 @@ class BatchQueueManager extends EventEmitter {
       item.result = result;
       item.finishedAt = Date.now();
     } catch (err) {
-      item.status = STATUS.ERROR;
-      item.error = err.message || 'Processing failed';
+      const isCancelled = this._cancelFlags.has(id) || err.message === 'Cancelled by user';
+      item.status = isCancelled ? STATUS.CANCELLED : STATUS.ERROR;
+      item.error = isCancelled ? 'Cancelled by user' : (err.message || 'Processing failed');
       item.finishedAt = Date.now();
     } finally {
       this._cancelFlags.delete(id);
@@ -413,7 +442,7 @@ class BatchQueueManager extends EventEmitter {
       // Check if entire queue is finished
       const allDone = this._order.every((oid) => {
         const o = this._items.get(oid);
-        return !o || o.status === STATUS.DONE || o.status === STATUS.ERROR;
+        return !o || o.status === STATUS.DONE || o.status === STATUS.ERROR || o.status === STATUS.CANCELLED;
       });
 
       if (allDone) {

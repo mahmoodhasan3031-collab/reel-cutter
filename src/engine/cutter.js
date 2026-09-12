@@ -174,7 +174,14 @@ async function _buildCutCommand(inputPath, outputPath, options, metadata, durati
           .videoFilters(filters)
           .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
       }
-    } else if (mode === 'blur') {
+    } else if (mode === 'crop' || mode === 'pad' || mode === 'fit') {
+      const { filter } = buildReelFilter({ mode, width, height });
+      const filters = [filter, ...varVideoFilters];
+      command = command
+        .videoFilters(filters)
+        .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
+    } else {
+      // blur mode or default fallback
       const varChain = varVideoFilters.length > 0 ? `,${varVideoFilters.join(',')}` : '';
       const complexFilterStr =
         `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=20:5[bg];` +
@@ -183,12 +190,6 @@ async function _buildCutCommand(inputPath, outputPath, options, metadata, durati
       command = command
         .complexFilter(complexFilterStr)
         .outputOptions(['-map [outv]', '-map 0:a?', '-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
-    } else {
-      const { filter } = buildReelFilter({ mode, width, height });
-      const filters = [filter, ...varVideoFilters];
-      command = command
-        .videoFilters(filters)
-        .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
     }
   } else {
     if (varVideoFilters.length > 0) {
@@ -245,6 +246,7 @@ async function splitIntoReels(inputPath, outputDir, options = {}) {
     const outFilename = generateOutputFilename(inputPath, {
       index: i + 1,
       suffix: options.reel ? 'reel' : 'clip',
+      baseName: options.baseName,
       outputDir,
     });
 
