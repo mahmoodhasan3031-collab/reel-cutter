@@ -1,7 +1,7 @@
 {
   "name": "reel-cutter",
   "productName": "Reel Cutter",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "AI-powered video cutter, 9:16 vertical reel maker, smart crop, and batch processing engine.",
   "main": "out/main/index.js",
   "bin": {
