@@ -131,6 +131,7 @@ class BatchQueueManager extends EventEmitter {
         height: raw.height || dimensions.height,
         generateThumbnail: !!(raw.generateThumbnail || raw.useThumbnail),
         thumbnailTitle: raw.thumbnailTitle || path.basename(raw.inputPath, path.extname(raw.inputPath)),
+        variation: raw.variation || null,
         status: STATUS.WAITING,
         progress: 0,
         currentSegment: null,
@@ -362,6 +363,7 @@ class BatchQueueManager extends EventEmitter {
           height: item.height,
           generateThumbnail: item.generateThumbnail,
           thumbnailTitle: item.thumbnailTitle || undefined,
+          variation: item.variation || undefined,
           onOverallProgress: ({ current, total, start, duration }) => {
             item.currentSegment = current;
             item.totalSegments = total;
@@ -380,6 +382,7 @@ class BatchQueueManager extends EventEmitter {
           height: item.height,
           generateThumbnail: item.generateThumbnail,
           thumbnailTitle: item.thumbnailTitle || undefined,
+          variation: item.variation || undefined,
           onProgress,
           onCommand,
         };

@@ -1,0 +1,327 @@
+'use strict';
+
+/**
+ * Bulk Multi-Profile Export Plan — Phase 2C-1
+ *
+ * Provides validated, immutable job planning for multi-profile exports.
+ * Takes snapshots of authoritative profile presets and generates deterministic,
+ * traversal-safe output paths.
+ */
+
+const path = require('path');
+const { loadProfiles, resolveProfilePreset } = require('./profileManager');
+const { validateProductVariationConfig } = require('../../engine/variation/validator');
+
+const MIN_BULK_PROFILES = 1;
+const MAX_BULK_PROFILES = 10; // Conservative limit: maximum 10 profiles per bulk plan
+const VALID_EXPORT_TYPES = ['cut', 'reel', 'split'];
+
+let _planCounter = 0;
+function generatePlanId() {
+  return `plan_${Date.now()}_${++_planCounter}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/**
+ * Sanitizes a string for safe use as a filename on Windows and POSIX filesystems.
+ * Strips reserved characters, control characters, path traversal sequences,
+ * and trailing dots/spaces.
+ *
+ * @param {string} rawName
+ * @returns {string}
+ */
+function sanitizeFilename(rawName) {
+  if (!rawName || typeof rawName !== 'string') {
+    return 'profile';
+  }
+
+  // Remove control characters (0x00-0x1F, 0x7F) and Windows reserved chars: < > : " / \ | ? *
+  let clean = rawName.replace(/[\x00-\x1f\x7f<>:"/\\|?*]/g, '_');
+
+  // Strip path traversal attempts (e.g. "..")
+  clean = clean.replace(/\.{2,}/g, '_');
+
+  // Collapse multiple underscores or spaces
+  clean = clean.replace(/[_\s]+/g, '_');
+
+  // Trim leading/trailing dots, underscores, and whitespace
+  clean = clean.replace(/^[\s._]+|[\s._]+$/g, '');
+
+  if (clean.length === 0) {
+    return 'profile';
+  }
+
+  // Windows MAX_PATH safety: limit sanitized component length
+  return clean.slice(0, 60);
+}
+
+/**
+ * Generates a deterministic, traversal-safe output filename and path for a profile job.
+ * Ensures the output path is strictly contained within the intended target directory
+ * and never matches the source file.
+ *
+ * @param {Object} opts
+ * @param {string} opts.sourcePath
+ * @param {string} opts.profileName
+ * @param {string} [opts.exportType='cut']
+ * @param {string} [opts.outputDir]
+ * @returns {{ filename: string, outputPath: string }}
+ */
+function generateBulkOutputFilename(opts = {}) {
+  const { sourcePath, profileName, exportType = 'cut', outputDir } = opts;
+
+  if (!sourcePath || typeof sourcePath !== 'string') {
+    throw new Error('sourcePath is required for output filename generation');
+  }
+
+  const sourceBase = path.basename(sourcePath, path.extname(sourcePath));
+  const cleanSourceBase = sanitizeFilename(sourceBase);
+  const cleanProfile = sanitizeFilename(profileName || 'profile');
+  const typeSuffix = exportType === 'reel' ? 'reel' : exportType === 'split' ? 'split' : 'clip';
+
+  // Deterministic naming pattern: OriginalName__ProfileName.mp4
+  const filename = `${cleanSourceBase}__${cleanProfile}_${typeSuffix}.mp4`;
+
+  // Target directory resolution
+  const targetDir = outputDir ? path.resolve(outputDir) : path.dirname(path.resolve(sourcePath));
+  const resolvedOutputPath = path.resolve(targetDir, filename);
+
+  // Path traversal verification: output path must reside strictly inside targetDir
+  const relative = path.relative(targetDir, resolvedOutputPath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Path traversal detected in bulk output generation');
+  }
+
+  // Source overwrite protection
+  const resolvedSource = path.resolve(sourcePath);
+  if (resolvedOutputPath.toLowerCase() === resolvedSource.toLowerCase()) {
+    // Append conflict resolution suffix
+    const safeFilename = `${cleanSourceBase}__${cleanProfile}_${typeSuffix}_export.mp4`;
+    return {
+      filename: safeFilename,
+      outputPath: path.resolve(targetDir, safeFilename),
+    };
+  }
+
+  return {
+    filename,
+    outputPath: resolvedOutputPath,
+  };
+}
+
+/**
+ * Creates an immutable Bulk Export Plan from selected profile IDs.
+ *
+ * @param {Object} input
+ * @param {string} input.sourcePath Path to the source media file
+ * @param {string} [input.exportType='cut'] 'cut' | 'reel' | 'split'
+ * @param {string[]} input.profileIds Array of selected profile IDs
+ * @param {string} [input.outputDir] Optional output directory
+ * @param {string} [customDir] Custom directory for loading profiles (used in tests)
+ * @returns {Object} Bulk Export Plan
+ */
+function createBulkExportPlan(input = {}, customDir) {
+  const { sourcePath, exportType = 'cut', profileIds, outputDir } = input;
+
+  if (!sourcePath || typeof sourcePath !== 'string' || sourcePath.trim().length === 0) {
+    throw new Error('Source media file path is required');
+  }
+
+  if (!VALID_EXPORT_TYPES.includes(exportType)) {
+    throw new Error(`Invalid exportType "${exportType}". Must be one of: ${VALID_EXPORT_TYPES.join(', ')}`);
+  }
+
+  if (!Array.isArray(profileIds)) {
+    throw new Error('profileIds must be an array of profile IDs');
+  }
+
+  // Check for duplicate profile IDs
+  const uniqueIds = new Set(profileIds);
+  if (uniqueIds.size !== profileIds.length) {
+    throw new Error('Duplicate profile IDs are not allowed in a bulk export plan');
+  }
+
+  // Enforce selection count rules
+  if (uniqueIds.size < MIN_BULK_PROFILES) {
+    throw new Error(`Please select at least ${MIN_BULK_PROFILES} profile for bulk export`);
+  }
+
+  if (uniqueIds.size > MAX_BULK_PROFILES) {
+    throw new Error(`Cannot select more than ${MAX_BULK_PROFILES} profiles in a single bulk export plan`);
+  }
+
+  // Fetch authoritative profiles directly from storage
+  const profileStore = loadProfiles(customDir);
+  const authoritativeList = profileStore.profiles || [];
+
+  const planId = generatePlanId();
+  const jobs = [];
+
+  for (let i = 0; i < profileIds.length; i++) {
+    const pId = profileIds[i];
+    const profile = authoritativeList.find(p => p.id === pId);
+
+    if (!profile) {
+      throw new Error(`Profile not found or deleted: ${pId}`);
+    }
+
+    if (profile.enabled === false) {
+      throw new Error(`Profile "${profile.name}" (${pId}) is disabled and cannot be added to a bulk export plan`);
+    }
+
+    // Resolve and validate preset copy
+    const resolvedPreset = resolveProfilePreset(profile.variationPreset);
+
+    // Strict validation: must pass engine product validation
+    const validation = validateProductVariationConfig(resolvedPreset);
+    if (!validation.valid) {
+      throw new Error(`Profile "${profile.name}" has invalid variation preset settings`);
+    }
+
+    const { filename, outputPath } = generateBulkOutputFilename({
+      sourcePath,
+      profileName: profile.name,
+      exportType,
+      outputDir,
+    });
+
+    // Take an independent immutable snapshot
+    const jobSnapshot = {
+      jobId: `job_${planId}_${i + 1}_${profile.id}`,
+      orderIndex: i + 1,
+      profileId: profile.id,
+      profileName: profile.name,
+      platform: profile.platform,
+      // Deep clone ensures future edits to the profile do NOT mutate this plan
+      variationPreset: JSON.parse(JSON.stringify(resolvedPreset)),
+      outputFilename: filename,
+      outputPath,
+      status: 'READY',
+    };
+
+    jobs.push(jobSnapshot);
+  }
+
+  const plan = {
+    planId,
+    createdAt: new Date().toISOString(),
+    sourceFile: sourcePath,
+    exportType,
+    totalJobs: jobs.length,
+    jobs,
+  };
+
+  return plan;
+}
+
+/**
+ * Removes a job from an existing plan and recalculates order and total count.
+ * Returns a new plan object (pure function, does not mutate original).
+ *
+ * @param {Object} plan
+ * @param {string} jobId
+ * @returns {Object} updated plan
+ */
+function removeJobFromPlan(plan, jobId) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    throw new Error('Invalid plan object');
+  }
+
+  const filteredJobs = plan.jobs.filter(j => j.jobId !== jobId);
+  if (filteredJobs.length === plan.jobs.length) {
+    throw new Error(`Job "${jobId}" not found in plan`);
+  }
+
+  const reorderedJobs = filteredJobs.map((job, idx) => ({
+    ...job,
+    orderIndex: idx + 1,
+    variationPreset: JSON.parse(JSON.stringify(job.variationPreset)),
+  }));
+
+  return {
+    ...plan,
+    totalJobs: reorderedJobs.length,
+    jobs: reorderedJobs,
+  };
+}
+
+/**
+ * Reorders jobs in a plan deterministically from one index to another.
+ * Returns a new plan object.
+ *
+ * @param {Object} plan
+ * @param {number} fromIndex 0-based index
+ * @param {number} toIndex 0-based index
+ * @returns {Object} updated plan
+ */
+function reorderJobsInPlan(plan, fromIndex, toIndex) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    throw new Error('Invalid plan object');
+  }
+
+  if (
+    fromIndex < 0 ||
+    fromIndex >= plan.jobs.length ||
+    toIndex < 0 ||
+    toIndex >= plan.jobs.length
+  ) {
+    throw new Error('Reorder indices out of bounds');
+  }
+
+  const newJobs = [...plan.jobs];
+  const [moved] = newJobs.splice(fromIndex, 1);
+  newJobs.splice(toIndex, 0, moved);
+
+  const reordered = newJobs.map((job, idx) => ({
+    ...job,
+    orderIndex: idx + 1,
+    variationPreset: JSON.parse(JSON.stringify(job.variationPreset)),
+  }));
+
+  return {
+    ...plan,
+    jobs: reordered,
+  };
+}
+
+/**
+ * Adapter helper that converts a bulk export plan's jobs into items compatible
+ * with the existing Batch Queue engine.
+ *
+ * @param {Object} plan
+ * @param {Object} [extraOptions]
+ * @returns {Array<Object>} BatchQueue-compatible item objects
+ */
+function planToBatchQueueItems(plan, extraOptions = {}) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    throw new Error('Invalid plan object');
+  }
+
+  return plan.jobs.map(job => ({
+    inputPath: plan.sourceFile,
+    outputPath: job.outputPath,
+    outputDir: plan.exportType === 'split' ? path.dirname(job.outputPath) : undefined,
+    operation: plan.exportType === 'split' ? 'split' : plan.exportType === 'reel' ? 'reel' : 'cut',
+    variation: JSON.parse(JSON.stringify(job.variationPreset)),
+    aspectRatio: extraOptions.aspectRatio || (plan.exportType === 'reel' ? '9:16' : undefined),
+    mode: job.variationPreset?.mode || extraOptions.mode || 'blur',
+    start: extraOptions.start || 0,
+    duration: extraOptions.duration || undefined,
+    interval: extraOptions.interval || 30,
+    generateThumbnail: Boolean(extraOptions.generateThumbnail),
+    thumbnailTitle: `${job.profileName} - ${path.basename(plan.sourceFile, path.extname(plan.sourceFile))}`,
+    profileId: job.profileId,
+    profileName: job.profileName,
+  }));
+}
+
+module.exports = {
+  MIN_BULK_PROFILES,
+  MAX_BULK_PROFILES,
+  VALID_EXPORT_TYPES,
+  sanitizeFilename,
+  generateBulkOutputFilename,
+  createBulkExportPlan,
+  removeJobFromPlan,
+  reorderJobsInPlan,
+  planToBatchQueueItems,
+};

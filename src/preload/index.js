@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('api', {
   deleteProfile: (id) => ipcRenderer.invoke('profile:delete', id),
   duplicateProfile: (id) => ipcRenderer.invoke('profile:duplicate', id),
   setSelectedProfile: (id) => ipcRenderer.invoke('profile:setSelected', id),
+  createBulkExportPlan: (options) => ipcRenderer.invoke('profile:createPlan', options),
 
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),

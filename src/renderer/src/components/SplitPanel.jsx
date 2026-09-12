@@ -4,6 +4,7 @@ import ProgressBar from './ProgressBar'
 import { hasFeature } from '../utils/features'
 import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
 import ExportProfileSelector from './ExportProfileSelector'
+import MultiProfileSelector from './MultiProfileSelector'
 
 export default function SplitPanel({
   videoPath,
@@ -207,6 +208,13 @@ export default function SplitPanel({
       <ExportProfileSelector
         variation={variation}
         onVariationChange={setVariation}
+        disabled={isProcessing}
+      />
+
+      {/* Bulk Multi-Profile Export Plan (Phase 2C-1) */}
+      <MultiProfileSelector
+        videoPath={videoPath}
+        exportType="split"
         disabled={isProcessing}
       />
 

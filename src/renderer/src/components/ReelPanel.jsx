@@ -4,6 +4,7 @@ import ProgressBar from './ProgressBar'
 import { hasFeature } from '../utils/features'
 import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
 import ExportProfileSelector from './ExportProfileSelector'
+import MultiProfileSelector from './MultiProfileSelector'
 
 const ASPECT_RATIOS = [
   { id: '9:16', label: '9:16', desc: 'Reels / Shorts', minTier: 'basic' },
@@ -300,6 +301,13 @@ export default function ReelPanel({
       <ExportProfileSelector
         variation={variation}
         onVariationChange={setVariation}
+        disabled={isProcessing}
+      />
+
+      {/* Bulk Multi-Profile Export Plan (Phase 2C-1) */}
+      <MultiProfileSelector
+        videoPath={videoPath}
+        exportType="reel"
         disabled={isProcessing}
       />
 

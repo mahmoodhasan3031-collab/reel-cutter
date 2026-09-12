@@ -16,6 +16,7 @@ const tests = [
   'variation-integration.test.js',
   'profiles.test.js',
   'profile-integration.test.js',
+  'multi-profile-plan.test.js',
 ];
 
 console.log('======================================================');
