@@ -427,12 +427,77 @@ function setSelectedProfile(id, customDir) {
   return data.selectedProfileId;
 }
 
+/**
+ * Resolves a profile variation preset into export-ready configuration,
+ * clamping values safely within product bounds to ensure invalid values
+ * never reach FFmpeg.
+ * @param {Object} [variationPreset]
+ * @returns {Object}
+ */
+const REFRAME_MODES = ['center', 'left', 'right', 'top', 'bottom'];
+
+function getDefaultVariation() {
+  return {
+    enabled: false,
+    brightness: 0,
+    saturation: 1,
+    hue: 0,
+    pitch: 0,
+    speed: 1.0,
+    mode: 'center',
+    crop: 0,
+    cleanMetadata: true,
+  };
+}
+
+function resolveProfilePreset(variationPreset) {
+  if (!variationPreset || typeof variationPreset !== 'object') {
+    return getDefaultVariation();
+  }
+
+  const clamp = (v, min, max, def) => {
+    const n = Number(v);
+    if (typeof v === 'boolean' || isNaN(n)) return def;
+    return Math.min(max, Math.max(min, n));
+  };
+
+  const brightness = clamp(variationPreset.brightness, -1.0, 1.0, 0.0);
+  const saturation = clamp(variationPreset.saturation, 0.0, 3.0, 1.0);
+  const hue = clamp(variationPreset.hue, -180.0, 180.0, 0.0);
+  const pitch = clamp(variationPreset.pitch, -3.0, 3.0, 0.0);
+  const speed = clamp(variationPreset.speed, 1.00, 1.05, 1.00);
+  const crop = clamp(variationPreset.crop, 0.0, 2.0, 0.0);
+
+  const rawMode = variationPreset.mode || variationPreset.reframeMode || 'center';
+  const mode = REFRAME_MODES.includes(String(rawMode).toLowerCase().trim())
+    ? String(rawMode).toLowerCase().trim()
+    : 'center';
+
+  const cleanMetadata = variationPreset.cleanMetadata !== undefined
+    ? Boolean(variationPreset.cleanMetadata)
+    : true;
+
+  return {
+    enabled: true,
+    brightness,
+    saturation,
+    hue,
+    pitch,
+    speed,
+    mode,
+    crop,
+    cleanMetadata,
+  };
+}
+
 module.exports = {
   SUPPORTED_PLATFORMS,
   MAX_NAME_LENGTH,
   validateProfileName,
   validatePlatform,
   normalizeVariationPreset,
+  resolveProfilePreset,
+  getDefaultVariation,
   loadProfiles,
   saveProfiles,
   listProfiles,

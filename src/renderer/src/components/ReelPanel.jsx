@@ -3,6 +3,7 @@ import { Film, CheckCircle, AlertCircle, FolderOpen, Lock, Sparkles } from 'luci
 import ProgressBar from './ProgressBar'
 import { hasFeature } from '../utils/features'
 import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
+import ExportProfileSelector from './ExportProfileSelector'
 
 const ASPECT_RATIOS = [
   { id: '9:16', label: '9:16', desc: 'Reels / Shorts', minTier: 'basic' },
@@ -294,6 +295,13 @@ export default function ReelPanel({
           </div>
         )}
       </div>
+
+      {/* Export Profile Selector (Phase 2B) */}
+      <ExportProfileSelector
+        variation={variation}
+        onVariationChange={setVariation}
+        disabled={isProcessing}
+      />
 
       {/* Content Variation (Phase 1B) */}
       <ContentVariationSection

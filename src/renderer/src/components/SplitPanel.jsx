@@ -3,6 +3,7 @@ import { SplitSquareHorizontal, FolderOpen, CheckCircle, AlertCircle, Film, Spar
 import ProgressBar from './ProgressBar'
 import { hasFeature } from '../utils/features'
 import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
+import ExportProfileSelector from './ExportProfileSelector'
 
 export default function SplitPanel({
   videoPath,
@@ -201,6 +202,13 @@ export default function SplitPanel({
           </div>
         )}
       </div>
+
+      {/* Export Profile Selector (Phase 2B) */}
+      <ExportProfileSelector
+        variation={variation}
+        onVariationChange={setVariation}
+        disabled={isProcessing}
+      />
 
       {/* Content Variation (Phase 1B) */}
       <ContentVariationSection

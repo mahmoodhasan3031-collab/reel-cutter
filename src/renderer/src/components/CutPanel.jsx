@@ -3,6 +3,7 @@ import { Scissors, FolderOpen, CheckCircle, AlertCircle, Lock, Sparkles } from '
 import ProgressBar from './ProgressBar'
 import { hasFeature } from '../utils/features'
 import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
+import ExportProfileSelector from './ExportProfileSelector'
 
 export default function CutPanel({
   videoPath,
@@ -319,6 +320,13 @@ export default function CutPanel({
           </div>
         )}
       </div>
+
+      {/* Export Profile Selector (Phase 2B) */}
+      <ExportProfileSelector
+        variation={variation}
+        onVariationChange={setVariation}
+        disabled={isProcessing}
+      />
 
       {/* Content Variation (Phase 1B) */}
       <ContentVariationSection
