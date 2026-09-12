@@ -36,6 +36,7 @@ import {
   deleteSchedule,
   pauseSchedule,
   resumeSchedule,
+  updateSchedule,
 } from './scheduler/scheduleManager'
 import { getSchedulerService } from './scheduler/schedulerService'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
@@ -942,6 +943,23 @@ ipcMain.handle('schedule:resume', async (_, id) => {
   try {
     const schedule = resumeSchedule(id)
     return { success: true, schedule }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('schedule:update', async (_, { id, changes }) => {
+  try {
+    if (!id || !changes) {
+      return { success: false, error: 'id and changes are required' }
+    }
+    const { updated, isPastDue } = updateSchedule(id, changes)
+    // Emit push event so renderer receives real-time update
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      win.webContents.send('schedule:update', updated)
+    }
+    return { success: true, schedule: updated, isPastDue }
   } catch (err) {
     return { success: false, error: err.message }
   }

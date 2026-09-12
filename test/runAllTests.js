@@ -21,6 +21,7 @@ const tests = [
   'bulk-export-ux-integration.test.js',
   'bulk-variation-control.test.js',
   'scheduler.test.js',
+  'schedule-management.test.js',
 ];
 
 console.log('======================================================');

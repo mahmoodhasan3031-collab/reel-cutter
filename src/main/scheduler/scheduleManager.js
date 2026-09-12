@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Schedule Manager — Phase 3A
+ * Schedule Manager — Phase 3A / 3B
  *
  * Local schedule storage and immutable data model for scheduled video exports.
  * Persists to schedules.json in Electron userData (or customDir for tests).
@@ -10,6 +10,10 @@
  *   SCHEDULED ──> READY ──> PROCESSING ──> COMPLETED
  *        │           │           │
  *        └──> PAUSED └──> CANCELLED └──> FAILED
+ *
+ * Phase 3B additions:
+ *   - updateSchedule(id, { scheduledAt }, customDir) — edit time on SCHEDULED/PAUSED jobs
+ *   - resumeSchedule: past-due check → PAUSED transitions directly to READY
  */
 
 const fs = require('fs');
@@ -433,7 +437,9 @@ function pauseSchedule(id, customDir) {
 }
 
 /**
- * Resumes a PAUSED job back to SCHEDULED.
+ * Resumes a PAUSED job.
+ * If scheduledAt is past-due (<=now) → transitions to READY immediately.
+ * Otherwise → transitions back to SCHEDULED.
  * @param {string} id
  * @param {string} [customDir]
  * @returns {Object}
@@ -445,7 +451,67 @@ function resumeSchedule(id, customDir) {
   if (item.status !== SCHEDULE_STATUS.PAUSED) {
     throw new Error(`Cannot resume schedule in status "${item.status}". Only PAUSED jobs can be resumed.`);
   }
-  return updateScheduleStatus(id, SCHEDULE_STATUS.SCHEDULED, {}, customDir);
+
+  // Past-due check: if scheduledAt is in the past, promote directly to READY
+  const scheduledAt = new Date(item.scheduledAt);
+  const isPastDue = !isNaN(scheduledAt.getTime()) && scheduledAt <= new Date();
+  const targetStatus = isPastDue ? SCHEDULE_STATUS.READY : SCHEDULE_STATUS.SCHEDULED;
+
+  return updateScheduleStatus(id, targetStatus, {}, customDir);
+}
+
+/**
+ * Updates the scheduledAt time of an existing SCHEDULED or PAUSED job.
+ * Rejects terminal or active (READY/PROCESSING) jobs.
+ *
+ * @param {string} id
+ * @param {{ scheduledAt: string }} changes
+ * @param {string} [customDir]
+ * @returns {{ updated: Object, isPastDue: boolean }}
+ */
+function updateSchedule(id, changes, customDir) {
+  if (!id) throw new Error('Schedule id is required');
+  if (!changes || typeof changes !== 'object') throw new Error('changes must be an object');
+
+  const item = getSchedule(id, customDir);
+  if (!item) throw new Error(`Schedule not found: ${id}`);
+
+  // Only SCHEDULED and PAUSED can be edited
+  if (
+    item.status !== SCHEDULE_STATUS.SCHEDULED &&
+    item.status !== SCHEDULE_STATUS.PAUSED
+  ) {
+    throw new Error(
+      `Cannot update schedule in status "${item.status}". Only SCHEDULED or PAUSED jobs can be edited.`
+    );
+  }
+
+  // Validate new scheduledAt
+  if (!changes.scheduledAt) throw new Error('scheduledAt is required in changes');
+  const parsedDate = new Date(changes.scheduledAt);
+  if (isNaN(parsedDate.getTime())) {
+    throw new Error(`Invalid scheduledAt date format: "${changes.scheduledAt}". Must be a valid ISO 8601 timestamp`);
+  }
+  const newScheduledAt = parsedDate.toISOString();
+
+  // Determine if past-due (caller can transition to READY)
+  const isPastDue = parsedDate <= new Date();
+
+  // Persist only scheduledAt (no other fields mutable here)
+  const store = loadSchedules(customDir);
+  const index = store.schedules.findIndex(s => s.id === id);
+  if (index === -1) throw new Error(`Schedule not found: ${id}`);
+
+  const now = new Date().toISOString();
+  const updated = {
+    ...store.schedules[index],
+    scheduledAt: newScheduledAt,
+    updatedAt: now,
+  };
+  store.schedules[index] = updated;
+  saveSchedules(store, customDir);
+
+  return { updated: JSON.parse(JSON.stringify(updated)), isPastDue };
 }
 
 module.exports = {
@@ -464,4 +530,5 @@ module.exports = {
   deleteSchedule,
   pauseSchedule,
   resumeSchedule,
+  updateSchedule,
 };
