@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Layers,
   CheckSquare,
@@ -9,13 +9,19 @@ import {
   AlertCircle,
   CheckCircle2,
   RefreshCw,
-  Clock,
   SlidersHorizontal,
   Play,
   XCircle,
   Ban,
   FolderOpen,
   Info,
+  RotateCcw,
+  Sparkles,
+  Palette,
+  Volume2,
+  Gauge,
+  Crop,
+  ShieldCheck,
 } from 'lucide-react'
 
 const MAX_BULK_PROFILES = 10
@@ -29,6 +35,59 @@ const PLATFORM_COLORS = {
   Other: 'text-zinc-400 border-zinc-700 bg-zinc-800/40',
 }
 
+const REFRAME_MODES = [
+  { id: 'center', label: 'Center' },
+  { id: 'left', label: 'Left' },
+  { id: 'right', label: 'Right' },
+  { id: 'top', label: 'Top' },
+  { id: 'bottom', label: 'Bottom' },
+]
+
+/**
+ * Safe neutral baseline variation settings.
+ */
+const NEUTRAL_VARIATION = {
+  brightness: 0.0,
+  saturation: 1.0,
+  hue: 0.0,
+  pitch: 0.0,
+  speed: 1.00,
+  mode: 'center',
+  crop: 0.0,
+  cleanMetadata: true,
+}
+
+/**
+ * Curated preset templates for quick, safe export-time variation.
+ * Legitimate creative repurposed looks (no evasion/bypasses).
+ */
+const BULK_TEMPLATES = [
+  {
+    id: 'neutral',
+    name: 'Neutral',
+    description: 'Safe baseline (no color, pitch, or speed shift)',
+    values: { brightness: 0.0, saturation: 1.0, hue: 0.0, pitch: 0.0, speed: 1.00, mode: 'center', crop: 0.0, cleanMetadata: true },
+  },
+  {
+    id: 'lightColor',
+    name: 'Light Color',
+    description: '+5% brightness, 1.05x saturation',
+    values: { brightness: 0.05, saturation: 1.05, hue: 0.0, pitch: 0.0, speed: 1.00, mode: 'center', crop: 0.0, cleanMetadata: true },
+  },
+  {
+    id: 'punchyColor',
+    name: 'Punchy Color',
+    description: '+5% brightness, 1.15x saturation',
+    values: { brightness: 0.05, saturation: 1.15, hue: 0.0, pitch: 0.0, speed: 1.00, mode: 'center', crop: 0.0, cleanMetadata: true },
+  },
+  {
+    id: 'subtleMotion',
+    name: 'Subtle Motion',
+    description: '1.02x speed, 1% reframe crop',
+    values: { brightness: 0.0, saturation: 1.0, hue: 0.0, pitch: 0.0, speed: 1.02, mode: 'center', crop: 1.0, cleanMetadata: true },
+  },
+]
+
 /**
  * Safely extracts filename from a full path or name string in browser context.
  */
@@ -38,11 +97,55 @@ function getFilename(fullPathOrName) {
 }
 
 /**
- * MultiProfileSelector Component — Phase 2C-3
+ * Compares two variation presets to detect if an export override differs from saved preset.
+ */
+function arePresetsEqual(a, b) {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  return (
+    Math.abs(Number(a.brightness || 0) - Number(b.brightness || 0)) < 0.001 &&
+    Math.abs(Number(a.saturation ?? 1) - Number(b.saturation ?? 1)) < 0.001 &&
+    Math.abs(Number(a.hue || 0) - Number(b.hue || 0)) < 0.5 &&
+    Math.abs(Number(a.pitch || 0) - Number(b.pitch || 0)) < 0.001 &&
+    Math.abs(Number(a.speed ?? 1.0) - Number(b.speed ?? 1.0)) < 0.001 &&
+    Math.abs(Number(a.crop || 0) - Number(b.crop || 0)) < 0.001 &&
+    (a.mode || 'center') === (b.mode || 'center') &&
+    (a.cleanMetadata !== false) === (b.cleanMetadata !== false)
+  )
+}
+
+/**
+ * Formats a variation preset into concise, readable descriptors.
+ */
+function formatPresetSummary(preset) {
+  if (!preset || typeof preset !== 'object') return 'Neutral defaults'
+  const parts = []
+  const b = Number(preset.brightness || 0)
+  const sat = Number(preset.saturation ?? 1)
+  const hue = Number(preset.hue || 0)
+  const pitch = Number(preset.pitch || 0)
+  const sp = Number(preset.speed ?? 1.0)
+  const crop = Number(preset.crop || 0)
+  const mode = preset.mode || preset.reframeMode || 'center'
+  const cleanMeta = preset.cleanMetadata !== false
+
+  if (Math.abs(b) > 0.001) parts.push(`${b > 0 ? '+' : ''}${Math.round(b * 100)}% bright`)
+  if (Math.abs(sat - 1) > 0.001) parts.push(`${Math.round(sat * 100)}% sat`)
+  if (Math.abs(hue) > 0.5) parts.push(`${Math.round(hue)}° hue`)
+  if (Math.abs(pitch) > 0.001) parts.push(`${pitch > 0 ? '+' : ''}${pitch.toFixed(1)}% pitch`)
+  if (Math.abs(sp - 1.0) > 0.001) parts.push(`${sp.toFixed(2)}x speed`)
+  if (crop > 0.001) parts.push(`${crop.toFixed(1)}% crop (${mode})`)
+  else if (mode && mode !== 'center') parts.push(`${mode} reframe`)
+  if (!cleanMeta) parts.push('keep meta')
+
+  return parts.length > 0 ? parts.join(', ') : 'Neutral defaults'
+}
+
+/**
+ * MultiProfileSelector Component — Phase 2D
  *
- * Allows selecting multiple enabled Page Profiles for bulk export planning and execution.
- * Generates an immutable, validated job plan with preview, reordering, and removal,
- * and executes bulk export jobs using the native Batch Queue engine.
+ * Multi-profile selection with export-time variation control, preset templates,
+ * non-destructive profile overrides, and immutable batch export execution.
  */
 export default function MultiProfileSelector({
   videoPath,
@@ -64,6 +167,12 @@ export default function MultiProfileSelector({
   const [jobStates, setJobStates] = useState({})
   const [overallProgress, setOverallProgress] = useState(0)
   const [executionSummary, setExecutionSummary] = useState(null)
+
+  // Phase 2D: Export-time variation overrides (profileId -> override variation object)
+  const [exportOverrides, setExportOverrides] = useState({})
+  const [expandedEditorProfileId, setExpandedEditorProfileId] = useState(null)
+  const [bulkApplySuccessMsg, setBulkApplySuccessMsg] = useState(null)
+  const [selectedTemplateId, setSelectedTemplateId] = useState('lightColor')
 
   useEffect(() => {
     onExecutingChange?.(isExecuting)
@@ -100,6 +209,7 @@ export default function MultiProfileSelector({
     setValidationMessage(null)
     setSelectedIds(prev => {
       if (prev.includes(profileId)) {
+        if (expandedEditorProfileId === profileId) setExpandedEditorProfileId(null)
         return prev.filter(id => id !== profileId)
       } else {
         if (prev.length >= MAX_BULK_PROFILES) {
@@ -124,9 +234,81 @@ export default function MultiProfileSelector({
     setError(null)
     setValidationMessage(null)
     setSelectedIds([])
+    setExpandedEditorProfileId(null)
   }
 
-  // Create immutable export job plan via IPC
+  // ── Phase 2D: Variation Override Management ────────────────────────────────
+
+  const getActiveProfileVariation = useCallback((profileId) => {
+    if (exportOverrides[profileId]) {
+      return exportOverrides[profileId]
+    }
+    const profile = profiles.find(p => p.id === profileId)
+    return profile?.variationPreset || { ...NEUTRAL_VARIATION }
+  }, [exportOverrides, profiles])
+
+  const handleUpdateProfileVariation = (profileId, key, value) => {
+    if (disabled || isExecuting) return
+    const current = getActiveProfileVariation(profileId)
+    setExportOverrides(prev => ({
+      ...prev,
+      [profileId]: {
+        ...current,
+        [key]: value,
+      },
+    }))
+  }
+
+  const handleRestoreProfilePreset = (profileId) => {
+    if (disabled || isExecuting) return
+    setExportOverrides(prev => {
+      const next = { ...prev }
+      delete next[profileId]
+      return next
+    })
+    setBulkApplySuccessMsg('Restored profile to saved preset')
+    setTimeout(() => setBulkApplySuccessMsg(null), 3000)
+  }
+
+  const handleResetProfileVariation = (profileId) => {
+    if (disabled || isExecuting) return
+    setExportOverrides(prev => ({
+      ...prev,
+      [profileId]: { ...NEUTRAL_VARIATION },
+    }))
+    setBulkApplySuccessMsg('Reset variation to safe neutral defaults')
+    setTimeout(() => setBulkApplySuccessMsg(null), 3000)
+  }
+
+  const handleApplyTemplateToSelected = (templateId) => {
+    if (disabled || isExecuting || selectedIds.length === 0) return
+    const tmpl = BULK_TEMPLATES.find(t => t.id === templateId)
+    if (!tmpl) return
+
+    const newOverrides = {}
+    selectedIds.forEach(id => {
+      newOverrides[id] = { ...tmpl.values }
+    })
+    setExportOverrides(prev => ({
+      ...prev,
+      ...newOverrides,
+    }))
+    setBulkApplySuccessMsg(`Applied "${tmpl.name}" preset to ${selectedIds.length} selected profile(s)`)
+    setTimeout(() => setBulkApplySuccessMsg(null), 3500)
+  }
+
+  const handleRestoreAllToSavedPresets = () => {
+    if (disabled || isExecuting || selectedIds.length === 0) return
+    setExportOverrides(prev => {
+      const next = { ...prev }
+      selectedIds.forEach(id => delete next[id])
+      return next
+    })
+    setBulkApplySuccessMsg(`Restored all ${selectedIds.length} selected profile(s) to saved presets`)
+    setTimeout(() => setBulkApplySuccessMsg(null), 3500)
+  }
+
+  // Create or Update immutable export job plan via IPC
   const handleCreatePlan = async () => {
     if (disabled || isExecuting) return
 
@@ -151,6 +333,7 @@ export default function MultiProfileSelector({
         exportType,
         profileIds: selectedIds,
         outputDir: exportOptions.outputDir || undefined,
+        variationOverrides: exportOverrides,
       })
 
       if (res.success && res.plan) {
@@ -190,7 +373,6 @@ export default function MultiProfileSelector({
     }
 
     setPlan(updatedPlan)
-    // Also update selectedIds to keep selection in sync
     const remainingProfileIds = reorderedJobs.map(j => j.profileId)
     setSelectedIds(remainingProfileIds)
     onPlanCreated?.(updatedPlan)
@@ -274,7 +456,6 @@ export default function MultiProfileSelector({
       setExecutionSummary(null)
       setOverallProgress(0)
 
-      // Initialize all job states to QUEUED
       const initStates = {}
       plan.jobs.forEach(j => {
         initStates[j.jobId] = { status: 'QUEUED', progress: 0, error: null, outputPath: j.outputPath }
@@ -354,30 +535,6 @@ export default function MultiProfileSelector({
     onPlanCreated?.(null)
   }
 
-  const formatPresetSummary = (preset) => {
-    if (!preset || typeof preset !== 'object') return 'Default variation'
-    const parts = []
-    const b = Number(preset.brightness || 0)
-    const sat = Number(preset.saturation ?? 1)
-    const hue = Number(preset.hue || 0)
-    const pitch = Number(preset.pitch || 0)
-    const sp = Number(preset.speed ?? 1.0)
-    const crop = Number(preset.crop || 0)
-    const mode = preset.mode || preset.reframeMode || 'center'
-    const cleanMeta = preset.cleanMetadata !== false
-
-    if (Math.abs(b) > 0.001) parts.push(`${b > 0 ? '+' : ''}${b.toFixed(2)} bright`)
-    if (Math.abs(sat - 1) > 0.001) parts.push(`${sat.toFixed(2)}x sat`)
-    if (Math.abs(hue) > 0.5) parts.push(`${Math.round(hue)}° hue`)
-    if (Math.abs(pitch) > 0.001) parts.push(`${pitch > 0 ? '+' : ''}${pitch.toFixed(1)}% pitch`)
-    if (Math.abs(sp - 1.0) > 0.001) parts.push(`${sp.toFixed(2)}x speed`)
-    if (crop > 0.001) parts.push(`${crop.toFixed(1)}% crop (${mode})`)
-    else if (mode && mode !== 'center') parts.push(`${mode} reframe`)
-    if (!cleanMeta) parts.push('keep meta')
-
-    return parts.length > 0 ? parts.join(', ') : 'Default parameters'
-  }
-
   // Current workflow step for breadcrumbs
   const currentStep = isExecuting || executionSummary ? 3 : plan && plan.jobs?.length > 0 ? 2 : 1
 
@@ -408,7 +565,7 @@ export default function MultiProfileSelector({
               )}
             </div>
             <p className="text-[11px] text-zinc-500">
-              Select multiple Page Profiles to generate and execute an immutable multi-export plan
+              Select Page Profiles, configure variations &amp; templates, and execute an immutable export plan
             </p>
           </div>
         </button>
@@ -452,7 +609,7 @@ export default function MultiProfileSelector({
                 : 'bg-zinc-950 border-zinc-800/80 text-zinc-500'
             }`}>
               <span className="w-4 h-4 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] font-bold">2</span>
-              <span className="truncate">Review Plan</span>
+              <span className="truncate">Review &amp; Variation</span>
             </div>
             <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-medium transition-colors ${
               currentStep === 3
@@ -460,11 +617,11 @@ export default function MultiProfileSelector({
                 : 'bg-zinc-950 border-zinc-800/80 text-zinc-500'
             }`}>
               <span className="w-4 h-4 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] font-bold">3</span>
-              <span className="truncate">Export & Results</span>
+              <span className="truncate">Export &amp; Results</span>
             </div>
           </div>
 
-          {/* Error display */}
+          {/* Feedback messages */}
           {error && (
             <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-[11px] text-red-300">
               <AlertCircle size={14} className="shrink-0 mt-0.5 text-red-400" />
@@ -472,11 +629,17 @@ export default function MultiProfileSelector({
             </div>
           )}
 
-          {/* Validation Notice */}
           {validationMessage && (
             <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300">
               <Info size={14} className="shrink-0 mt-0.5 text-amber-400" />
               <span>{validationMessage}</span>
+            </div>
+          )}
+
+          {bulkApplySuccessMsg && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300 animate-fade-in">
+              <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+              <span>{bulkApplySuccessMsg}</span>
             </div>
           )}
 
@@ -542,7 +705,357 @@ export default function MultiProfileSelector({
             )}
           </div>
 
-          {/* Action: Create Plan */}
+          {/* Phase 2D: Bulk Preset Templates & Global Variation Controls */}
+          {selectedIds.length > 0 && (
+            <div className="p-3 rounded-lg bg-zinc-950/70 border border-zinc-800/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
+                  <Sparkles size={13} className="text-brand-400" />
+                  <span>Preset Templates &amp; Bulk Variation</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRestoreAllToSavedPresets}
+                  disabled={disabled || isExecuting}
+                  className="text-[10px] text-zinc-400 hover:text-zinc-200 disabled:opacity-40 transition-colors flex items-center gap-1"
+                  title="Reset all selected profiles back to their saved profile presets"
+                >
+                  <RotateCcw size={10} />
+                  <span>Restore All Presets</span>
+                </button>
+              </div>
+
+              <p className="text-[11px] text-zinc-500">
+                Choose a creative look or apply a variation to all selected profiles for this export without modifying saved profiles.
+              </p>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {BULK_TEMPLATES.map(tmpl => {
+                  const isSelected = selectedTemplateId === tmpl.id
+                  return (
+                    <button
+                      key={tmpl.id}
+                      type="button"
+                      disabled={disabled || isExecuting}
+                      onClick={() => setSelectedTemplateId(tmpl.id)}
+                      className={`p-2 rounded-lg border text-left transition-colors flex flex-col justify-between ${
+                        isSelected
+                          ? 'bg-brand-500/15 border-brand-500/40 text-brand-200'
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-[11px] truncate">{tmpl.name}</div>
+                      <div className="text-[9px] text-zinc-500 truncate mt-0.5">{tmpl.description}</div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleApplyTemplateToSelected(selectedTemplateId)}
+                  disabled={disabled || isExecuting || selectedIds.length === 0}
+                  className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] font-semibold text-zinc-200 border border-zinc-700 transition-colors flex items-center gap-1.5 disabled:opacity-40"
+                  title="Apply this template variation to all currently selected profiles"
+                >
+                  <SlidersHorizontal size={11} className="text-brand-400" />
+                  <span>Apply Variation to Selected</span>
+                </button>
+                <span className="text-[10px] text-zinc-500">
+                  Export override only &bull; Profiles unchanged
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Phase 2D: Selected Profiles Variation Review & Per-Profile Override Cards */}
+          {selectedIds.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-zinc-300">
+                  Review Selected Profile Variations ({selectedIds.length})
+                </span>
+                <span className="text-[10px] text-zinc-500">
+                  Click &quot;Edit&quot; to adjust export variation individually
+                </span>
+              </div>
+
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {selectedIds.map(profileId => {
+                  const profile = profiles.find(p => p.id === profileId)
+                  if (!profile) return null
+
+                  const savedPreset = profile.variationPreset || { ...NEUTRAL_VARIATION }
+                  const activeVariation = getActiveProfileVariation(profileId)
+                  const isOverridden = !arePresetsEqual(savedPreset, activeVariation)
+                  const isEditing = expandedEditorProfileId === profileId
+                  const colorClass = PLATFORM_COLORS[profile.platform] || PLATFORM_COLORS.Other
+
+                  return (
+                    <div
+                      key={profile.id}
+                      className="p-3 rounded-lg bg-zinc-950 border border-zinc-800/90 text-xs space-y-2 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-semibold text-zinc-100 truncate">{profile.name}</span>
+                          <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded border font-semibold shrink-0 ${colorClass}`}>
+                            {profile.platform}
+                          </span>
+                          {isOverridden ? (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded border font-bold uppercase shrink-0 bg-amber-500/10 text-amber-400 border-amber-500/30">
+                              Export Override
+                            </span>
+                          ) : (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded border font-medium uppercase shrink-0 bg-zinc-800 text-zinc-400 border-zinc-700">
+                              Profile Preset
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedEditorProfileId(isEditing ? null : profileId)}
+                            disabled={disabled || isExecuting}
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-colors ${
+                              isEditing
+                                ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+                                : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                            }`}
+                          >
+                            {isEditing ? 'Close' : 'Edit'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Summaries: Saved Preset vs Export Variation */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                        <div className="p-1.5 rounded bg-zinc-900/80 border border-zinc-800/80">
+                          <span className="text-[10px] uppercase font-bold text-zinc-500 block">Saved Preset:</span>
+                          <span className="text-zinc-300 text-[10px] truncate block">{formatPresetSummary(savedPreset)}</span>
+                        </div>
+                        <div className={`p-1.5 rounded border ${
+                          isOverridden
+                            ? 'bg-amber-500/5 border-amber-500/20'
+                            : 'bg-zinc-900/80 border-zinc-800/80'
+                        }`}>
+                          <span className={`text-[10px] uppercase font-bold block ${isOverridden ? 'text-amber-400' : 'text-zinc-500'}`}>
+                            Export Variation:
+                          </span>
+                          <span className="text-zinc-200 text-[10px] truncate block font-medium">
+                            {formatPresetSummary(activeVariation)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Expanded Slider / Control Card for this profile */}
+                      {isEditing && (
+                        <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 space-y-3 animate-fade-in">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {/* Brightness */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-zinc-400 flex items-center gap-1">
+                                  <Palette size={11} className="text-brand-400" /> Brightness
+                                </span>
+                                <span className="font-mono font-bold text-zinc-200">
+                                  {Number(activeVariation.brightness || 0) > 0 ? '+' : ''}
+                                  {Number(activeVariation.brightness || 0).toFixed(2)}
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min="-1.0"
+                                max="1.0"
+                                step="0.01"
+                                disabled={disabled || isExecuting}
+                                value={activeVariation.brightness || 0}
+                                onChange={e => handleUpdateProfileVariation(profileId, 'brightness', parseFloat(e.target.value))}
+                                className="w-full accent-brand-500 bg-zinc-800 h-1.5 rounded cursor-pointer"
+                              />
+                            </div>
+
+                            {/* Saturation */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-zinc-400 flex items-center gap-1">
+                                  <Palette size={11} className="text-brand-400" /> Saturation
+                                </span>
+                                <span className="font-mono font-bold text-zinc-200">
+                                  {Number(activeVariation.saturation ?? 1.0).toFixed(2)}x
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0.0"
+                                max="3.0"
+                                step="0.05"
+                                disabled={disabled || isExecuting}
+                                value={activeVariation.saturation ?? 1.0}
+                                onChange={e => handleUpdateProfileVariation(profileId, 'saturation', parseFloat(e.target.value))}
+                                className="w-full accent-brand-500 bg-zinc-800 h-1.5 rounded cursor-pointer"
+                              />
+                            </div>
+
+                            {/* Hue */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-zinc-400 flex items-center gap-1">
+                                  <Palette size={11} className="text-brand-400" /> Hue Shift
+                                </span>
+                                <span className="font-mono font-bold text-zinc-200">
+                                  {Math.round(activeVariation.hue || 0)}°
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min="-180"
+                                max="180"
+                                step="1"
+                                disabled={disabled || isExecuting}
+                                value={activeVariation.hue || 0}
+                                onChange={e => handleUpdateProfileVariation(profileId, 'hue', parseInt(e.target.value, 10))}
+                                className="w-full accent-brand-500 bg-zinc-800 h-1.5 rounded cursor-pointer"
+                              />
+                            </div>
+
+                            {/* Audio Pitch */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-zinc-400 flex items-center gap-1">
+                                  <Volume2 size={11} className="text-brand-400" /> Audio Pitch
+                                </span>
+                                <span className="font-mono font-bold text-zinc-200">
+                                  {Number(activeVariation.pitch || 0) > 0 ? '+' : ''}
+                                  {Number(activeVariation.pitch || 0).toFixed(1)}%
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min="-3.0"
+                                max="3.0"
+                                step="0.1"
+                                disabled={disabled || isExecuting}
+                                value={activeVariation.pitch || 0}
+                                onChange={e => handleUpdateProfileVariation(profileId, 'pitch', parseFloat(e.target.value))}
+                                className="w-full accent-brand-500 bg-zinc-800 h-1.5 rounded cursor-pointer"
+                              />
+                            </div>
+
+                            {/* Speed */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-zinc-400 flex items-center gap-1">
+                                  <Gauge size={11} className="text-brand-400" /> Speed (1.00x - 1.05x)
+                                </span>
+                                <span className="font-mono font-bold text-zinc-200">
+                                  {Number(activeVariation.speed ?? 1.0).toFixed(2)}x
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min="1.00"
+                                max="1.05"
+                                step="0.01"
+                                disabled={disabled || isExecuting}
+                                value={activeVariation.speed ?? 1.0}
+                                onChange={e => handleUpdateProfileVariation(profileId, 'speed', parseFloat(e.target.value))}
+                                className="w-full accent-brand-500 bg-zinc-800 h-1.5 rounded cursor-pointer"
+                              />
+                            </div>
+
+                            {/* Crop */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-zinc-400 flex items-center gap-1">
+                                  <Crop size={11} className="text-brand-400" /> Reframe Crop (0% - 2%)
+                                </span>
+                                <span className="font-mono font-bold text-zinc-200">
+                                  {Number(activeVariation.crop || 0).toFixed(1)}%
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0.0"
+                                max="2.0"
+                                step="0.1"
+                                disabled={disabled || isExecuting}
+                                value={activeVariation.crop || 0}
+                                onChange={e => handleUpdateProfileVariation(profileId, 'crop', parseFloat(e.target.value))}
+                                className="w-full accent-brand-500 bg-zinc-800 h-1.5 rounded cursor-pointer"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Reframe Mode & Clean Metadata */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-zinc-800/80">
+                            <div>
+                              <label className="text-[11px] text-zinc-400 block mb-1">Reframe Alignment</label>
+                              <select
+                                disabled={disabled || isExecuting}
+                                value={activeVariation.mode || 'center'}
+                                onChange={e => handleUpdateProfileVariation(profileId, 'mode', e.target.value)}
+                                className="w-full px-2 py-1 text-xs rounded bg-zinc-950 border border-zinc-800 text-zinc-200 focus:outline-none focus:border-brand-500"
+                              >
+                                {REFRAME_MODES.map(m => (
+                                  <option key={m.id} value={m.id}>{m.label}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="flex items-center">
+                              <label className="flex items-center gap-2 cursor-pointer mt-4 select-none">
+                                <input
+                                  type="checkbox"
+                                  disabled={disabled || isExecuting}
+                                  checked={activeVariation.cleanMetadata !== false}
+                                  onChange={e => handleUpdateProfileVariation(profileId, 'cleanMetadata', e.target.checked)}
+                                  className="w-3.5 h-3.5 rounded border-zinc-700 bg-zinc-800 text-brand-600 focus:ring-brand-500"
+                                />
+                                <span className="text-[11px] text-zinc-300 flex items-center gap-1">
+                                  <ShieldCheck size={12} className="text-brand-400" /> Clean Metadata
+                                </span>
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Per-profile Action Buttons */}
+                          <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80 text-[10px]">
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreProfilePreset(profileId)}
+                                disabled={disabled || isExecuting || !isOverridden}
+                                className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 disabled:opacity-40 transition-colors flex items-center gap-1"
+                                title="Restore this profile to its saved preset"
+                              >
+                                <RotateCcw size={10} />
+                                <span>Restore Profile Preset</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleResetProfileVariation(profileId)}
+                                disabled={disabled || isExecuting}
+                                className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 disabled:opacity-40 transition-colors"
+                                title="Reset to neutral default parameters"
+                              >
+                                Reset Variation
+                              </button>
+                            </div>
+                            <span className="text-zinc-500 italic">Saved Page Profile is never modified</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Action: Create / Update Plan */}
           <div className="flex items-center justify-between pt-1">
             <span className="text-[11px] text-zinc-500">
               {selectedIds.length === 0 ? (
@@ -710,6 +1223,11 @@ export default function MultiProfileSelector({
                             <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded border font-semibold shrink-0 ${colorClass}`}>
                               {job.platform}
                             </span>
+                            {job.isOverridden && (
+                              <span className="text-[9px] uppercase px-1.5 py-0.2 rounded border font-bold bg-amber-500/10 text-amber-300 border-amber-500/30">
+                                Override
+                              </span>
+                            )}
                             <span className={`ml-auto text-[9px] px-1.5 py-0.2 rounded border font-bold uppercase shrink-0 ${displayStatus.color}`}>
                               {displayStatus.label}
                             </span>
@@ -820,7 +1338,7 @@ export default function MultiProfileSelector({
                 <div className="p-2.5 rounded-lg bg-zinc-950/60 border border-zinc-800/80 text-[10px] text-zinc-400 flex items-start gap-2">
                   <Info size={13} className="text-brand-400 shrink-0 mt-0.5" />
                   <span>
-                    Jobs use immutable profile snapshots. If you modify presets in Page Profiles, click &quot;Update Export Plan&quot; to refresh snapshots.
+                    Jobs use immutable profile snapshots. Adjusting variations above updates only this export plan. To apply new variation settings, click &quot;Update Export Plan&quot;.
                   </span>
                 </div>
               )}

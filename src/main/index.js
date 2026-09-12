@@ -26,7 +26,7 @@ import {
   duplicateProfile,
   setSelectedProfile,
 } from './profiles/profileManager'
-import { createBulkExportPlan } from './profiles/exportPlan'
+import { createBulkExportPlan, BULK_VARIATION_TEMPLATES } from './profiles/exportPlan'
 import { executeBulkExport, cancelBulkExport, cancelBulkJob } from './profiles/bulkExecutor'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
@@ -853,6 +853,10 @@ ipcMain.handle('profile:cancelJob', async (_, jobId) => {
   } catch (err) {
     return { success: false, error: err.message }
   }
+})
+
+ipcMain.handle('profile:getTemplates', async () => {
+  return { success: true, templates: BULK_VARIATION_TEMPLATES }
 })
 
 

@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('api', {
   executeBulkExport: (options) => ipcRenderer.invoke('profile:executePlan', options),
   cancelBulkExport: (planId) => ipcRenderer.invoke('profile:cancelPlan', planId),
   cancelBulkJob: (jobId) => ipcRenderer.invoke('profile:cancelJob', jobId),
+  getBulkVariationTemplates: () => ipcRenderer.invoke('profile:getTemplates'),
 
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),

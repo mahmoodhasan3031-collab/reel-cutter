@@ -11,11 +11,82 @@
 const path = require('path');
 const fs = require('fs');
 const { loadProfiles, resolveProfilePreset } = require('./profileManager');
-const { validateProductVariationConfig } = require('../../engine/variation/validator');
+const { validateProductVariationConfig, DEFAULT_PRODUCT_VARIATION } = require('../../engine/variation/validator');
 
 const MIN_BULK_PROFILES = 1;
 const MAX_BULK_PROFILES = 10; // Conservative limit: maximum 10 profiles per bulk plan
 const VALID_EXPORT_TYPES = ['cut', 'reel', 'split'];
+
+/**
+ * Validated, legitimate preset templates for export-time content variation.
+ * Phase 2D: Provides predictable, safe creative presets for bulk repurposing.
+ */
+const BULK_VARIATION_TEMPLATES = {
+  neutral: {
+    name: 'Neutral',
+    brightness: 0.0,
+    saturation: 1.0,
+    hue: 0.0,
+    pitch: 0.0,
+    speed: 1.00,
+    mode: 'center',
+    crop: 0.0,
+    cleanMetadata: true,
+  },
+  lightColor: {
+    name: 'Light Color',
+    brightness: 0.05,
+    saturation: 1.05,
+    hue: 0.0,
+    pitch: 0.0,
+    speed: 1.00,
+    mode: 'center',
+    crop: 0.0,
+    cleanMetadata: true,
+  },
+  punchyColor: {
+    name: 'Punchy Color',
+    brightness: 0.05,
+    saturation: 1.15,
+    hue: 0.0,
+    pitch: 0.0,
+    speed: 1.00,
+    mode: 'center',
+    crop: 0.0,
+    cleanMetadata: true,
+  },
+  subtleMotion: {
+    name: 'Subtle Motion',
+    brightness: 0.0,
+    saturation: 1.0,
+    hue: 0.0,
+    pitch: 0.0,
+    speed: 1.02,
+    mode: 'center',
+    crop: 1.0,
+    cleanMetadata: true,
+  },
+  custom: {
+    name: 'Custom',
+  },
+};
+
+/**
+ * Returns a clone of the requested bulk variation template by key.
+ *
+ * @param {string} key
+ * @returns {Object|null}
+ */
+function getBulkVariationTemplate(key) {
+  if (!key) return null;
+  const k = String(key).toLowerCase().replace(/[\s-_]/g, '');
+  if (k === 'neutral') return { ...BULK_VARIATION_TEMPLATES.neutral };
+  if (k === 'lightcolor') return { ...BULK_VARIATION_TEMPLATES.lightColor };
+  if (k === 'punchycolor') return { ...BULK_VARIATION_TEMPLATES.punchyColor };
+  if (k === 'subtlemotion') return { ...BULK_VARIATION_TEMPLATES.subtleMotion };
+  if (k === 'custom') return { ...BULK_VARIATION_TEMPLATES.custom };
+  return null;
+}
 
 let _planCounter = 0;
 function generatePlanId() {
@@ -140,7 +211,7 @@ function generateBulkOutputFilename(opts = {}) {
  * @returns {Object} Bulk Export Plan
  */
 function createBulkExportPlan(input = {}, customDir) {
-  const { sourcePath, exportType = 'cut', profileIds, outputDir } = input;
+  const { sourcePath, exportType = 'cut', profileIds, outputDir, variationOverrides } = input;
 
   if (!sourcePath || typeof sourcePath !== 'string' || sourcePath.trim().length === 0) {
     throw new Error('Source media file path is required');
@@ -188,8 +259,29 @@ function createBulkExportPlan(input = {}, customDir) {
       throw new Error(`Profile "${profile.name}" (${pId}) is disabled and cannot be added to a bulk export plan`);
     }
 
+    // Saved preset from authoritative profile
+    const savedPresetCopy = resolveProfilePreset(profile.variationPreset);
+    let presetToUse = profile.variationPreset;
+    let isOverridden = false;
+
+    // Check for export-time override
+    const rawOverride = variationOverrides && (variationOverrides[pId] || variationOverrides[profile.name]);
+    if (rawOverride && typeof rawOverride === 'object') {
+      // Validate override directly against product rules
+      const overrideVal = validateProductVariationConfig({
+        ...profile.variationPreset,
+        ...rawOverride,
+        enabled: true,
+      });
+      if (!overrideVal.valid) {
+        throw new Error(`Profile "${profile.name}" has invalid variation override settings`);
+      }
+      presetToUse = { ...profile.variationPreset, ...rawOverride };
+      isOverridden = true;
+    }
+
     // Resolve and validate preset copy
-    const resolvedPreset = resolveProfilePreset(profile.variationPreset);
+    const resolvedPreset = resolveProfilePreset(presetToUse);
 
     // Strict validation: must pass engine product validation
     const validation = validateProductVariationConfig(resolvedPreset);
@@ -215,6 +307,8 @@ function createBulkExportPlan(input = {}, customDir) {
       platform: profile.platform,
       // Deep clone ensures future edits to the profile do NOT mutate this plan
       variationPreset: JSON.parse(JSON.stringify(resolvedPreset)),
+      savedPreset: JSON.parse(JSON.stringify(savedPresetCopy)),
+      isOverridden,
       outputFilename: filename,
       outputPath,
       status: 'READY',
@@ -306,6 +400,186 @@ function reorderJobsInPlan(plan, fromIndex, toIndex) {
 }
 
 /**
+ * Updates the variation preset of an individual job in an export plan.
+ * Returns a new deep-cloned plan without mutating the original plan.
+ * The saved Page Profile on disk is NOT modified.
+ *
+ * @param {Object} plan
+ * @param {string} targetId jobId or profileId
+ * @param {Object} variationOverride
+ * @returns {Object} updated export plan
+ */
+function updateJobVariationInPlan(plan, targetId, variationOverride) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    throw new Error('Valid export plan is required');
+  }
+  if (!targetId) {
+    throw new Error('Target jobId or profileId is required');
+  }
+  if (!variationOverride || typeof variationOverride !== 'object') {
+    throw new Error('variationOverride must be an object');
+  }
+
+  // Validate override directly against product rules
+  const validation = validateProductVariationConfig({
+    ...DEFAULT_PRODUCT_VARIATION,
+    ...variationOverride,
+    enabled: true,
+  });
+  if (!validation.valid) {
+    throw new Error('Invalid variation override settings');
+  }
+
+  const resolved = resolveProfilePreset(variationOverride);
+
+  const newJobs = plan.jobs.map(job => {
+    if (job.jobId === targetId || job.profileId === targetId) {
+      return {
+        ...job,
+        variationPreset: JSON.parse(JSON.stringify(resolved)),
+        savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+        isOverridden: true,
+      };
+    }
+    return {
+      ...job,
+      variationPreset: JSON.parse(JSON.stringify(job.variationPreset)),
+      savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+    };
+  });
+
+  return {
+    ...plan,
+    jobs: newJobs,
+  };
+}
+
+/**
+ * Applies a single variation configuration to ALL jobs in an export plan.
+ * Returns a new deep-cloned plan without mutating the original plan.
+ * Saved Page Profiles on disk remain untouched.
+ *
+ * @param {Object} plan
+ * @param {Object} variation
+ * @returns {Object} updated export plan
+ */
+function applyVariationToAllJobsInPlan(plan, variation) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    throw new Error('Valid export plan is required');
+  }
+  if (!variation || typeof variation !== 'object') {
+    throw new Error('variation must be an object');
+  }
+
+  const validation = validateProductVariationConfig({
+    ...DEFAULT_PRODUCT_VARIATION,
+    ...variation,
+    enabled: true,
+  });
+  if (!validation.valid) {
+    throw new Error('Invalid variation configuration');
+  }
+
+  const resolved = resolveProfilePreset(variation);
+
+  const newJobs = plan.jobs.map(job => ({
+    ...job,
+    variationPreset: JSON.parse(JSON.stringify(resolved)),
+    savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+    isOverridden: true,
+  }));
+
+  return {
+    ...plan,
+    jobs: newJobs,
+  };
+}
+
+/**
+ * Restores a job's variation preset back to the profile's saved preset.
+ *
+ * @param {Object} plan
+ * @param {string} targetId jobId or profileId
+ * @param {string} [customDir]
+ * @returns {Object} updated export plan
+ */
+function restoreJobVariationToProfilePreset(plan, targetId, customDir) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    throw new Error('Valid export plan is required');
+  }
+  if (!targetId) {
+    throw new Error('Target jobId or profileId is required');
+  }
+
+  const profileStore = loadProfiles(customDir);
+  const profiles = profileStore.profiles || [];
+
+  const newJobs = plan.jobs.map(job => {
+    if (job.jobId === targetId || job.profileId === targetId) {
+      const profile = profiles.find(p => p.id === job.profileId);
+      const savedPreset = profile ? resolveProfilePreset(profile.variationPreset) : (job.savedPreset || resolveProfilePreset(null));
+      return {
+        ...job,
+        variationPreset: JSON.parse(JSON.stringify(savedPreset)),
+        savedPreset: JSON.parse(JSON.stringify(savedPreset)),
+        isOverridden: false,
+      };
+    }
+    return {
+      ...job,
+      variationPreset: JSON.parse(JSON.stringify(job.variationPreset)),
+      savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+    };
+  });
+
+  return {
+    ...plan,
+    jobs: newJobs,
+  };
+}
+
+/**
+ * Resets a job's variation preset to safe neutral defaults.
+ * Saved profile on disk is NOT modified.
+ *
+ * @param {Object} plan
+ * @param {string} targetId jobId or profileId
+ * @returns {Object} updated export plan
+ */
+function resetJobVariationInPlan(plan, targetId) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    throw new Error('Valid export plan is required');
+  }
+  if (!targetId) {
+    throw new Error('Target jobId or profileId is required');
+  }
+
+  const neutral = { ...BULK_VARIATION_TEMPLATES.neutral, enabled: true };
+  const resolved = resolveProfilePreset(neutral);
+
+  const newJobs = plan.jobs.map(job => {
+    if (job.jobId === targetId || job.profileId === targetId) {
+      return {
+        ...job,
+        variationPreset: JSON.parse(JSON.stringify(resolved)),
+        savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+        isOverridden: true,
+      };
+    }
+    return {
+      ...job,
+      variationPreset: JSON.parse(JSON.stringify(job.variationPreset)),
+      savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+    };
+  });
+
+  return {
+    ...plan,
+    jobs: newJobs,
+  };
+}
+
+/**
  * Adapter helper that converts a bulk export plan's jobs into items compatible
  * with the existing Batch Queue engine.
  *
@@ -344,11 +618,17 @@ module.exports = {
   MIN_BULK_PROFILES,
   MAX_BULK_PROFILES,
   VALID_EXPORT_TYPES,
+  BULK_VARIATION_TEMPLATES,
+  getBulkVariationTemplate,
   sanitizeFilename,
   generateBulkOutputFilename,
   createBulkExportPlan,
   removeJobFromPlan,
   reorderJobsInPlan,
+  updateJobVariationInPlan,
+  applyVariationToAllJobsInPlan,
+  restoreJobVariationToProfilePreset,
+  resetJobVariationInPlan,
   planToBatchQueueItems,
 };
 
