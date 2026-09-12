@@ -18,6 +18,7 @@ const tests = [
   'profile-integration.test.js',
   'multi-profile-plan.test.js',
   'bulk-export-executor.test.js',
+  'bulk-export-ux-integration.test.js',
 ];
 
 console.log('======================================================');

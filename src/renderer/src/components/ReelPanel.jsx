@@ -79,6 +79,7 @@ export default function ReelPanel({
   const [result, setResult]           = useState(null)
   const [error, setError]             = useState(null)
   const [variation, setVariation]     = useState(DEFAULT_VARIATION_STATE)
+  const [isBulkExecuting, setIsBulkExecuting] = useState(false)
 
   const canAllAspects = hasFeature(licenseTier, 'all_aspect_ratios')
   const canSmartCrop = hasFeature(licenseTier, 'smart_crop')
@@ -301,10 +302,10 @@ export default function ReelPanel({
       <ExportProfileSelector
         variation={variation}
         onVariationChange={setVariation}
-        disabled={isProcessing}
+        disabled={isProcessing || isBulkExecuting}
       />
 
-      {/* Bulk Multi-Profile Export Plan (Phase 2C-1 / 2C-2) */}
+      {/* Bulk Multi-Profile Export Plan (Phase 2C-1 / 2C-2 / 2C-3) */}
       <MultiProfileSelector
         videoPath={videoPath}
         exportType="reel"
@@ -315,13 +316,14 @@ export default function ReelPanel({
           thumbnailTitle,
         }}
         disabled={isProcessing}
+        onExecutingChange={setIsBulkExecuting}
       />
 
       {/* Content Variation (Phase 1B) */}
       <ContentVariationSection
         variation={variation}
         onChange={setVariation}
-        disabled={isProcessing}
+        disabled={isProcessing || isBulkExecuting}
       />
 
       {/* Output */}
@@ -330,12 +332,14 @@ export default function ReelPanel({
           type="text"
           value={outputPath}
           onChange={e => setOutputPath(e.target.value)}
+          disabled={isProcessing || isBulkExecuting}
           placeholder="Output path (optional)"
-          className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-brand-500 transition-colors"
+          className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-brand-500 transition-colors disabled:opacity-50"
         />
         <button
           onClick={pickOutput}
-          className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors"
+          disabled={isProcessing || isBulkExecuting}
+          className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors disabled:opacity-50"
         >
           <FolderOpen size={16} />
         </button>
@@ -406,12 +410,12 @@ export default function ReelPanel({
 
       {/* Action */}
       <button
-        disabled={isProcessing}
+        disabled={isProcessing || isBulkExecuting}
         onClick={handleReel}
         className="w-full py-2.5 bg-brand-600 hover:bg-brand-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-brand-900/30 flex items-center justify-center gap-2"
       >
         <Film size={15} />
-        {isProcessing ? 'Rendering…' : `Convert to ${aspectRatio} Reel`}
+        {isProcessing ? 'Rendering…' : isBulkExecuting ? 'Bulk Export in Progress…' : `Convert to ${aspectRatio} Reel`}
       </button>
     </div>
   )

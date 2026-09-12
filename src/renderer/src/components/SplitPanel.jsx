@@ -27,6 +27,7 @@ export default function SplitPanel({
   const [error, setError]         = useState(null)
   const [done, setDone]           = useState(false)
   const [variation, setVariation] = useState(DEFAULT_VARIATION_STATE)
+  const [isBulkExecuting, setIsBulkExecuting] = useState(false)
 
   const canThumbnail = hasFeature(licenseTier, 'ai_thumbnails')
 
@@ -208,10 +209,10 @@ export default function SplitPanel({
       <ExportProfileSelector
         variation={variation}
         onVariationChange={setVariation}
-        disabled={isProcessing}
+        disabled={isProcessing || isBulkExecuting}
       />
 
-      {/* Bulk Multi-Profile Export Plan (Phase 2C-1 / 2C-2) */}
+      {/* Bulk Multi-Profile Export Plan (Phase 2C-1 / 2C-2 / 2C-3) */}
       <MultiProfileSelector
         videoPath={videoPath}
         exportType="split"
@@ -223,24 +224,27 @@ export default function SplitPanel({
           thumbnailTitle,
         }}
         disabled={isProcessing}
+        onExecutingChange={setIsBulkExecuting}
       />
 
       {/* Content Variation (Phase 1B) */}
       <ContentVariationSection
         variation={variation}
         onChange={setVariation}
-        disabled={isProcessing}
+        disabled={isProcessing || isBulkExecuting}
       />
 
       {/* Output dir */}
       <div className="flex gap-2">
         <input
           type="text" value={outputDir} onChange={e => setOutputDir(e.target.value)}
+          disabled={isProcessing || isBulkExecuting}
           placeholder="Output directory (auto-generated if blank)"
-          className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-brand-500 transition-colors"
+          className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-brand-500 transition-colors disabled:opacity-50"
         />
         <button onClick={pickOutputDir}
-          className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors">
+          disabled={isProcessing || isBulkExecuting}
+          className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors disabled:opacity-50">
           <FolderOpen size={16} />
         </button>
       </div>
@@ -301,12 +305,12 @@ export default function SplitPanel({
 
       {/* Action */}
       <button
-        disabled={isProcessing}
+        disabled={isProcessing || isBulkExecuting}
         onClick={handleSplit}
         className="w-full py-2.5 bg-brand-600 hover:bg-brand-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-brand-900/30 flex items-center justify-center gap-2"
       >
         <SplitSquareHorizontal size={15} />
-        {isProcessing ? 'Splitting…' : `Split into ~${estimatedCount || '?'} Clips`}
+        {isProcessing ? 'Splitting…' : isBulkExecuting ? 'Bulk Export in Progress…' : `Split into ~${estimatedCount || '?'} Clips`}
       </button>
     </div>
   )
