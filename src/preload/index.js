@@ -41,6 +41,14 @@ contextBridge.exposeInMainWorld('api', {
   notifyOnline: () => ipcRenderer.invoke('license:networkOnline'),
   onLicenseStatusChanged: (cb) => ipcRenderer.on('license:statusChanged', (_, data) => cb(data)),
 
+  // ── Page Profiles (Phase 2A) ───────────────────────────────────────────────
+  getProfiles: () => ipcRenderer.invoke('profile:list'),
+  createProfile: (data) => ipcRenderer.invoke('profile:create', data),
+  updateProfile: (id, updates) => ipcRenderer.invoke('profile:update', { id, updates }),
+  deleteProfile: (id) => ipcRenderer.invoke('profile:delete', id),
+  duplicateProfile: (id) => ipcRenderer.invoke('profile:duplicate', id),
+  setSelectedProfile: (id) => ipcRenderer.invoke('profile:setSelected', id),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

@@ -14,6 +14,7 @@ const tests = [
   'crash-reporter.test.js',
   'variation.test.js',
   'variation-integration.test.js',
+  'profiles.test.js',
 ];
 
 console.log('======================================================');

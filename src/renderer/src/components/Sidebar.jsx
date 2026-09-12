@@ -9,6 +9,7 @@ import {
   Sparkles,
   Layers,
   ArrowUpRight,
+  Globe,
 } from 'lucide-react'
 
 const NAV = [
@@ -17,6 +18,7 @@ const NAV = [
   { id: 'cut',            label: 'Cut Clip',      icon: Scissors },
   { id: 'reel',           label: 'Make Reel',     icon: Film },
   { id: 'split',          label: 'Split',         icon: SplitSquareHorizontal },
+  { id: 'profiles',       label: 'Page Profiles', icon: Globe },
   { id: 'ai_thumbnails',  label: 'AI Thumbnails', icon: Sparkles, pro: true },
   { id: 'batch_queue',    label: 'Batch Queue',   icon: Layers,   pro: true },
   { id: 'settings',       label: 'Settings',      icon: Settings },
@@ -44,7 +46,7 @@ export default function Sidebar({ view, setView, hasVideo, licenseTier = 'standa
       <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
         {NAV.map(({ id, label, icon: Icon, pro }) => {
           const isActive = view === id
-          const disabled = id !== 'drop' && id !== 'settings' && id !== 'ai_thumbnails' && id !== 'batch_queue' && !hasVideo
+          const disabled = id !== 'drop' && id !== 'settings' && id !== 'ai_thumbnails' && id !== 'batch_queue' && id !== 'profiles' && !hasVideo
           return (
             <button
               key={id}

@@ -12,6 +12,7 @@ import OfflineBanner from './components/OfflineBanner'
 import UpgradeModal from './components/UpgradeModal'
 import ProFeaturePlaceholder from './components/ProFeaturePlaceholder'
 import BatchQueuePanel from './components/BatchQueuePanel'
+import PageProfilesPanel from './components/PageProfilesPanel'
 import UpdateNotification from './components/UpdateNotification'
 import { Loader2 } from 'lucide-react'
 import { hasFeature } from './utils/features'
@@ -287,6 +288,13 @@ export default function App() {
             </div>
           )}
 
+          {/* Page Profiles View */}
+          {view === 'profiles' && (
+            <div className="flex-1 overflow-y-auto p-6">
+              <PageProfilesPanel />
+            </div>
+          )}
+
           {/* Drop view — full panel */}
           {view === 'drop' && (
             <VideoDropzone onFileLoaded={handleFileLoaded} />
@@ -297,6 +305,7 @@ export default function App() {
             view !== 'settings' &&
             view !== 'ai_thumbnails' &&
             view !== 'batch_queue' &&
+            view !== 'profiles' &&
             hasVideo && (
               <div className="flex-1 overflow-y-auto p-6 space-y-5">
                 <VideoInfo

@@ -18,6 +18,14 @@ import {
 import { hasFeature } from '../shared/features'
 import { getBatchQueueManager } from '../engine/batchQueue'
 import { getAppUpdater, markJobStarted, markJobFinished } from './updater'
+import {
+  listProfiles,
+  createProfile,
+  updateProfile,
+  deleteProfile,
+  duplicateProfile,
+  setSelectedProfile,
+} from './profiles/profileManager'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -752,4 +760,61 @@ ipcMain.handle('updater:getStatus', async () => {
 ipcMain.handle('app:getVersion', () => {
   return app.getVersion()
 })
+
+// ─── Page Profile IPC Handlers (Phase 2A) ───────────────────────────────────
+
+ipcMain.handle('profile:list', async () => {
+  try {
+    const list = listProfiles()
+    return { success: true, selectedProfileId: list.selectedProfileId, profiles: [...list] }
+  } catch (err) {
+    return { success: false, error: err.message, profiles: [], selectedProfileId: null }
+  }
+})
+
+ipcMain.handle('profile:create', async (_, input) => {
+  try {
+    const profile = createProfile(input)
+    return { success: true, profile }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:update', async (_, { id, updates }) => {
+  try {
+    const profile = updateProfile(id, updates)
+    return { success: true, profile }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:delete', async (_, id) => {
+  try {
+    const ok = deleteProfile(id)
+    return { success: ok }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:duplicate', async (_, id) => {
+  try {
+    const profile = duplicateProfile(id)
+    return { success: true, profile }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:setSelected', async (_, id) => {
+  try {
+    const selectedProfileId = setSelectedProfile(id)
+    return { success: true, selectedProfileId }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
 
