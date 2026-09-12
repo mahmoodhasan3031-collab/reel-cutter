@@ -54,6 +54,17 @@ contextBridge.exposeInMainWorld('api', {
   cancelBulkJob: (jobId) => ipcRenderer.invoke('profile:cancelJob', jobId),
   getBulkVariationTemplates: () => ipcRenderer.invoke('profile:getTemplates'),
 
+  // ── Scheduler (Phase 3A) ───────────────────────────────────────────────────
+  createSchedule: (data) => ipcRenderer.invoke('schedule:create', data),
+  getSchedules: () => ipcRenderer.invoke('schedule:list'),
+  getSchedule: (id) => ipcRenderer.invoke('schedule:get', id),
+  cancelSchedule: (id) => ipcRenderer.invoke('schedule:cancel', id),
+  deleteSchedule: (id) => ipcRenderer.invoke('schedule:delete', id),
+  pauseSchedule: (id) => ipcRenderer.invoke('schedule:pause', id),
+  resumeSchedule: (id) => ipcRenderer.invoke('schedule:resume', id),
+  onScheduleUpdate: (cb) => ipcRenderer.on('schedule:update', (_, data) => cb(data)),
+  onScheduleProgress: (cb) => ipcRenderer.on('schedule:progress', (_, data) => cb(data)),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

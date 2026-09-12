@@ -13,6 +13,7 @@ import UpgradeModal from './components/UpgradeModal'
 import ProFeaturePlaceholder from './components/ProFeaturePlaceholder'
 import BatchQueuePanel from './components/BatchQueuePanel'
 import PageProfilesPanel from './components/PageProfilesPanel'
+import SchedulePanel from './components/SchedulePanel'
 import UpdateNotification from './components/UpdateNotification'
 import { Loader2 } from 'lucide-react'
 import { hasFeature } from './utils/features'
@@ -295,6 +296,16 @@ export default function App() {
             </div>
           )}
 
+          {/* Schedule View (Phase 3A) */}
+          {view === 'schedule' && (
+            <div className="flex-1 overflow-y-auto p-6">
+              <SchedulePanel
+                defaultVideoPath={videoPath}
+                defaultExportType="cut"
+              />
+            </div>
+          )}
+
           {/* Drop view — full panel */}
           {view === 'drop' && (
             <VideoDropzone onFileLoaded={handleFileLoaded} />
@@ -306,6 +317,7 @@ export default function App() {
             view !== 'ai_thumbnails' &&
             view !== 'batch_queue' &&
             view !== 'profiles' &&
+            view !== 'schedule' &&
             hasVideo && (
               <div className="flex-1 overflow-y-auto p-6 space-y-5">
                 <VideoInfo

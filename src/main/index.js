@@ -28,6 +28,16 @@ import {
 } from './profiles/profileManager'
 import { createBulkExportPlan, BULK_VARIATION_TEMPLATES } from './profiles/exportPlan'
 import { executeBulkExport, cancelBulkExport, cancelBulkJob } from './profiles/bulkExecutor'
+import {
+  createSchedule,
+  getSchedules,
+  getSchedule,
+  cancelSchedule,
+  deleteSchedule,
+  pauseSchedule,
+  resumeSchedule,
+} from './scheduler/scheduleManager'
+import { getSchedulerService } from './scheduler/schedulerService'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -164,6 +174,16 @@ app.whenReady().then(() => {
     mainWindow?.webContents.send('license:statusChanged', status)
   })
 
+  // Wire Scheduler Service (Phase 3A)
+  const scheduler = getSchedulerService()
+  scheduler.start()
+  scheduler.on('scheduleUpdate', (schedule) => {
+    mainWindow?.webContents.send('schedule:update', schedule)
+  })
+  scheduler.on('scheduleProgress', ({ id, progress }) => {
+    mainWindow?.webContents.send('schedule:progress', { id, progress })
+  })
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -171,6 +191,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   stopBackgroundLicenseHeartbeat()
+  try { getSchedulerService().stop() } catch (_) {}
   // Cancel all active batch jobs to avoid orphan FFmpeg processes
   try { getBatchQueueManager().cancelAll() } catch (_) {}
   if (process.platform !== 'darwin') app.quit()
@@ -859,4 +880,69 @@ ipcMain.handle('profile:getTemplates', async () => {
   return { success: true, templates: BULK_VARIATION_TEMPLATES }
 })
 
+// ─── Scheduler IPC Handlers (Phase 3A) ───────────────────────────────────────
 
+ipcMain.handle('schedule:create', async (_, input) => {
+  try {
+    const schedule = createSchedule(input)
+    return { success: true, schedule }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('schedule:list', async () => {
+  try {
+    const schedules = getSchedules()
+    return { success: true, schedules }
+  } catch (err) {
+    return { success: false, error: err.message, schedules: [] }
+  }
+})
+
+ipcMain.handle('schedule:get', async (_, id) => {
+  try {
+    const schedule = getSchedule(id)
+    if (!schedule) return { success: false, error: `Schedule not found: ${id}` }
+    return { success: true, schedule }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('schedule:cancel', async (_, id) => {
+  try {
+    const scheduler = getSchedulerService()
+    const schedule = scheduler.cancelScheduleJob(id)
+    return { success: true, schedule }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('schedule:delete', async (_, id) => {
+  try {
+    const ok = deleteSchedule(id)
+    return { success: ok }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('schedule:pause', async (_, id) => {
+  try {
+    const schedule = pauseSchedule(id)
+    return { success: true, schedule }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('schedule:resume', async (_, id) => {
+  try {
+    const schedule = resumeSchedule(id)
+    return { success: true, schedule }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})

@@ -20,6 +20,7 @@ const tests = [
   'bulk-export-executor.test.js',
   'bulk-export-ux-integration.test.js',
   'bulk-variation-control.test.js',
+  'scheduler.test.js',
 ];
 
 console.log('======================================================');
