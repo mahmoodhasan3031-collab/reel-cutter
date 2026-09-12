@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { SplitSquareHorizontal, FolderOpen, CheckCircle, AlertCircle, Film, Sparkles, Lock, Image } from 'lucide-react'
 import ProgressBar from './ProgressBar'
 import { hasFeature } from '../utils/features'
+import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
 
 export default function SplitPanel({
   videoPath,
@@ -23,6 +24,7 @@ export default function SplitPanel({
   const [splitProgress, setSplitProgress] = useState(null)
   const [error, setError]         = useState(null)
   const [done, setDone]           = useState(false)
+  const [variation, setVariation] = useState(DEFAULT_VARIATION_STATE)
 
   const canThumbnail = hasFeature(licenseTier, 'ai_thumbnails')
 
@@ -64,6 +66,7 @@ export default function SplitPanel({
       mode,
       generateThumbnail: canThumbnail && generateThumbnail,
       thumbnailTitle: thumbnailTitle.trim() || undefined,
+      variation: variation.enabled ? variation : undefined,
     })
 
     setIsProcessing(false)
@@ -198,6 +201,13 @@ export default function SplitPanel({
           </div>
         )}
       </div>
+
+      {/* Content Variation (Phase 1B) */}
+      <ContentVariationSection
+        variation={variation}
+        onChange={setVariation}
+        disabled={isProcessing}
+      />
 
       {/* Output dir */}
       <div className="flex gap-2">

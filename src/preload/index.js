@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('api', {
   cut: (opts) => ipcRenderer.invoke('video:cut', opts),
   reel: (opts) => ipcRenderer.invoke('video:reel', opts),
   split: (opts) => ipcRenderer.invoke('video:split', opts),
+  applyContentVariation: (opts) => ipcRenderer.invoke('video:variation', opts),
+  variation: (opts) => ipcRenderer.invoke('video:variation', opts),
 
   // ── Pro Video Features (Tier Gated) ───────────────────────────────────────
   generateThumbnail: (opts) => ipcRenderer.invoke('video:generateThumbnail', opts),

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Film, CheckCircle, AlertCircle, FolderOpen, Lock, Sparkles } from 'lucide-react'
 import ProgressBar from './ProgressBar'
 import { hasFeature } from '../utils/features'
+import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
 
 const ASPECT_RATIOS = [
   { id: '9:16', label: '9:16', desc: 'Reels / Shorts', minTier: 'basic' },
@@ -75,6 +76,7 @@ export default function ReelPanel({
   const [thumbPreviewUrl, setThumbPreviewUrl] = useState(null)
   const [result, setResult]           = useState(null)
   const [error, setError]             = useState(null)
+  const [variation, setVariation]     = useState(DEFAULT_VARIATION_STATE)
 
   const canAllAspects = hasFeature(licenseTier, 'all_aspect_ratios')
   const canSmartCrop = hasFeature(licenseTier, 'smart_crop')
@@ -122,6 +124,7 @@ export default function ReelPanel({
       aspectRatio,
       generateThumbnail: canThumbnail && generateThumbnail,
       thumbnailTitle: thumbnailTitle.trim() || undefined,
+      variation: variation.enabled ? variation : undefined,
     })
 
     setIsProcessing(false)
@@ -291,6 +294,13 @@ export default function ReelPanel({
           </div>
         )}
       </div>
+
+      {/* Content Variation (Phase 1B) */}
+      <ContentVariationSection
+        variation={variation}
+        onChange={setVariation}
+        disabled={isProcessing}
+      />
 
       {/* Output */}
       <div className="flex gap-2">

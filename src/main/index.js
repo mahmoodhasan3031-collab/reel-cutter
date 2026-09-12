@@ -5,6 +5,7 @@ import { getVideoMetadata } from '../engine/probe'
 import { cutClip, splitIntoReels } from '../engine/cutter'
 import { resolveDimensions } from '../engine/formatter'
 import { generateProThumbnail } from '../engine/thumbnailGenerator'
+import { runVariationPipeline, validateProductVariationConfig } from '../engine/variation'
 import {
   validateStartup,
   activateLicense,
@@ -232,7 +233,7 @@ ipcMain.handle('video:probe', async (_, filePath) => {
 // ─── Video: Cut ──────────────────────────────────────────────────────────────
 
 ipcMain.handle('video:cut', async (_, opts) => {
-  const { inputPath, outputPath, start, duration, end, reel, mode, resolution, customDuration, generateThumbnail, thumbnailTitle } = opts
+  const { inputPath, outputPath, start, duration, end, reel, mode, resolution, customDuration, generateThumbnail, thumbnailTitle, variation } = opts
   try {
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
@@ -254,6 +255,12 @@ ipcMain.handle('video:cut', async (_, opts) => {
       return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
     }
 
+    let validatedVariation = null
+    if (variation && variation.enabled) {
+      const res = validateProductVariationConfig(variation)
+      validatedVariation = res.config
+    }
+
     markJobStarted()
     try {
       const result = await cutClip(inputPath, outputPath, {
@@ -266,6 +273,7 @@ ipcMain.handle('video:cut', async (_, opts) => {
         height: resolution === '4k' ? 3840 : opts.height,
         generateThumbnail: !!generateThumbnail,
         thumbnailTitle,
+        variation: validatedVariation,
         onProgress: (percent) => {
           mainWindow?.webContents.send('video:progress', { percent, operation: 'cut' })
         }
@@ -289,7 +297,7 @@ ipcMain.handle('video:cut', async (_, opts) => {
 // ─── Video: Reel ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('video:reel', async (_, opts) => {
-  const { inputPath, outputPath, start, duration, mode, aspectRatio, generateThumbnail, thumbnailTitle } = opts
+  const { inputPath, outputPath, start, duration, mode, aspectRatio, generateThumbnail, thumbnailTitle, variation } = opts
   try {
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
@@ -310,6 +318,12 @@ ipcMain.handle('video:reel', async (_, opts) => {
       return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
     }
 
+    let validatedVariation = null
+    if (variation && variation.enabled) {
+      const res = validateProductVariationConfig(variation)
+      validatedVariation = res.config
+    }
+
     markJobStarted()
     try {
       const { width, height } = resolveDimensions(aspectRatio || '9:16', opts.resolution || '1080p')
@@ -322,6 +336,7 @@ ipcMain.handle('video:reel', async (_, opts) => {
         height,
         generateThumbnail: !!generateThumbnail,
         thumbnailTitle,
+        variation: validatedVariation,
         onProgress: (percent) => {
           mainWindow?.webContents.send('video:progress', { percent, operation: 'reel' })
         }
@@ -345,7 +360,7 @@ ipcMain.handle('video:reel', async (_, opts) => {
 // ─── Video: Split ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('video:split', async (_, opts) => {
-  const { inputPath, outputDir, interval, reel, mode, generateThumbnail, thumbnailTitle } = opts
+  const { inputPath, outputDir, interval, reel, mode, generateThumbnail, thumbnailTitle, variation } = opts
   try {
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
@@ -358,6 +373,12 @@ ipcMain.handle('video:split', async (_, opts) => {
       return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
     }
 
+    let validatedVariation = null
+    if (variation && variation.enabled) {
+      const res = validateProductVariationConfig(variation)
+      validatedVariation = res.config
+    }
+
     markJobStarted()
     try {
       const results = await splitIntoReels(inputPath, outputDir, {
@@ -366,6 +387,7 @@ ipcMain.handle('video:split', async (_, opts) => {
         mode: mode || 'blur',
         generateThumbnail: !!generateThumbnail,
         thumbnailTitle,
+        variation: validatedVariation,
         onOverallProgress: ({ current, total, start, duration }) => {
           const percent = Math.round((current / total) * 100)
           mainWindow?.webContents.send('video:progress', {
@@ -388,6 +410,54 @@ ipcMain.handle('video:split', async (_, opts) => {
     }
   } catch (err) {
     mainWindow?.webContents.send('video:error', { operation: 'split', error: err.message })
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Video: Content Variation (Phase 1B) ────────────────────────────────────
+
+ipcMain.handle('video:variation', async (_, opts) => {
+  const { inputPath, outputPath, variation } = opts || {}
+  try {
+    const license = await getLicenseInfo()
+    const tier = license.isValid ? license.tier : null
+
+    if (!hasFeature(tier, 'cutting')) {
+      return { success: false, error: 'Content variation requires an active license.' }
+    }
+
+    const { config: validatedVariation } = validateProductVariationConfig(variation || opts)
+
+    markJobStarted()
+    try {
+      const result = await runVariationPipeline({
+        inputPath,
+        outputPath,
+        color: validatedVariation.color,
+        audio: validatedVariation.audio,
+        speed: validatedVariation.speedConfig,
+        reframe: validatedVariation.reframe,
+        metadata: validatedVariation.metadata,
+        onProgress: (percent) => {
+          mainWindow?.webContents.send('video:progress', { percent, operation: 'variation' })
+        }
+      })
+      mainWindow?.webContents.send('video:done', {
+        operation: 'variation',
+        outputPath: result.outputPath,
+        duration: result.duration,
+      })
+      return {
+        success: true,
+        outputPath: result.outputPath,
+        duration: result.duration,
+        transformationsApplied: result.transformationsApplied,
+      }
+    } finally {
+      markJobFinished()
+    }
+  } catch (err) {
+    mainWindow?.webContents.send('video:error', { operation: 'variation', error: err.message })
     return { success: false, error: err.message }
   }
 })

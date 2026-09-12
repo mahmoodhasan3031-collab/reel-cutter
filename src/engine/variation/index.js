@@ -6,6 +6,7 @@ const { validateAudioConfig, buildAudioFilter, AUDIO_DEFAULTS, AUDIO_LIMITS } = 
 const { validateSpeedConfig, buildSpeedFilters, SPEED_DEFAULTS, SPEED_LIMITS } = require('./speed');
 const { validateReframeConfig, buildReframeFilter, REFRAME_DEFAULTS, REFRAME_MODES, REFRAME_LIMITS } = require('./reframe');
 const { validateMetadataConfig, buildMetadataOptions, METADATA_DEFAULTS } = require('./metadata');
+const { validateProductVariationConfig, PRODUCT_VARIATION_LIMITS, DEFAULT_PRODUCT_VARIATION } = require('./validator');
 
 module.exports = {
   runVariationPipeline,
@@ -30,4 +31,7 @@ module.exports = {
   validateMetadataConfig,
   buildMetadataOptions,
   METADATA_DEFAULTS,
+  validateProductVariationConfig,
+  PRODUCT_VARIATION_LIMITS,
+  DEFAULT_PRODUCT_VARIATION,
 };

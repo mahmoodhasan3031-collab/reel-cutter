@@ -103,6 +103,46 @@ async function _buildCutCommand(inputPath, outputPath, options, metadata, durati
   if (startSeconds > 0) command = command.setStartTime(startSeconds);
   if (durationSeconds > 0) command = command.setDuration(durationSeconds);
 
+  // Content Variation filter resolution (Phase 1B)
+  const varVideoFilters = [];
+  const varAudioFilters = [];
+  let metaOutputOptions = [];
+
+  if (options.variation && options.variation.enabled) {
+    const {
+      validateProductVariationConfig,
+      buildColorFilter,
+      buildAudioFilter,
+      buildSpeedFilters,
+      buildReframeFilter,
+      buildMetadataOptions,
+    } = require('./variation');
+
+    const { config: varConfig } = validateProductVariationConfig(options.variation);
+
+    const reframeRes = buildReframeFilter(varConfig.reframe, metadata);
+    const colorRes = buildColorFilter(varConfig.color);
+    const speedRes = buildSpeedFilters(varConfig.speedConfig, metadata);
+    const audioRes = buildAudioFilter(varConfig.audio, metadata);
+    const metaRes = buildMetadataOptions(varConfig.metadata);
+
+    if (reframeRes.isEnabled) varVideoFilters.push(...reframeRes.filters);
+    if (colorRes.isEnabled) varVideoFilters.push(...colorRes.filters);
+    if (speedRes.isEnabled) varVideoFilters.push(...speedRes.videoFilters);
+
+    const hasAudio = Boolean(metadata && metadata.audio && metadata.audio.channels > 0);
+    if (hasAudio && speedRes.isEnabled && speedRes.audioFilters.length > 0) {
+      varAudioFilters.push(...speedRes.audioFilters);
+    }
+    if (hasAudio && audioRes.isEnabled && audioRes.filters.length > 0) {
+      varAudioFilters.push(...audioRes.filters);
+    }
+
+    if (metaRes.isEnabled) {
+      metaOutputOptions = metaRes.outputOptions;
+    }
+  }
+
   if (options.reel) {
     const mode = (options.mode || 'blur').toLowerCase();
     const width = options.width || 1080;
@@ -118,8 +158,9 @@ async function _buildCutCommand(inputPath, outputPath, options, metadata, durati
           metadata.height || 720,
           { outWidth: width, outHeight: height }
         );
+        const filters = [smartFilter.filter, ...varVideoFilters];
         command = command
-          .videoFilters(smartFilter.filter)
+          .videoFilters(filters)
           .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
 
         if (smartFilter.fallback) {
@@ -128,27 +169,41 @@ async function _buildCutCommand(inputPath, outputPath, options, metadata, durati
       } catch (smartErr) {
         console.warn('[Cutter] Smart Crop analysis error, using centre crop fallback:', smartErr.message);
         const { filter } = buildReelFilter({ mode: 'crop', width, height });
+        const filters = [filter, ...varVideoFilters];
         command = command
-          .videoFilters(filter)
+          .videoFilters(filters)
           .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
       }
     } else if (mode === 'blur') {
+      const varChain = varVideoFilters.length > 0 ? `,${varVideoFilters.join(',')}` : '';
       const complexFilterStr =
         `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=20:5[bg];` +
         `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease[fg];` +
-        `[bg][fg]overlay=(W-w)/2:(H-h)/2[outv]`;
+        `[bg][fg]overlay=(W-w)/2:(H-h)/2${varChain}[outv]`;
       command = command
         .complexFilter(complexFilterStr)
         .outputOptions(['-map [outv]', '-map 0:a?', '-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
     } else {
       const { filter } = buildReelFilter({ mode, width, height });
+      const filters = [filter, ...varVideoFilters];
       command = command
-        .videoFilters(filter)
+        .videoFilters(filters)
         .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
     }
   } else {
+    if (varVideoFilters.length > 0) {
+      command = command.videoFilters(varVideoFilters);
+    }
     command = command
       .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 22', '-c:a aac', '-b:a 192k']);
+  }
+
+  if (varAudioFilters.length > 0) {
+    command = command.audioFilters(varAudioFilters);
+  }
+
+  if (metaOutputOptions.length > 0) {
+    command = command.outputOptions(metaOutputOptions);
   }
 
   return { command };
@@ -211,6 +266,7 @@ async function splitIntoReels(inputPath, outputDir, options = {}) {
       height: options.height,
       generateThumbnail: options.generateThumbnail,
       thumbnailTitle: options.thumbnailTitle ? `${options.thumbnailTitle} Part ${i + 1}` : undefined,
+      variation: options.variation,
     });
 
     results.push({

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Scissors, FolderOpen, CheckCircle, AlertCircle, Lock, Sparkles } from 'lucide-react'
 import ProgressBar from './ProgressBar'
 import { hasFeature } from '../utils/features'
+import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
 
 export default function CutPanel({
   videoPath,
@@ -26,6 +27,7 @@ export default function CutPanel({
   const [thumbPreviewUrl, setThumbPreviewUrl] = useState(null)
   const [result, setResult]           = useState(null)
   const [error, setError]             = useState(null)
+  const [variation, setVariation]     = useState(DEFAULT_VARIATION_STATE)
 
   const can4K = hasFeature(licenseTier, '4k_export')
   const canCustomDurations = hasFeature(licenseTier, 'custom_durations')
@@ -72,6 +74,7 @@ export default function CutPanel({
       customDuration: isCustom,
       generateThumbnail: canThumbnail && generateThumbnail,
       thumbnailTitle: thumbnailTitle.trim() || undefined,
+      variation: variation.enabled ? variation : undefined,
     })
 
     setIsProcessing(false)
@@ -316,6 +319,13 @@ export default function CutPanel({
           </div>
         )}
       </div>
+
+      {/* Content Variation (Phase 1B) */}
+      <ContentVariationSection
+        variation={variation}
+        onChange={setVariation}
+        disabled={isProcessing}
+      />
 
       {/* Output */}
       <div className="flex gap-2">

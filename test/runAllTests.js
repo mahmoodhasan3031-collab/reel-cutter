@@ -13,6 +13,7 @@ const tests = [
   'e2e-payment-email.test.js',
   'crash-reporter.test.js',
   'variation.test.js',
+  'variation-integration.test.js',
 ];
 
 console.log('======================================================');
