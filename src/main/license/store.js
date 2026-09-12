@@ -151,6 +151,10 @@ function saveLicenseData(licenseData, customDir) {
  * @returns {Object|null}
  */
 function loadLicenseData(customDir) {
+  if (app && typeof app.isReady === 'function' && !app.isReady()) {
+    return null;
+  }
+
   const filePath = getLicenseFilePath(customDir);
   if (!fs.existsSync(filePath)) {
     return null;
