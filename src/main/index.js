@@ -46,6 +46,15 @@ import {
 } from './scheduler/bulkScheduleManager'
 import { getSchedulerService } from './scheduler/schedulerService'
 import { validateTextOverlayConfig, createDefaultOverlay } from '../engine/textOverlayValidator'
+import {
+  getCaptionTemplates,
+  getCaptionTemplate,
+  createCaptionTemplate,
+  updateCaptionTemplate,
+  deleteCaptionTemplate,
+  duplicateCaptionTemplate,
+  resetCaptionTemplates,
+} from './captions/captionTemplateManager'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -1050,6 +1059,72 @@ ipcMain.handle('text-overlay:defaults', async () => {
   try {
     const overlay = createDefaultOverlay()
     return { success: true, overlay }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Caption Templates: Library & CRUD (Phase 4B-1) ──────────────────────────
+
+ipcMain.handle('caption-template:list', async () => {
+  try {
+    const templates = getCaptionTemplates()
+    return { success: true, templates }
+  } catch (err) {
+    return { success: false, error: err.message, templates: [] }
+  }
+})
+
+ipcMain.handle('caption-template:get', async (_, id) => {
+  try {
+    const template = getCaptionTemplate(id)
+    if (!template) return { success: false, error: 'Caption template not found' }
+    return { success: true, template }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-template:create', async (_, data) => {
+  try {
+    const template = createCaptionTemplate(data)
+    return { success: true, template }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-template:update', async (_, { id, data } = {}) => {
+  try {
+    const template = updateCaptionTemplate(id, data)
+    return { success: true, template }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-template:delete', async (_, id) => {
+  try {
+    const result = deleteCaptionTemplate(id)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-template:duplicate', async (_, { id, data } = {}) => {
+  try {
+    const template = duplicateCaptionTemplate(id, data)
+    return { success: true, template }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-template:reset', async () => {
+  try {
+    const templates = resetCaptionTemplates()
+    return { success: true, templates }
   } catch (err) {
     return { success: false, error: err.message }
   }

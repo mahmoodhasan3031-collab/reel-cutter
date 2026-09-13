@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react'
+import CaptionTemplateLibrary from './CaptionTemplateLibrary'
 
 const FONT_FAMILIES = ['Arial', 'Verdana', 'Tahoma', 'Georgia', 'Times New Roman', 'Courier New']
 const POSITIONS = ['top', 'center', 'bottom', 'custom']
@@ -450,6 +451,17 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
     setActiveId(null)
   }
 
+  const handleApplyTemplate = (templateOverlays) => {
+    if (!templateOverlays || templateOverlays.length === 0) return
+    const mapped = templateOverlays.map((o) => ({
+      ...o,
+      id: makeId(),
+    }))
+    onChange(mapped)
+    setEnabled(true)
+    setActiveId(mapped[0]?.id || null)
+  }
+
   const activeOverlay = overlays.find((o) => o.id === activeId) || null
 
   return (
@@ -483,6 +495,13 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
 
       {enabled && (
         <>
+          {/* Caption Templates Library (Phase 4B-1) */}
+          <CaptionTemplateLibrary
+            currentOverlays={overlays}
+            onApplyTemplate={handleApplyTemplate}
+            disabled={disabled}
+          />
+
           {/* Preview */}
           <OverlayPreview overlays={overlays} />
 

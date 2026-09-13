@@ -74,6 +74,15 @@ contextBridge.exposeInMainWorld('api', {
   validateTextOverlays: (overlays) => ipcRenderer.invoke('text-overlay:validate', overlays),
   getTextOverlayDefaults: () => ipcRenderer.invoke('text-overlay:defaults'),
 
+  // ── Caption Templates (Phase 4B-1) ─────────────────────────────────────────
+  getCaptionTemplates: () => ipcRenderer.invoke('caption-template:list'),
+  getCaptionTemplate: (id) => ipcRenderer.invoke('caption-template:get', id),
+  createCaptionTemplate: (data) => ipcRenderer.invoke('caption-template:create', data),
+  updateCaptionTemplate: (id, data) => ipcRenderer.invoke('caption-template:update', { id, data }),
+  deleteCaptionTemplate: (id) => ipcRenderer.invoke('caption-template:delete', id),
+  duplicateCaptionTemplate: (id, data) => ipcRenderer.invoke('caption-template:duplicate', { id, data }),
+  resetCaptionTemplates: () => ipcRenderer.invoke('caption-template:reset'),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

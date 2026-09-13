@@ -24,6 +24,7 @@ const tests = [
   'schedule-management.test.js',
   'bulk-scheduling.test.js',
   'text-overlay.test.js',
+  'caption-template.test.js',
 ];
 
 console.log('======================================================');
