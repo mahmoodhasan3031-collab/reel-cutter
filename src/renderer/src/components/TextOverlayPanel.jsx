@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import CaptionTemplateLibrary from './CaptionTemplateLibrary'
+import AiCaptionGenerator from './AiCaptionGenerator'
 
 const FONT_FAMILIES = ['Arial', 'Verdana', 'Tahoma', 'Georgia', 'Times New Roman', 'Courier New']
 const POSITIONS = ['top', 'center', 'bottom', 'custom']
@@ -400,6 +401,7 @@ const inputStyle = {
 export default function TextOverlayPanel({ overlays = [], onChange, disabled = false }) {
   const [enabled, setEnabled] = useState(overlays.length > 0)
   const [activeId, setActiveId] = useState(null)
+  const [aiModalOpen, setAiModalOpen] = useState(false)
 
   const MAX_OVERLAYS = 5
 
@@ -462,6 +464,23 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
     setActiveId(mapped[0]?.id || null)
   }
 
+  const handleApplyAiCaption = (captionText) => {
+    if (!captionText) return
+    if (overlays.length === 0) {
+      const newOverlay = createDefaultOverlay({ text: captionText })
+      onChange([newOverlay])
+      setEnabled(true)
+      setActiveId(newOverlay.id)
+    } else {
+      const targetId = activeId || overlays[0].id
+      const updated = overlays.map((o) =>
+        o.id === targetId ? { ...o, text: captionText, enabled: true } : o
+      )
+      onChange(updated)
+      setActiveId(targetId)
+    }
+  }
+
   const activeOverlay = overlays.find((o) => o.id === activeId) || null
 
   return (
@@ -488,7 +507,7 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
               onChange={(e) => !disabled && handleEnable(e.target.checked)}
               disabled={disabled}
             />
-            Enable Text Overlay
+              Enable Text Overlay
           </label>
         </div>
       </div>
@@ -517,19 +536,58 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
             />
           ))}
 
-          {/* Add button */}
-          {overlays.length < MAX_OVERLAYS ? (
-            <button onClick={addOverlay} style={{
-              width: '100%', padding: '8px 0', marginBottom: 10,
-              background: '#1e1e35', border: '1px dashed #5c4df0',
-              borderRadius: 6, color: '#7c6af7', fontSize: 13, cursor: 'pointer',
-            }}>
-              + Add Text Overlay
+          {/* Add overlay & AI Generator buttons */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            {overlays.length < MAX_OVERLAYS && (
+              <button
+                type="button"
+                onClick={addOverlay}
+                disabled={disabled}
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  background: '#1e1e35',
+                  border: '1px dashed #5c4df0',
+                  borderRadius: 6,
+                  color: '#7c6af7',
+                  fontSize: 13,
+                  cursor: disabled ? 'not-allowed' : 'pointer',
+                }}
+              >
+                + Add Text Overlay
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setAiModalOpen(true)}
+              disabled={disabled}
+              title="Generate captions using AI"
+              style={{
+                flex: overlays.length >= MAX_OVERLAYS ? 'none' : 1,
+                width: overlays.length >= MAX_OVERLAYS ? '100%' : 'auto',
+                padding: '8px 12px',
+                background: 'linear-gradient(135deg, #2a2050 0%, #3e276b 100%)',
+                border: '1px solid #7c6af7',
+                borderRadius: 6,
+                color: '#d6caff',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                boxShadow: '0 2px 8px rgba(124, 106, 247, 0.25)',
+              }}
+            >
+              <span>✨</span> AI Captions
             </button>
-          ) : (
+          </div>
+
+          {overlays.length >= MAX_OVERLAYS && (
             <div style={{
               textAlign: 'center', color: '#888', fontSize: 12,
-              padding: '6px 0', marginBottom: 10,
+              padding: '2px 0 8px 0', marginBottom: 6,
             }}>
               Maximum 5 text overlays reached
             </div>
@@ -539,6 +597,14 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
           {activeOverlay && (
             <OverlayEditor overlay={activeOverlay} onChange={updateOverlay} />
           )}
+
+          {/* AI Caption Generator Modal */}
+          <AiCaptionGenerator
+            isOpen={aiModalOpen}
+            onClose={() => setAiModalOpen(false)}
+            onApplyCaption={handleApplyAiCaption}
+            disabled={disabled}
+          />
         </>
       )}
     </div>

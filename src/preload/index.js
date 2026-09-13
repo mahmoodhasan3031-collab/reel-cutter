@@ -83,6 +83,11 @@ contextBridge.exposeInMainWorld('api', {
   duplicateCaptionTemplate: (id, data) => ipcRenderer.invoke('caption-template:duplicate', { id, data }),
   resetCaptionTemplates: () => ipcRenderer.invoke('caption-template:reset'),
 
+  // ── AI Caption Generator (Phase 4B-5) ──────────────────────────────────────
+  generateAiCaptions: (request) => ipcRenderer.invoke('ai-caption:generate', request),
+  getAiCaptionStatus: () => ipcRenderer.invoke('ai-caption:getStatus'),
+  generateBulkAiCaptions: (data) => ipcRenderer.invoke('ai-caption:generateBulk', data),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

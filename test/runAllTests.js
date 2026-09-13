@@ -28,6 +28,7 @@ const tests = [
   'caption-preset-editor.test.js',
   'profile-caption-template.test.js',
   'bulk-caption-integration.test.js',
+  'ai-caption.test.js',
 ];
 
 console.log('======================================================');

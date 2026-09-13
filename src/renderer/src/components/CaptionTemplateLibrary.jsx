@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import CaptionPresetEditor from './CaptionPresetEditor'
+import AiCaptionGenerator from './AiCaptionGenerator'
 
 /**
  * CaptionTemplateLibrary (Phase 4B-1, updated Phase 4B-2)
@@ -38,6 +39,9 @@ export default function CaptionTemplateLibrary({
   const [presetEditorOpen, setPresetEditorOpen] = useState(false)
   const [presetEditorMode, setPresetEditorMode] = useState('create') // 'create' | 'edit'
   const [presetEditorTemplate, setPresetEditorTemplate] = useState(null)
+
+  // Phase 4B-5: AI Caption Generator state
+  const [aiModalOpen, setAiModalOpen] = useState(false)
 
   // Fetch templates from main process
   const loadTemplates = useCallback(async () => {
@@ -276,6 +280,28 @@ export default function CaptionTemplateLibrary({
         </div>
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setAiModalOpen(true)}
+            disabled={disabled || actionLoading}
+            title="Generate custom captions with AI"
+            style={{
+              background: 'linear-gradient(135deg, #2b2559 0%, #3e266a 100%)',
+              border: '1px solid #7c6af7',
+              borderRadius: 5,
+              color: '#d6caff',
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '4px 10px',
+              cursor: disabled || actionLoading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <span>✨</span> AI Captions
+          </button>
+
           <button
             type="button"
             onClick={() => handleOpenPresetEditor(null, 'create')}
@@ -668,6 +694,44 @@ export default function CaptionTemplateLibrary({
           onCancel={handlePresetEditorCancel}
         />
       )}
+
+      {/* ── AI Caption Generator Modal (Phase 4B-5) ── */}
+      <AiCaptionGenerator
+        isOpen={aiModalOpen}
+        onClose={() => {
+          setAiModalOpen(false)
+          loadTemplates()
+        }}
+        onApplyCaption={(captionText) => {
+          handleApply({
+            id: `temp_${Date.now()}`,
+            name: 'AI Caption',
+            overlays: [
+              {
+                id: `overlay_${Date.now()}`,
+                text: captionText,
+                fontFamily: 'Arial',
+                fontSize: 48,
+                fontWeight: 'bold',
+                color: '#FFFFFF',
+                opacity: 1,
+                backgroundColor: '#000000',
+                backgroundOpacity: 0.4,
+                outlineColor: '#000000',
+                outlineWidth: 2,
+                position: 'bottom',
+                x: 0.5,
+                y: 0.88,
+                alignment: 'center',
+                startTime: 0,
+                endTime: null,
+                enabled: true,
+              },
+            ],
+          })
+        }}
+        disabled={disabled}
+      />
     </div>
   )
 }

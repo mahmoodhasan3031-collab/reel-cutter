@@ -16,6 +16,7 @@ const FEATURE_KEYS = {
   AI_THUMBNAILS: 'ai_thumbnails',
   SMART_CROP: 'smart_crop',
   BATCH_QUEUE: 'batch_queue',
+  AI_CAPTIONS: 'ai_captions',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -48,6 +49,15 @@ const FEATURE_ALIASES = {
   batch: FEATURE_KEYS.BATCH_QUEUE,
   batchqueue: FEATURE_KEYS.BATCH_QUEUE,
   batchQueue: FEATURE_KEYS.BATCH_QUEUE,
+
+  'ai captions': FEATURE_KEYS.AI_CAPTIONS,
+  ai_captions: FEATURE_KEYS.AI_CAPTIONS,
+  'ai caption': FEATURE_KEYS.AI_CAPTIONS,
+  ai_caption: FEATURE_KEYS.AI_CAPTIONS,
+  'ai caption generator': FEATURE_KEYS.AI_CAPTIONS,
+  'ai caption generation': FEATURE_KEYS.AI_CAPTIONS,
+  aicaptions: FEATURE_KEYS.AI_CAPTIONS,
+  aiCaptions: FEATURE_KEYS.AI_CAPTIONS,
 };
 
 const TIER_HIERARCHY = {
@@ -71,6 +81,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.AI_THUMBNAILS,
     FEATURE_KEYS.SMART_CROP,
     FEATURE_KEYS.BATCH_QUEUE,
+    FEATURE_KEYS.AI_CAPTIONS,
   ],
 };
 
@@ -121,6 +132,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.BATCH_QUEUE,
     name: 'Batch Queue',
     description: 'Multi-video automated queue and bulk processing',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.AI_CAPTIONS,
+    name: 'AI Caption Generator',
+    description: 'AI-assisted video caption and hook generation',
     minTier: 'pro',
   },
 ];

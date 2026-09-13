@@ -55,6 +55,11 @@ import {
   duplicateCaptionTemplate,
   resetCaptionTemplates,
 } from './captions/captionTemplateManager'
+import {
+  generateCaptions,
+  generateBulkCaptions,
+  getAiStatus,
+} from './captions/aiCaptionService'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -1125,6 +1130,63 @@ ipcMain.handle('caption-template:reset', async () => {
   try {
     const templates = resetCaptionTemplates()
     return { success: true, templates }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── AI Caption Generator (Phase 4B-5) ───────────────────────────────────────
+
+async function checkAiCaptionProAccess() {
+  const license = await getLicenseInfo()
+  const tier = license.isValid
+    ? license.tier
+    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+
+  if (!hasFeature(tier, 'ai_captions')) {
+    return { authorized: false, error: 'AI Caption Generator requires Pro license tier.' }
+  }
+  return { authorized: true, tier }
+}
+
+ipcMain.handle('ai-caption:generate', async (_, rawRequest) => {
+  try {
+    const auth = await checkAiCaptionProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return await generateCaptions(rawRequest)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('ai-caption:getStatus', async () => {
+  try {
+    const license = await getLicenseInfo()
+    const tier = license.isValid
+      ? license.tier
+      : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+    const proUnlocked = hasFeature(tier, 'ai_captions')
+    const aiStatus = getAiStatus()
+    return {
+      success: true,
+      proUnlocked,
+      configured: aiStatus.configured,
+      provider: aiStatus.provider,
+    }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('ai-caption:generateBulk', async (_, bulkInput) => {
+  try {
+    const auth = await checkAiCaptionProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return await generateBulkCaptions(bulkInput)
   } catch (err) {
     return { success: false, error: err.message }
   }
