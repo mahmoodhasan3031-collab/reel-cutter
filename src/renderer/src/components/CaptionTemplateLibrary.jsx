@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import CaptionPresetEditor from './CaptionPresetEditor'
 
 /**
- * CaptionTemplateLibrary (Phase 4B-1)
+ * CaptionTemplateLibrary (Phase 4B-1, updated Phase 4B-2)
  *
  * Provides a rich template gallery for caption presets (built-ins + custom).
  * Allows users to browse, search, filter, apply, duplicate, edit, and delete templates.
+ * Phase 4B-2: Edit button now opens CaptionPresetEditor for custom templates.
  */
 export default function CaptionTemplateLibrary({
   currentOverlays = [],
@@ -31,6 +33,11 @@ export default function CaptionTemplateLibrary({
   const [editError, setEditError] = useState(null)
 
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
+
+  // Phase 4B-2: Preset Editor state
+  const [presetEditorOpen, setPresetEditorOpen] = useState(false)
+  const [presetEditorMode, setPresetEditorMode] = useState('create') // 'create' | 'edit'
+  const [presetEditorTemplate, setPresetEditorTemplate] = useState(null)
 
   // Fetch templates from main process
   const loadTemplates = useCallback(async () => {
@@ -137,6 +144,9 @@ export default function CaptionTemplateLibrary({
       const res = await window.api.duplicateCaptionTemplate(tpl.id)
       if (res && res.success) {
         await loadTemplates()
+        if (tpl.isBuiltIn && res.template) {
+          handleOpenPresetEditor(res.template, 'edit')
+        }
       } else {
         setError(res?.error || 'Failed to duplicate template')
       }
@@ -147,13 +157,29 @@ export default function CaptionTemplateLibrary({
     }
   }
 
+  // Phase 4B-2: Open CaptionPresetEditor for custom template editing
+  const handleOpenPresetEditor = (tpl, mode = 'edit') => {
+    if (tpl && tpl.isBuiltIn && mode === 'edit') return // built-ins are not directly editable
+    setPresetEditorTemplate(tpl ? JSON.parse(JSON.stringify(tpl)) : null) // deep clone
+    setPresetEditorMode(mode)
+    setPresetEditorOpen(true)
+  }
+
+  const handlePresetEditorSave = async (savedTemplate) => {
+    setPresetEditorOpen(false)
+    setPresetEditorTemplate(null)
+    await loadTemplates()
+  }
+
+  const handlePresetEditorCancel = () => {
+    setPresetEditorOpen(false)
+    setPresetEditorTemplate(null)
+  }
+
+  // Legacy: handleOpenEdit now delegates to preset editor for custom templates
   const handleOpenEdit = (tpl) => {
     if (tpl.isBuiltIn) return
-    setEditingTemplate(tpl)
-    setEditName(tpl.name)
-    setEditDesc(tpl.description || '')
-    setEditError(null)
-    setEditModalOpen(true)
+    handleOpenPresetEditor(tpl, 'edit')
   }
 
   const handleSaveEdit = async (e) => {
@@ -250,6 +276,28 @@ export default function CaptionTemplateLibrary({
         </div>
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => handleOpenPresetEditor(null, 'create')}
+            disabled={disabled || actionLoading}
+            title="Create new custom caption template"
+            style={{
+              background: '#232048',
+              border: '1px solid #5c4df0',
+              borderRadius: 5,
+              color: '#c2b8ff',
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '4px 10px',
+              cursor: disabled || actionLoading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <span>+</span> New Preset
+          </button>
+
           <button
             type="button"
             onClick={handleOpenSaveModal}
@@ -608,6 +656,17 @@ export default function CaptionTemplateLibrary({
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── Preset Editor Modal (Phase 4B-2) ── */}
+      {presetEditorOpen && (
+        <CaptionPresetEditor
+          mode={presetEditorMode}
+          template={presetEditorTemplate}
+          initialOverlays={presetEditorMode === 'create' ? currentOverlays : []}
+          onSave={handlePresetEditorSave}
+          onCancel={handlePresetEditorCancel}
+        />
       )}
     </div>
   )

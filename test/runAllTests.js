@@ -25,6 +25,7 @@ const tests = [
   'bulk-scheduling.test.js',
   'text-overlay.test.js',
   'caption-template.test.js',
+  'caption-preset-editor.test.js',
 ];
 
 console.log('======================================================');
