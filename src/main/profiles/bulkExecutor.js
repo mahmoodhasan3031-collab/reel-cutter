@@ -113,6 +113,10 @@ function validateBulkExportPlan(plan) {
     } catch (err) {
       throw new Error(`Job "${job.profileName}" has invalid variation settings: ${err.message}`);
     }
+
+    if (job.textOverlays !== undefined && job.textOverlays !== null && !Array.isArray(job.textOverlays)) {
+      throw new Error(`Job "${job.profileName}" has invalid textOverlays format`);
+    }
   }
 
   return { valid: true, plan };

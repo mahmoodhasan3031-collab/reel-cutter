@@ -68,6 +68,7 @@ export default function PageProfilesPanel() {
   const [selectedProfileId, setSelectedProfileId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [captionTemplates, setCaptionTemplates] = useState([]);
 
   // Modal states
   const [modalMode, setModalMode] = useState(null); // 'create' | 'edit' | null
@@ -77,6 +78,16 @@ export default function PageProfilesPanel() {
 
   // Delete confirmation state
   const [deletingProfile, setDeletingProfile] = useState(null);
+
+  const fetchCaptionTemplates = async () => {
+    try {
+      if (!window.api?.getCaptionTemplates) return;
+      const res = await window.api.getCaptionTemplates();
+      if (res && res.success) {
+        setCaptionTemplates(res.templates || []);
+      }
+    } catch (_) {}
+  };
 
   const fetchProfiles = async () => {
     try {
@@ -96,20 +107,24 @@ export default function PageProfilesPanel() {
 
   useEffect(() => {
     fetchProfiles();
+    fetchCaptionTemplates();
   }, []);
 
   const handleOpenCreate = () => {
+    fetchCaptionTemplates();
     setActiveFormData({
       name: '',
       platform: 'Facebook',
       enabled: true,
       variationPreset: { ...DEFAULT_PRESET },
+      captionTemplateId: null,
     });
     setFormError(null);
     setModalMode('create');
   };
 
   const handleOpenEdit = (profile) => {
+    fetchCaptionTemplates();
     setActiveFormData({
       id: profile.id,
       name: profile.name,
@@ -120,6 +135,7 @@ export default function PageProfilesPanel() {
         ...(profile.variationPreset || {}),
         mode: profile.variationPreset?.mode || profile.variationPreset?.reframeMode || 'center',
       },
+      captionTemplateId: profile.captionTemplateId || null,
     });
     setFormError(null);
     setModalMode('edit');
@@ -156,6 +172,7 @@ export default function PageProfilesPanel() {
           platform: activeFormData.platform,
           enabled: activeFormData.enabled,
           variationPreset: activeFormData.variationPreset,
+          captionTemplateId: activeFormData.captionTemplateId || null,
         });
         if (res && res.success === false) {
           throw new Error(res.error || 'Failed to create profile');
@@ -166,6 +183,7 @@ export default function PageProfilesPanel() {
           platform: activeFormData.platform,
           enabled: activeFormData.enabled,
           variationPreset: activeFormData.variationPreset,
+          captionTemplateId: activeFormData.captionTemplateId || null,
         });
         if (res && res.success === false) {
           throw new Error(res.error || 'Failed to update profile');
@@ -397,6 +415,17 @@ export default function PageProfilesPanel() {
                       </span>
                     </div>
                   </div>
+
+                  {/* Caption Template Badge (Phase 4B-3) */}
+                  {profile.captionTemplateId && (
+                    <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-purple-300 bg-purple-950/30 border border-purple-800/40 rounded-lg px-2.5 py-1">
+                      <span className="text-purple-400">🏷</span>
+                      <span className="font-semibold text-purple-200">Caption:</span>
+                      <span className="truncate">
+                        {captionTemplates.find((t) => t.id === profile.captionTemplateId)?.name || 'Custom Caption'}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Card Action Footer */}
@@ -539,6 +568,38 @@ export default function PageProfilesPanel() {
                     <span className="text-xs text-zinc-300">Enabled</span>
                   </label>
                 </div>
+              </div>
+
+              {/* Caption Template Selector (Phase 4B-3) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-zinc-300">Caption Template</label>
+                  <span className="text-[10px] text-zinc-500">Reusable overlay preset</span>
+                </div>
+                <select
+                  value={activeFormData.captionTemplateId || ''}
+                  onChange={(e) =>
+                    setActiveFormData((prev) => ({
+                      ...prev,
+                      captionTemplateId: e.target.value ? e.target.value : null,
+                    }))
+                  }
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-brand-500 transition-colors cursor-pointer"
+                >
+                  <option value="">None</option>
+                  {captionTemplates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name} ({tpl.isBuiltIn ? 'Built-in' : 'Custom'}) • {tpl.overlays?.length || 1} overlay{tpl.overlays?.length === 1 ? '' : 's'}
+                    </option>
+                  ))}
+                  {/* If assigned template was deleted / not in captionTemplates list */}
+                  {activeFormData.captionTemplateId &&
+                    !captionTemplates.some((t) => t.id === activeFormData.captionTemplateId) && (
+                      <option value={activeFormData.captionTemplateId} disabled>
+                        (Unavailable / Deleted template)
+                      </option>
+                    )}
+                </select>
               </div>
 
               {/* Content Variation Preset Controls */}

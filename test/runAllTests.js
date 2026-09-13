@@ -26,6 +26,7 @@ const tests = [
   'text-overlay.test.js',
   'caption-template.test.js',
   'caption-preset-editor.test.js',
+  'profile-caption-template.test.js',
 ];
 
 console.log('======================================================');

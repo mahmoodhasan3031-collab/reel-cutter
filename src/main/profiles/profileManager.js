@@ -16,6 +16,7 @@ const {
   validateProductVariationConfig,
   DEFAULT_PRODUCT_VARIATION,
 } = require('../../engine/variation/validator');
+const { getCaptionTemplate } = require('../captions/captionTemplateManager');
 
 const SUPPORTED_PLATFORMS = ['Facebook', 'Instagram', 'YouTube', 'TikTok', 'Other'];
 const PROFILES_FILENAME = 'profiles.json';
@@ -114,6 +115,48 @@ function normalizeVariationPreset(preset) {
 }
 
 /**
+ * Validates caption template ID if provided.
+ * Must be null/undefined or an existing template ID.
+ * @param {*} captionTemplateId
+ * @param {string} [customDir]
+ * @returns {string|null}
+ */
+function validateCaptionTemplateId(captionTemplateId, customDir) {
+  if (captionTemplateId === undefined || captionTemplateId === null || captionTemplateId === '') {
+    return null;
+  }
+  if (typeof captionTemplateId !== 'string') {
+    throw new Error('captionTemplateId must be a string or null');
+  }
+  const tpl = getCaptionTemplate(captionTemplateId, customDir);
+  if (!tpl) {
+    throw new Error(`Caption template not found: ${captionTemplateId}`);
+  }
+  return captionTemplateId;
+}
+
+/**
+ * Resolves the caption template for a profile, returning deep-cloned overlays or null.
+ * @param {Object} profile
+ * @param {string} [customDir]
+ * @returns {{ templateId: string|null, templateName: string|null, overlays: Array<Object>|null }}
+ */
+function resolveProfileCaptionTemplate(profile, customDir) {
+  if (!profile || !profile.captionTemplateId) {
+    return { templateId: null, templateName: null, overlays: null };
+  }
+  const tpl = getCaptionTemplate(profile.captionTemplateId, customDir);
+  if (!tpl) {
+    return { templateId: null, templateName: null, overlays: null };
+  }
+  return {
+    templateId: tpl.id,
+    templateName: tpl.name,
+    overlays: Array.isArray(tpl.overlays) ? JSON.parse(JSON.stringify(tpl.overlays)) : null,
+  };
+}
+
+/**
  * Safely loads profiles from disk.
  * @param {string} [customDir]
  * @returns {{ selectedProfileId: string|null, profiles: Array<Object> }}
@@ -149,12 +192,18 @@ function loadProfiles(customDir) {
               preset = normalizeVariationPreset(null);
             }
 
+            let captionTemplateId = null;
+            if (p.captionTemplateId && typeof p.captionTemplateId === 'string') {
+              captionTemplateId = p.captionTemplateId;
+            }
+
             return {
               id: String(p.id),
               name,
               platform: validatePlatform(p.platform),
               enabled: p.enabled !== undefined ? Boolean(p.enabled) : true,
               variationPreset: preset,
+              captionTemplateId,
               createdAt: p.createdAt || new Date().toISOString(),
               updatedAt: p.updatedAt || new Date().toISOString(),
             };
@@ -234,6 +283,7 @@ function createProfile(input, customDir) {
   const platform = validatePlatform(input.platform);
   const enabled = input.enabled !== undefined ? Boolean(input.enabled) : true;
   const variationPreset = normalizeVariationPreset(input.variationPreset);
+  const captionTemplateId = validateCaptionTemplateId(input.captionTemplateId, customDir);
 
   const data = loadProfiles(customDir);
 
@@ -250,6 +300,7 @@ function createProfile(input, customDir) {
     platform,
     enabled,
     variationPreset,
+    captionTemplateId,
     createdAt: now,
     updatedAt: now,
   };
@@ -296,6 +347,11 @@ function updateProfile(id, updates, customDir) {
     variationPreset = normalizeVariationPreset(updates.variationPreset);
   }
 
+  let captionTemplateId = existing.captionTemplateId !== undefined ? existing.captionTemplateId : null;
+  if (updates.captionTemplateId !== undefined) {
+    captionTemplateId = validateCaptionTemplateId(updates.captionTemplateId, customDir);
+  }
+
   const updatedProfile = {
     ...existing,
     id: existing.id, // Strictly preserve original ID
@@ -303,6 +359,7 @@ function updateProfile(id, updates, customDir) {
     platform,
     enabled,
     variationPreset,
+    captionTemplateId,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   };
@@ -395,6 +452,7 @@ function duplicateProfile(id, customDir) {
     platform: existing.platform,
     enabled: existing.enabled,
     variationPreset: { ...existing.variationPreset },
+    captionTemplateId: existing.captionTemplateId !== undefined ? existing.captionTemplateId : null,
     createdAt: now,
     updatedAt: now,
   };
@@ -506,4 +564,6 @@ module.exports = {
   deleteProfile,
   duplicateProfile,
   setSelectedProfile,
+  validateCaptionTemplateId,
+  resolveProfileCaptionTemplate,
 };

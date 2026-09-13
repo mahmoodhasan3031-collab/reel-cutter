@@ -284,7 +284,14 @@ function createBulkSchedule(input = {}, customDir) {
       outputPath: finalOutputPath,
       profileSnapshot,
       variationPreset,
-      exportOptions: JSON.parse(JSON.stringify(exportOptionsSnapshot)),
+      exportOptions: {
+        ...JSON.parse(JSON.stringify(exportOptionsSnapshot)),
+        textOverlays: job.textOverlays && Array.isArray(job.textOverlays) && job.textOverlays.length > 0
+          ? JSON.parse(JSON.stringify(job.textOverlays))
+          : (Array.isArray(rawOpts.textOverlays) && rawOpts.textOverlays.length > 0
+              ? JSON.parse(JSON.stringify(rawOpts.textOverlays))
+              : undefined),
+      },
       planId: validatedPlan.planId,
       jobId: job.jobId || `job_${validatedPlan.planId}_${i + 1}`,
       progress: 0,

@@ -326,10 +326,12 @@ export default function CutPanel({
         )}
       </div>
 
-      {/* Export Profile Selector (Phase 2B) */}
+      {/* Export Profile Selector (Phase 2B / 4B-3) */}
       <ExportProfileSelector
         variation={variation}
         onVariationChange={setVariation}
+        textOverlays={textOverlays}
+        onTextOverlaysChange={setTextOverlays}
         disabled={isProcessing || isBulkExecuting}
       />
 
@@ -345,6 +347,7 @@ export default function CutPanel({
           mode,
           generateThumbnail: canThumbnail && generateThumbnail,
           thumbnailTitle,
+          textOverlays: textOverlays.length > 0 ? textOverlays : undefined,
         }}
         disabled={isProcessing}
         onExecutingChange={setIsBulkExecuting}

@@ -11,6 +11,7 @@
 const path = require('path');
 const fs = require('fs');
 const { loadProfiles, resolveProfilePreset } = require('./profileManager');
+const { getCaptionTemplate } = require('../captions/captionTemplateManager');
 const { validateProductVariationConfig, DEFAULT_PRODUCT_VARIATION } = require('../../engine/variation/validator');
 
 const MIN_BULK_PROFILES = 1;
@@ -298,6 +299,22 @@ function createBulkExportPlan(input = {}, customDir) {
       checkCollision: input.checkCollision !== false,
     });
 
+    // Resolve caption template snapshot if assigned
+    let captionTemplateId = profile.captionTemplateId || null;
+    let captionTemplateName = null;
+    let textOverlays = null;
+
+    if (captionTemplateId) {
+      const tpl = getCaptionTemplate(captionTemplateId, customDir);
+      if (tpl) {
+        captionTemplateId = tpl.id;
+        captionTemplateName = tpl.name;
+        textOverlays = Array.isArray(tpl.overlays) ? JSON.parse(JSON.stringify(tpl.overlays)) : null;
+      } else {
+        captionTemplateId = null;
+      }
+    }
+
     // Take an independent immutable snapshot
     const jobSnapshot = {
       jobId: `job_${planId}_${i + 1}_${profile.id}`,
@@ -309,6 +326,9 @@ function createBulkExportPlan(input = {}, customDir) {
       variationPreset: JSON.parse(JSON.stringify(resolvedPreset)),
       savedPreset: JSON.parse(JSON.stringify(savedPresetCopy)),
       isOverridden,
+      captionTemplateId,
+      captionTemplateName,
+      textOverlays,
       outputFilename: filename,
       outputPath,
       status: 'READY',
@@ -351,6 +371,7 @@ function removeJobFromPlan(plan, jobId) {
     ...job,
     orderIndex: idx + 1,
     variationPreset: JSON.parse(JSON.stringify(job.variationPreset)),
+    textOverlays: job.textOverlays ? JSON.parse(JSON.stringify(job.textOverlays)) : null,
   }));
 
   return {
@@ -391,6 +412,7 @@ function reorderJobsInPlan(plan, fromIndex, toIndex) {
     ...job,
     orderIndex: idx + 1,
     variationPreset: JSON.parse(JSON.stringify(job.variationPreset)),
+    textOverlays: job.textOverlays ? JSON.parse(JSON.stringify(job.textOverlays)) : null,
   }));
 
   return {
@@ -611,9 +633,11 @@ function planToBatchQueueItems(plan, extraOptions = {}) {
     profileName: job.profileName,
     platform: job.platform,
     orderIndex: job.orderIndex,
-    textOverlays: Array.isArray(extraOptions.textOverlays) && extraOptions.textOverlays.length > 0
-      ? JSON.parse(JSON.stringify(extraOptions.textOverlays))
-      : null,
+    textOverlays: job.textOverlays && Array.isArray(job.textOverlays) && job.textOverlays.length > 0
+      ? JSON.parse(JSON.stringify(job.textOverlays))
+      : (Array.isArray(extraOptions.textOverlays) && extraOptions.textOverlays.length > 0
+          ? JSON.parse(JSON.stringify(extraOptions.textOverlays))
+          : null),
   }));
 }
 

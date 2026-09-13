@@ -74,29 +74,49 @@ const PLATFORM_COLORS = {
  *   onVariationChange – callback(newVariation) when profile preset is applied
  *   disabled         – disables UI when processing
  */
-export default function ExportProfileSelector({ variation, onVariationChange, disabled = false }) {
+export default function ExportProfileSelector({
+  variation,
+  onVariationChange,
+  textOverlays = [],
+  onTextOverlaysChange,
+  disabled = false,
+}) {
   const [profiles, setProfiles]               = useState([]);
+  const [captionTemplates, setCaptionTemplates] = useState([]);
   const [selectedId, setSelectedId]           = useState(null); // null = None
   const [loadError, setLoadError]             = useState(null);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [isOpen, setIsOpen]                   = useState(false);
   const dropdownRef                           = useRef(null);
   const manualVariationRef                    = useRef(variation);
+  const manualTextOverlaysRef                 = useRef(textOverlays);
   const isInitialMount                        = useRef(true);
 
   // Keep track of manual settings whenever selectedId === null
   useEffect(() => {
     if (selectedId === null) {
       manualVariationRef.current = variation;
+      manualTextOverlaysRef.current = textOverlays;
     }
-  }, [variation, selectedId]);
+  }, [variation, textOverlays, selectedId]);
 
-  // Fetch fresh profile list from main process
+  // Fetch fresh profile list and caption templates from main process
   const fetchProfiles = useCallback(async () => {
     if (!window.api?.getProfiles) return;
     try {
       setLoadingProfiles(true);
       setLoadError(null);
+
+      // Fetch caption templates
+      if (window.api?.getCaptionTemplates) {
+        try {
+          const tplRes = await window.api.getCaptionTemplates();
+          if (tplRes && tplRes.success) {
+            setCaptionTemplates(tplRes.templates || []);
+          }
+        } catch (_) {}
+      }
+
       const res = await window.api.getProfiles();
       const list = res?.profiles || (Array.isArray(res) ? [...res] : []);
       // Only show enabled profiles
@@ -111,6 +131,15 @@ export default function ExportProfileSelector({ variation, onVariationChange, di
           setSelectedId(activeId);
           const resolved = resolveProfilePreset(profile.variationPreset);
           onVariationChange?.(resolved);
+
+          if (profile.captionTemplateId && window.api?.getCaptionTemplate) {
+            window.api.getCaptionTemplate(profile.captionTemplateId).then(tplRes => {
+              const tpl = tplRes?.template || tplRes;
+              if (tpl && Array.isArray(tpl.overlays)) {
+                onTextOverlaysChange?.(JSON.parse(JSON.stringify(tpl.overlays)));
+              }
+            }).catch(() => {});
+          }
         } else {
           setSelectedId(null);
         }
@@ -125,6 +154,7 @@ export default function ExportProfileSelector({ variation, onVariationChange, di
               window.api.setSelectedProfile(null).catch(() => {});
             }
             onVariationChange?.(manualVariationRef.current || getDefaultVariation());
+            onTextOverlaysChange?.(manualTextOverlaysRef.current || []);
             return null;
           }
           return prev;
@@ -135,7 +165,7 @@ export default function ExportProfileSelector({ variation, onVariationChange, di
     } finally {
       setLoadingProfiles(false);
     }
-  }, [onVariationChange]);
+  }, [onVariationChange, onTextOverlaysChange]);
 
   // Load on mount
   useEffect(() => {
@@ -171,6 +201,7 @@ export default function ExportProfileSelector({ variation, onVariationChange, di
         try { await window.api.setSelectedProfile(null); } catch (_) {}
       }
       onVariationChange?.(manualVariationRef.current || getDefaultVariation());
+      onTextOverlaysChange?.(manualTextOverlaysRef.current || []);
       return;
     }
 
@@ -193,6 +224,7 @@ export default function ExportProfileSelector({ variation, onVariationChange, di
         try { await window.api.setSelectedProfile(null); } catch (_) {}
       }
       onVariationChange?.(manualVariationRef.current || getDefaultVariation());
+      onTextOverlaysChange?.(manualTextOverlaysRef.current || []);
       return;
     }
 
@@ -203,6 +235,19 @@ export default function ExportProfileSelector({ variation, onVariationChange, di
       try { await window.api.setSelectedProfile(profileId); } catch (_) {}
     }
     onVariationChange?.(resolved);
+
+    // Resolve and deep-clone caption template overlays for this profile
+    let resolvedOverlays = [];
+    if (targetProfile.captionTemplateId && window.api?.getCaptionTemplate) {
+      try {
+        const tplRes = await window.api.getCaptionTemplate(targetProfile.captionTemplateId);
+        const tpl = tplRes?.template || tplRes;
+        if (tpl && Array.isArray(tpl.overlays)) {
+          resolvedOverlays = JSON.parse(JSON.stringify(tpl.overlays));
+        }
+      } catch (_) {}
+    }
+    onTextOverlaysChange?.(resolvedOverlays);
   };
 
   const activeProfile = selectedId ? profiles.find(p => p.id === selectedId) : null;
@@ -312,26 +357,38 @@ export default function ExportProfileSelector({ variation, onVariationChange, di
         )}
       </div>
 
-      {/* Active preset summary */}
+      {/* Active profile summary */}
       {activeProfile && (
-        <div className="space-y-1.5 pt-0.5">
-          <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-            <SlidersHorizontal size={11} className="text-brand-400 shrink-0" />
-            <span className="font-medium text-zinc-300">Using profile preset</span>
-            <span className="ml-auto text-zinc-600">•</span>
-            <span className="text-zinc-500 ml-1">changes apply to this export only</span>
+        <div className="space-y-2 pt-0.5 border-t border-zinc-800/60 mt-2">
+          <div className="flex items-center justify-between text-[11px] pt-1">
+            <span className="font-semibold text-zinc-200 truncate">{activeProfile.name}</span>
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${PLATFORM_COLORS[activeProfile.platform] || 'text-zinc-400'}`}>
+              Platform: {activeProfile.platform || 'Other'}
+            </span>
           </div>
-          {presetSummary.length > 0 ? (
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-zinc-500">
-              {presetSummary.map(item => (
-                <span key={item.key}>
-                  {item.label}: <strong className="text-zinc-300 font-mono">{item.value}</strong>
-                </span>
-              ))}
+
+          <div className="bg-zinc-950/60 rounded-lg p-2.5 border border-zinc-800/80 space-y-1.5 text-[11px]">
+            <div className="flex items-center gap-1.5 text-zinc-400">
+              <SlidersHorizontal size={11} className="text-brand-400 shrink-0" />
+              <span>Variation: </span>
+              <span className="text-zinc-200 font-medium">
+                {presetSummary.length > 0
+                  ? presetSummary.map(s => `${s.label}: ${s.value}`).join(' • ')
+                  : 'Defaults'}
+              </span>
             </div>
-          ) : (
-            <p className="text-[11px] text-zinc-600">All values at defaults</p>
-          )}
+
+            <div className="flex items-center gap-1.5 text-zinc-400">
+              <span className="text-purple-400 text-xs shrink-0">🏷</span>
+              <span>Caption: </span>
+              <span className="text-purple-200 font-medium">
+                {activeProfile.captionTemplateId
+                  ? (captionTemplates.find(t => t.id === activeProfile.captionTemplateId)?.name || 'Custom Template')
+                  : 'None'}
+              </span>
+            </div>
+          </div>
+          <p className="text-[10px] text-zinc-500">Changes apply to this export only</p>
         </div>
       )}
 
