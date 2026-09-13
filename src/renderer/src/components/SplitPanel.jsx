@@ -5,6 +5,7 @@ import { hasFeature } from '../utils/features'
 import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
 import ExportProfileSelector from './ExportProfileSelector'
 import MultiProfileSelector from './MultiProfileSelector'
+import TextOverlayPanel from './TextOverlayPanel'
 
 export default function SplitPanel({
   videoPath,
@@ -27,6 +28,7 @@ export default function SplitPanel({
   const [error, setError]         = useState(null)
   const [done, setDone]           = useState(false)
   const [variation, setVariation] = useState(DEFAULT_VARIATION_STATE)
+  const [textOverlays, setTextOverlays] = useState([])
   const [isBulkExecuting, setIsBulkExecuting] = useState(false)
 
   const canThumbnail = hasFeature(licenseTier, 'ai_thumbnails')
@@ -70,6 +72,7 @@ export default function SplitPanel({
       generateThumbnail: canThumbnail && generateThumbnail,
       thumbnailTitle: thumbnailTitle.trim() || undefined,
       variation: variation.enabled ? variation : undefined,
+      textOverlays: textOverlays.length > 0 ? textOverlays : undefined,
     })
 
     setIsProcessing(false)
@@ -233,6 +236,15 @@ export default function SplitPanel({
         onChange={setVariation}
         disabled={isProcessing || isBulkExecuting}
       />
+
+      {/* Text Overlay (Phase 4A) */}
+      <div style={{ background: '#0d0d1f', borderRadius: 10, padding: 14, marginBottom: 4 }}>
+        <TextOverlayPanel
+          overlays={textOverlays}
+          onChange={setTextOverlays}
+          disabled={isProcessing || isBulkExecuting}
+        />
+      </div>
 
       {/* Output dir */}
       <div className="flex gap-2">

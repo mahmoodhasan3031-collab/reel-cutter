@@ -23,6 +23,7 @@ const tests = [
   'scheduler.test.js',
   'schedule-management.test.js',
   'bulk-scheduling.test.js',
+  'text-overlay.test.js',
 ];
 
 console.log('======================================================');

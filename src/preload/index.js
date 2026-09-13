@@ -70,6 +70,10 @@ contextBridge.exposeInMainWorld('api', {
   onScheduleUpdate: (cb) => ipcRenderer.on('schedule:update', (_, data) => cb(data)),
   onScheduleProgress: (cb) => ipcRenderer.on('schedule:progress', (_, data) => cb(data)),
 
+  // ── Text Overlay (Phase 4A) ────────────────────────────────────────────────
+  validateTextOverlays: (overlays) => ipcRenderer.invoke('text-overlay:validate', overlays),
+  getTextOverlayDefaults: () => ipcRenderer.invoke('text-overlay:defaults'),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

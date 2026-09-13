@@ -175,6 +175,9 @@ class SchedulerService extends EventEmitter {
         generateThumbnail: Boolean(readySchedule.exportOptions?.generateThumbnail),
         thumbnailTitle: readySchedule.exportOptions?.thumbnailTitle || `${readySchedule.profileSnapshot?.name || 'Schedule'} - Export`,
         variation: readySchedule.variationPreset && readySchedule.variationPreset.enabled ? readySchedule.variationPreset : undefined,
+        textOverlays: Array.isArray(readySchedule.exportOptions?.textOverlays) && readySchedule.exportOptions.textOverlays.length > 0
+          ? readySchedule.exportOptions.textOverlays
+          : undefined,
         // Tag metadata to link back to schedule
         bulkPlanId: readySchedule.planId || null,
         bulkJobId: readySchedule.jobId || null,

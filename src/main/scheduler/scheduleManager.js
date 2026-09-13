@@ -225,6 +225,9 @@ function validateScheduleInput(input = {}) {
     interval: Number(rawOpts.interval) || 30,
     generateThumbnail: Boolean(rawOpts.generateThumbnail),
     thumbnailTitle: rawOpts.thumbnailTitle ? String(rawOpts.thumbnailTitle).slice(0, 100) : '',
+    textOverlays: (rawOpts.textOverlays || input.textOverlays) && Array.isArray(rawOpts.textOverlays || input.textOverlays)
+      ? JSON.parse(JSON.stringify(rawOpts.textOverlays || input.textOverlays))
+      : undefined,
   };
 
   return {

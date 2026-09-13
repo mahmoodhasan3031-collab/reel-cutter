@@ -611,6 +611,9 @@ function planToBatchQueueItems(plan, extraOptions = {}) {
     profileName: job.profileName,
     platform: job.platform,
     orderIndex: job.orderIndex,
+    textOverlays: Array.isArray(extraOptions.textOverlays) && extraOptions.textOverlays.length > 0
+      ? JSON.parse(JSON.stringify(extraOptions.textOverlays))
+      : null,
   }));
 }
 

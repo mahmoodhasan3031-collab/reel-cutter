@@ -45,6 +45,7 @@ import {
   deleteScheduleGroupHistory,
 } from './scheduler/bulkScheduleManager'
 import { getSchedulerService } from './scheduler/schedulerService'
+import { validateTextOverlayConfig, createDefaultOverlay } from '../engine/textOverlayValidator'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -271,7 +272,7 @@ ipcMain.handle('video:probe', async (_, filePath) => {
 // ─── Video: Cut ──────────────────────────────────────────────────────────────
 
 ipcMain.handle('video:cut', async (_, opts) => {
-  const { inputPath, outputPath, start, duration, end, reel, mode, resolution, customDuration, generateThumbnail, thumbnailTitle, variation } = opts
+  const { inputPath, outputPath, start, duration, end, reel, mode, resolution, customDuration, generateThumbnail, thumbnailTitle, variation, textOverlays } = opts
   try {
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
@@ -299,6 +300,12 @@ ipcMain.handle('video:cut', async (_, opts) => {
       validatedVariation = res.config
     }
 
+    // Validate and sanitize text overlays (main process is authoritative)
+    let validatedOverlays = null
+    if (textOverlays && Array.isArray(textOverlays) && textOverlays.length > 0) {
+      validatedOverlays = validateTextOverlayConfig(textOverlays, { fallbackFont: true })
+    }
+
     markJobStarted()
     try {
       const result = await cutClip(inputPath, outputPath, {
@@ -312,6 +319,7 @@ ipcMain.handle('video:cut', async (_, opts) => {
         generateThumbnail: !!generateThumbnail,
         thumbnailTitle,
         variation: validatedVariation,
+        textOverlays: validatedOverlays,
         onProgress: (percent) => {
           mainWindow?.webContents.send('video:progress', { percent, operation: 'cut' })
         }
@@ -335,7 +343,7 @@ ipcMain.handle('video:cut', async (_, opts) => {
 // ─── Video: Reel ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('video:reel', async (_, opts) => {
-  const { inputPath, outputPath, start, duration, mode, aspectRatio, generateThumbnail, thumbnailTitle, variation } = opts
+  const { inputPath, outputPath, start, duration, mode, aspectRatio, generateThumbnail, thumbnailTitle, variation, textOverlays } = opts
   try {
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
@@ -365,6 +373,13 @@ ipcMain.handle('video:reel', async (_, opts) => {
     markJobStarted()
     try {
       const { width, height } = resolveDimensions(aspectRatio || '9:16', opts.resolution || '1080p')
+
+      // Validate and sanitize text overlays (main process is authoritative)
+      let validatedOverlays = null
+      if (textOverlays && Array.isArray(textOverlays) && textOverlays.length > 0) {
+        validatedOverlays = validateTextOverlayConfig(textOverlays, { fallbackFont: true })
+      }
+
       const result = await cutClip(inputPath, outputPath, {
         start: start || 0,
         duration,
@@ -375,6 +390,7 @@ ipcMain.handle('video:reel', async (_, opts) => {
         generateThumbnail: !!generateThumbnail,
         thumbnailTitle,
         variation: validatedVariation,
+        textOverlays: validatedOverlays,
         onProgress: (percent) => {
           mainWindow?.webContents.send('video:progress', { percent, operation: 'reel' })
         }
@@ -398,7 +414,7 @@ ipcMain.handle('video:reel', async (_, opts) => {
 // ─── Video: Split ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('video:split', async (_, opts) => {
-  const { inputPath, outputDir, interval, reel, mode, generateThumbnail, thumbnailTitle, variation } = opts
+  const { inputPath, outputDir, interval, reel, mode, generateThumbnail, thumbnailTitle, variation, textOverlays } = opts
   try {
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
@@ -417,6 +433,12 @@ ipcMain.handle('video:split', async (_, opts) => {
       validatedVariation = res.config
     }
 
+    // Validate and sanitize text overlays (main process is authoritative)
+    let validatedOverlays = null
+    if (textOverlays && Array.isArray(textOverlays) && textOverlays.length > 0) {
+      validatedOverlays = validateTextOverlayConfig(textOverlays, { fallbackFont: true })
+    }
+
     markJobStarted()
     try {
       const results = await splitIntoReels(inputPath, outputDir, {
@@ -426,6 +448,7 @@ ipcMain.handle('video:split', async (_, opts) => {
         generateThumbnail: !!generateThumbnail,
         thumbnailTitle,
         variation: validatedVariation,
+        textOverlays: validatedOverlays,
         onOverallProgress: ({ current, total, start, duration }) => {
           const percent = Math.round((current / total) * 100)
           mainWindow?.webContents.send('video:progress', {
@@ -1007,6 +1030,26 @@ ipcMain.handle('schedule:deleteGroupHistory', async (_, planId) => {
   try {
     const result = deleteScheduleGroupHistory(planId)
     return result
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Text Overlay: Validation & Defaults (Phase 4A) ──────────────────────────
+
+ipcMain.handle('text-overlay:validate', async (_, overlays) => {
+  try {
+    const validated = validateTextOverlayConfig(overlays, { fallbackFont: true })
+    return { success: true, overlays: validated }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('text-overlay:defaults', async () => {
+  try {
+    const overlay = createDefaultOverlay()
+    return { success: true, overlay }
   } catch (err) {
     return { success: false, error: err.message }
   }

@@ -5,6 +5,7 @@ import { hasFeature } from '../utils/features'
 import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
 import ExportProfileSelector from './ExportProfileSelector'
 import MultiProfileSelector from './MultiProfileSelector'
+import TextOverlayPanel from './TextOverlayPanel'
 
 const ASPECT_RATIOS = [
   { id: '9:16', label: '9:16', desc: 'Reels / Shorts', minTier: 'basic' },
@@ -79,6 +80,7 @@ export default function ReelPanel({
   const [result, setResult]           = useState(null)
   const [error, setError]             = useState(null)
   const [variation, setVariation]     = useState(DEFAULT_VARIATION_STATE)
+  const [textOverlays, setTextOverlays] = useState([])
   const [isBulkExecuting, setIsBulkExecuting] = useState(false)
 
   const canAllAspects = hasFeature(licenseTier, 'all_aspect_ratios')
@@ -128,6 +130,7 @@ export default function ReelPanel({
       generateThumbnail: canThumbnail && generateThumbnail,
       thumbnailTitle: thumbnailTitle.trim() || undefined,
       variation: variation.enabled ? variation : undefined,
+      textOverlays: textOverlays.length > 0 ? textOverlays : undefined,
     })
 
     setIsProcessing(false)
@@ -325,6 +328,15 @@ export default function ReelPanel({
         onChange={setVariation}
         disabled={isProcessing || isBulkExecuting}
       />
+
+      {/* Text Overlay (Phase 4A) */}
+      <div style={{ background: '#0d0d1f', borderRadius: 10, padding: 14, marginBottom: 4 }}>
+        <TextOverlayPanel
+          overlays={textOverlays}
+          onChange={setTextOverlays}
+          disabled={isProcessing || isBulkExecuting}
+        />
+      </div>
 
       {/* Output */}
       <div className="flex gap-2">

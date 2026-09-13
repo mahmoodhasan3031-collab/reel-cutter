@@ -133,6 +133,7 @@ class BatchQueueManager extends EventEmitter {
         generateThumbnail: !!(raw.generateThumbnail || raw.useThumbnail),
         thumbnailTitle: raw.thumbnailTitle || path.basename(raw.inputPath, path.extname(raw.inputPath)),
         variation: raw.variation || null,
+        textOverlays: Array.isArray(raw.textOverlays) ? raw.textOverlays : null,
         bulkPlanId: raw.bulkPlanId || null,
         bulkJobId: raw.bulkJobId || raw.jobId || null,
         profileId: raw.profileId || null,
@@ -392,6 +393,7 @@ class BatchQueueManager extends EventEmitter {
           generateThumbnail: item.generateThumbnail,
           thumbnailTitle: item.thumbnailTitle || undefined,
           variation: item.variation || undefined,
+          textOverlays: item.textOverlays || undefined,
           onOverallProgress: ({ current, total, start, duration }) => {
             item.currentSegment = current;
             item.totalSegments = total;
@@ -411,6 +413,7 @@ class BatchQueueManager extends EventEmitter {
           generateThumbnail: item.generateThumbnail,
           thumbnailTitle: item.thumbnailTitle || undefined,
           variation: item.variation || undefined,
+          textOverlays: item.textOverlays || undefined,
           onProgress,
           onCommand,
         };

@@ -143,6 +143,15 @@ async function _buildCutCommand(inputPath, outputPath, options, metadata, durati
     }
   }
 
+  // Text Overlay filter resolution (Phase 4A)
+  if (options.textOverlays && Array.isArray(options.textOverlays) && options.textOverlays.length > 0) {
+    const { buildTextOverlayFilters } = require('./textOverlay');
+    const overlayFilters = buildTextOverlayFilters(options.textOverlays, durationSeconds || metadata.duration);
+    if (overlayFilters.length > 0) {
+      varVideoFilters.push(...overlayFilters);
+    }
+  }
+
   if (options.reel) {
     const mode = (options.mode || 'blur').toLowerCase();
     const width = options.width || 1080;
@@ -269,6 +278,7 @@ async function splitIntoReels(inputPath, outputDir, options = {}) {
       generateThumbnail: options.generateThumbnail,
       thumbnailTitle: options.thumbnailTitle ? `${options.thumbnailTitle} Part ${i + 1}` : undefined,
       variation: options.variation,
+      textOverlays: options.textOverlays,
     });
 
     results.push({
@@ -289,4 +299,5 @@ async function splitIntoReels(inputPath, outputDir, options = {}) {
 module.exports = {
   cutClip,
   splitIntoReels,
+  _buildCutCommand,
 };
