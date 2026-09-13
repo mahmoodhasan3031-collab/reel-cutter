@@ -17,6 +17,7 @@ const FEATURE_KEYS = {
   SMART_CROP: 'smart_crop',
   BATCH_QUEUE: 'batch_queue',
   AI_CAPTIONS: 'ai_captions',
+  CAPTION_QUALITY: 'caption_quality',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -58,6 +59,14 @@ const FEATURE_ALIASES = {
   'ai caption generation': FEATURE_KEYS.AI_CAPTIONS,
   aicaptions: FEATURE_KEYS.AI_CAPTIONS,
   aiCaptions: FEATURE_KEYS.AI_CAPTIONS,
+
+  'caption quality': FEATURE_KEYS.CAPTION_QUALITY,
+  caption_quality: FEATURE_KEYS.CAPTION_QUALITY,
+  captionquality: FEATURE_KEYS.CAPTION_QUALITY,
+  'quality analyzer': FEATURE_KEYS.CAPTION_QUALITY,
+  'caption quality analyzer': FEATURE_KEYS.CAPTION_QUALITY,
+  'caption quality intelligence': FEATURE_KEYS.CAPTION_QUALITY,
+  'caption quality & intelligence': FEATURE_KEYS.CAPTION_QUALITY,
 };
 
 const TIER_HIERARCHY = {
@@ -82,6 +91,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.SMART_CROP,
     FEATURE_KEYS.BATCH_QUEUE,
     FEATURE_KEYS.AI_CAPTIONS,
+    FEATURE_KEYS.CAPTION_QUALITY,
   ],
 };
 
@@ -138,6 +148,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.AI_CAPTIONS,
     name: 'AI Caption Generator',
     description: 'AI-assisted video caption and hook generation',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.CAPTION_QUALITY,
+    name: 'Caption Quality & Intelligence',
+    description: 'Offline caption quality scoring, readability analysis, and AI-assisted improvement',
     minTier: 'pro',
   },
 ];

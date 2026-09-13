@@ -88,6 +88,11 @@ contextBridge.exposeInMainWorld('api', {
   getAiCaptionStatus: () => ipcRenderer.invoke('ai-caption:getStatus'),
   generateBulkAiCaptions: (data) => ipcRenderer.invoke('ai-caption:generateBulk', data),
 
+  // ── Caption Quality & Intelligence (Phase 4B-6) ───────────────────────────
+  analyzeCaptionQuality: (payload) => ipcRenderer.invoke('caption-quality:analyze', payload),
+  improveCaptionQuality: (payload) => ipcRenderer.invoke('caption-quality:improve', payload),
+  analyzeBulkCaptionQuality: (payload) => ipcRenderer.invoke('caption-quality:analyzeBulk', payload),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

@@ -60,6 +60,11 @@ import {
   generateBulkCaptions,
   getAiStatus,
 } from './captions/aiCaptionService'
+import {
+  analyzeQuality,
+  improveCaption,
+  analyzeBulkQuality,
+} from './captions/captionQualityService'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -1187,6 +1192,56 @@ ipcMain.handle('ai-caption:generateBulk', async (_, bulkInput) => {
       return { success: false, error: auth.error, requiresUpgrade: true }
     }
     return await generateBulkCaptions(bulkInput)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Caption Quality & Intelligence (Phase 4B-6) ─────────────────────────────
+
+async function checkCaptionQualityProAccess() {
+  const license = await getLicenseInfo()
+  const tier = license.isValid
+    ? license.tier
+    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+
+  if (!hasFeature(tier, 'caption_quality')) {
+    return { authorized: false, error: 'Caption Quality & Intelligence requires Pro license tier.' }
+  }
+  return { authorized: true, tier }
+}
+
+ipcMain.handle('caption-quality:analyze', async (_, rawPayload) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return analyzeQuality(rawPayload)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-quality:improve', async (_, rawPayload) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return await improveCaption(rawPayload)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-quality:analyzeBulk', async (_, bulkPayload) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return analyzeBulkQuality(bulkPayload)
   } catch (err) {
     return { success: false, error: err.message }
   }

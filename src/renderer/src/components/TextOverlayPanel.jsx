@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import CaptionTemplateLibrary from './CaptionTemplateLibrary'
 import AiCaptionGenerator from './AiCaptionGenerator'
+import CaptionQualityPanel from './CaptionQualityPanel'
 
 const FONT_FAMILIES = ['Arial', 'Verdana', 'Tahoma', 'Georgia', 'Times New Roman', 'Courier New']
 const POSITIONS = ['top', 'center', 'bottom', 'custom']
@@ -402,6 +403,7 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
   const [enabled, setEnabled] = useState(overlays.length > 0)
   const [activeId, setActiveId] = useState(null)
   const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [qualityModalOpen, setQualityModalOpen] = useState(false)
 
   const MAX_OVERLAYS = 5
 
@@ -563,8 +565,7 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
               disabled={disabled}
               title="Generate captions using AI"
               style={{
-                flex: overlays.length >= MAX_OVERLAYS ? 'none' : 1,
-                width: overlays.length >= MAX_OVERLAYS ? '100%' : 'auto',
+                flex: 1,
                 padding: '8px 12px',
                 background: 'linear-gradient(135deg, #2a2050 0%, #3e276b 100%)',
                 border: '1px solid #7c6af7',
@@ -581,6 +582,30 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
               }}
             >
               <span>✨</span> AI Captions
+            </button>
+            <button
+              type="button"
+              onClick={() => setQualityModalOpen(true)}
+              disabled={disabled}
+              title="Analyze and improve caption quality"
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                background: 'linear-gradient(135deg, #182638 0%, #1c3d5a 100%)',
+                border: '1px solid #38bdf8',
+                borderRadius: 6,
+                color: '#bae6fd',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                boxShadow: '0 2px 8px rgba(56, 189, 248, 0.2)',
+              }}
+            >
+              <span>📊</span> Quality
             </button>
           </div>
 
@@ -605,6 +630,25 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
             onApplyCaption={handleApplyAiCaption}
             disabled={disabled}
           />
+
+          {/* Caption Quality & Intelligence Modal (Phase 4B-6) */}
+          {qualityModalOpen && (
+            <CaptionQualityPanel
+              caption={activeOverlay?.text || (overlays[0]?.text || '')}
+              onClose={() => setQualityModalOpen(false)}
+              onApply={(improvedText) => {
+                handleApplyAiCaption(improvedText)
+              }}
+              onSaveTemplate={async (captionText) => {
+                if (window.api?.createCaptionTemplate) {
+                  await window.api.createCaptionTemplate({
+                    name: `Quality Caption ${Date.now()}`,
+                    overlays: [createDefaultOverlay({ text: captionText })],
+                  })
+                }
+              }}
+            />
+          )}
         </>
       )}
     </div>

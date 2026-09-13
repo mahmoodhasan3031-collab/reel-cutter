@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import CaptionPresetEditor from './CaptionPresetEditor'
 import AiCaptionGenerator from './AiCaptionGenerator'
+import CaptionQualityPanel from './CaptionQualityPanel'
 
 /**
  * CaptionTemplateLibrary (Phase 4B-1, updated Phase 4B-2)
@@ -42,6 +43,9 @@ export default function CaptionTemplateLibrary({
 
   // Phase 4B-5: AI Caption Generator state
   const [aiModalOpen, setAiModalOpen] = useState(false)
+
+  // Phase 4B-6: Caption Quality & Intelligence state
+  const [qualityModalOpen, setQualityModalOpen] = useState(false)
 
   // Fetch templates from main process
   const loadTemplates = useCallback(async () => {
@@ -300,6 +304,28 @@ export default function CaptionTemplateLibrary({
             }}
           >
             <span>✨</span> AI Captions
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setQualityModalOpen(true)}
+            disabled={disabled || actionLoading}
+            title="Analyze and improve caption quality"
+            style={{
+              background: 'linear-gradient(135deg, #182638 0%, #1c3d5a 100%)',
+              border: '1px solid #38bdf8',
+              borderRadius: 5,
+              color: '#bae6fd',
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '4px 10px',
+              cursor: disabled || actionLoading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <span>📊</span> Quality
           </button>
 
           <button
@@ -732,6 +758,75 @@ export default function CaptionTemplateLibrary({
         }}
         disabled={disabled}
       />
+
+      {/* ── Caption Quality & Intelligence Modal (Phase 4B-6) ── */}
+      {qualityModalOpen && (
+        <CaptionQualityPanel
+          caption={currentOverlays?.[0]?.text || templates[0]?.overlays?.[0]?.text || ''}
+          onClose={() => {
+            setQualityModalOpen(false)
+            loadTemplates()
+          }}
+          onApply={(improvedText) => {
+            handleApply({
+              id: `temp_${Date.now()}`,
+              name: 'Quality Caption',
+              overlays: [
+                {
+                  id: `overlay_${Date.now()}`,
+                  text: improvedText,
+                  fontFamily: 'Arial',
+                  fontSize: 48,
+                  fontWeight: 'bold',
+                  color: '#FFFFFF',
+                  opacity: 1,
+                  backgroundColor: '#000000',
+                  backgroundOpacity: 0.4,
+                  outlineColor: '#000000',
+                  outlineWidth: 2,
+                  position: 'bottom',
+                  x: 0.5,
+                  y: 0.88,
+                  alignment: 'center',
+                  startTime: 0,
+                  endTime: null,
+                  enabled: true,
+                },
+              ],
+            })
+          }}
+          onSaveTemplate={async (captionText) => {
+            if (window.api?.createCaptionTemplate) {
+              await window.api.createCaptionTemplate({
+                name: `Quality Caption ${Date.now()}`,
+                overlays: [
+                  {
+                    id: `overlay_${Date.now()}`,
+                    text: captionText,
+                    fontFamily: 'Arial',
+                    fontSize: 48,
+                    fontWeight: 'bold',
+                    color: '#FFFFFF',
+                    opacity: 1,
+                    backgroundColor: '#000000',
+                    backgroundOpacity: 0.4,
+                    outlineColor: '#000000',
+                    outlineWidth: 2,
+                    position: 'bottom',
+                    x: 0.5,
+                    y: 0.88,
+                    alignment: 'center',
+                    startTime: 0,
+                    endTime: null,
+                    enabled: true,
+                  },
+                ],
+              })
+              loadTemplates()
+            }
+          }}
+        />
+      )}
     </div>
   )
 }
