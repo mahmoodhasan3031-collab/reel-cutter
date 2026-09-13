@@ -284,11 +284,13 @@ function createBulkSchedule(input = {}, customDir) {
       outputPath: finalOutputPath,
       profileSnapshot,
       variationPreset,
+      captionTemplateId: job.captionTemplateId || null,
+      captionTemplateName: job.captionTemplateName || null,
       exportOptions: {
         ...JSON.parse(JSON.stringify(exportOptionsSnapshot)),
         textOverlays: job.textOverlays && Array.isArray(job.textOverlays) && job.textOverlays.length > 0
           ? JSON.parse(JSON.stringify(job.textOverlays))
-          : (Array.isArray(rawOpts.textOverlays) && rawOpts.textOverlays.length > 0
+          : (job.textOverlays === undefined && Array.isArray(rawOpts.textOverlays) && rawOpts.textOverlays.length > 0
               ? JSON.parse(JSON.stringify(rawOpts.textOverlays))
               : undefined),
       },

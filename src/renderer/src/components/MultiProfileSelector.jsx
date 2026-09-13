@@ -188,9 +188,33 @@ export default function MultiProfileSelector({
   const [scheduleError, setScheduleError] = useState(null)
   const [scheduleSuccess, setScheduleSuccess] = useState(null)
 
+  const [captionTemplates, setCaptionTemplates] = useState([])
+
   useEffect(() => {
     onExecutingChange?.(isExecuting)
   }, [isExecuting, onExecutingChange])
+
+  const fetchCaptionTemplates = useCallback(async () => {
+    if (!window.api?.getCaptionTemplates) return
+    try {
+      const res = await window.api.getCaptionTemplates()
+      if (res && res.success && Array.isArray(res.templates)) {
+        setCaptionTemplates(res.templates)
+      }
+    } catch (_) {}
+  }, [])
+
+  const getProfileCaptionInfo = useCallback((profile) => {
+    if (!profile || !profile.captionTemplateId) {
+      return { name: 'None', count: 0 }
+    }
+    const tpl = captionTemplates.find(t => t.id === profile.captionTemplateId)
+    if (!tpl) {
+      return { name: 'None', count: 0 }
+    }
+    const count = Array.isArray(tpl.overlays) ? tpl.overlays.length : 0
+    return { name: tpl.name, count }
+  }, [captionTemplates])
 
   // Fetch only enabled profiles from main process
   const fetchProfiles = useCallback(async () => {
@@ -198,6 +222,7 @@ export default function MultiProfileSelector({
     try {
       setLoading(true)
       setError(null)
+      fetchCaptionTemplates()
       const res = await window.api.getProfiles()
       const list = res?.profiles || (Array.isArray(res) ? [...res] : [])
       const enabledOnly = list.filter(p => p.enabled !== false)
@@ -210,11 +235,12 @@ export default function MultiProfileSelector({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [fetchCaptionTemplates])
 
   useEffect(() => {
     fetchProfiles()
-  }, [fetchProfiles])
+    fetchCaptionTemplates()
+  }, [fetchProfiles, fetchCaptionTemplates])
 
   // Toggle individual profile selection
   const handleToggleProfile = (profileId) => {
@@ -749,29 +775,46 @@ export default function MultiProfileSelector({
             </div>
 
             {profiles.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
                 {profiles.map(p => {
                   const isChecked = selectedIds.includes(p.id)
                   const colorClass = PLATFORM_COLORS[p.platform] || PLATFORM_COLORS.Other
+                  const captionInfo = getProfileCaptionInfo(p)
                   return (
                     <div
                       key={p.id}
                       onClick={() => handleToggleProfile(p.id)}
-                      className={`flex items-center gap-2.5 p-2 rounded-lg border text-xs cursor-pointer transition-colors select-none ${
+                      className={`flex flex-col gap-1.5 p-2.5 rounded-lg border text-xs cursor-pointer transition-colors select-none ${
                         isChecked
                           ? 'bg-brand-600/10 border-brand-500/40 text-zinc-100'
                           : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       } ${isExecuting ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      {isChecked ? (
-                        <CheckSquare size={14} className="text-brand-400 shrink-0" />
-                      ) : (
-                        <Square size={14} className="text-zinc-600 shrink-0" />
-                      )}
-                      <span className="truncate flex-1 font-medium">{p.name}</span>
-                      <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded border font-semibold shrink-0 ${colorClass}`}>
-                        {p.platform}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {isChecked ? (
+                          <CheckSquare size={14} className="text-brand-400 shrink-0" />
+                        ) : (
+                          <Square size={14} className="text-zinc-600 shrink-0" />
+                        )}
+                        <span className="truncate flex-1 font-semibold text-zinc-100">{p.name}</span>
+                        <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded border font-semibold shrink-0 ${colorClass}`}>
+                          {p.platform}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-zinc-400 pl-5 space-y-0.5">
+                        <div className="truncate flex items-center gap-1">
+                          <span className="text-zinc-500">Variation:</span>
+                          <span className="text-zinc-300 truncate">{formatPresetSummary(p.variationPreset)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-zinc-400">
+                          <span className="truncate">
+                            <span className="text-zinc-500">Caption:</span> <span className="text-zinc-300 font-medium">{captionInfo.name}</span>
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-medium shrink-0">
+                            Overlays: {captionInfo.count}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   )
                 })}
@@ -927,6 +970,21 @@ export default function MultiProfileSelector({
                           </span>
                         </div>
                       </div>
+
+                      {/* Caption template badge */}
+                      {(() => {
+                        const captionInfo = getProfileCaptionInfo(profile)
+                        return (
+                          <div className="flex items-center justify-between text-[11px] px-1 text-zinc-400">
+                            <span className="truncate">
+                              <span className="text-zinc-500">Caption:</span> <span className="text-zinc-300 font-medium">{captionInfo.name}</span>
+                            </span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-medium shrink-0">
+                              Overlays: {captionInfo.count}
+                            </span>
+                          </div>
+                        )
+                      })()}
 
                       {/* Expanded Slider / Control Card for this profile */}
                       {isEditing && (
@@ -1326,6 +1384,16 @@ export default function MultiProfileSelector({
                             <SlidersHorizontal size={10} className="text-brand-400 shrink-0" />
                             <span className="truncate">
                               {formatPresetSummary(job.variationPreset)}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 text-[10px] text-zinc-400">
+                            <span className="truncate">
+                              <span className="text-zinc-500">Caption:</span>{' '}
+                              <span className="text-zinc-300 font-medium">{job.captionTemplateName || 'None'}</span>
+                            </span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-medium shrink-0">
+                              Overlays: {Array.isArray(job.textOverlays) ? job.textOverlays.length : 0}
                             </span>
                           </div>
 

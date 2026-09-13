@@ -460,6 +460,7 @@ function updateJobVariationInPlan(plan, targetId, variationOverride) {
         ...job,
         variationPreset: JSON.parse(JSON.stringify(resolved)),
         savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+        textOverlays: job.textOverlays ? JSON.parse(JSON.stringify(job.textOverlays)) : null,
         isOverridden: true,
       };
     }
@@ -467,6 +468,7 @@ function updateJobVariationInPlan(plan, targetId, variationOverride) {
       ...job,
       variationPreset: JSON.parse(JSON.stringify(job.variationPreset)),
       savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+      textOverlays: job.textOverlays ? JSON.parse(JSON.stringify(job.textOverlays)) : null,
     };
   });
 
@@ -508,6 +510,7 @@ function applyVariationToAllJobsInPlan(plan, variation) {
     ...job,
     variationPreset: JSON.parse(JSON.stringify(resolved)),
     savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+    textOverlays: job.textOverlays ? JSON.parse(JSON.stringify(job.textOverlays)) : null,
     isOverridden: true,
   }));
 
@@ -544,6 +547,7 @@ function restoreJobVariationToProfilePreset(plan, targetId, customDir) {
         ...job,
         variationPreset: JSON.parse(JSON.stringify(savedPreset)),
         savedPreset: JSON.parse(JSON.stringify(savedPreset)),
+        textOverlays: job.textOverlays ? JSON.parse(JSON.stringify(job.textOverlays)) : null,
         isOverridden: false,
       };
     }
@@ -551,6 +555,7 @@ function restoreJobVariationToProfilePreset(plan, targetId, customDir) {
       ...job,
       variationPreset: JSON.parse(JSON.stringify(job.variationPreset)),
       savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+      textOverlays: job.textOverlays ? JSON.parse(JSON.stringify(job.textOverlays)) : null,
     };
   });
 
@@ -585,6 +590,7 @@ function resetJobVariationInPlan(plan, targetId) {
         ...job,
         variationPreset: JSON.parse(JSON.stringify(resolved)),
         savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+        textOverlays: job.textOverlays ? JSON.parse(JSON.stringify(job.textOverlays)) : null,
         isOverridden: true,
       };
     }
@@ -592,6 +598,7 @@ function resetJobVariationInPlan(plan, targetId) {
       ...job,
       variationPreset: JSON.parse(JSON.stringify(job.variationPreset)),
       savedPreset: job.savedPreset ? JSON.parse(JSON.stringify(job.savedPreset)) : undefined,
+      textOverlays: job.textOverlays ? JSON.parse(JSON.stringify(job.textOverlays)) : null,
     };
   });
 
@@ -633,9 +640,11 @@ function planToBatchQueueItems(plan, extraOptions = {}) {
     profileName: job.profileName,
     platform: job.platform,
     orderIndex: job.orderIndex,
+    captionTemplateId: job.captionTemplateId || null,
+    captionTemplateName: job.captionTemplateName || null,
     textOverlays: job.textOverlays && Array.isArray(job.textOverlays) && job.textOverlays.length > 0
       ? JSON.parse(JSON.stringify(job.textOverlays))
-      : (Array.isArray(extraOptions.textOverlays) && extraOptions.textOverlays.length > 0
+      : (job.textOverlays === undefined && Array.isArray(extraOptions.textOverlays) && extraOptions.textOverlays.length > 0
           ? JSON.parse(JSON.stringify(extraOptions.textOverlays))
           : null),
   }));
