@@ -38,6 +38,12 @@ import {
   resumeSchedule,
   updateSchedule,
 } from './scheduler/scheduleManager'
+import {
+  createBulkSchedule,
+  getScheduleGroupSummary,
+  cancelScheduleGroup,
+  deleteScheduleGroupHistory,
+} from './scheduler/bulkScheduleManager'
 import { getSchedulerService } from './scheduler/schedulerService'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
@@ -960,6 +966,47 @@ ipcMain.handle('schedule:update', async (_, { id, changes }) => {
       win.webContents.send('schedule:update', updated)
     }
     return { success: true, schedule: updated, isPastDue }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('schedule:createBulk', async (_, input) => {
+  try {
+    const result = createBulkSchedule(input)
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win && Array.isArray(result.schedules)) {
+      result.schedules.forEach(s => win.webContents.send('schedule:update', s))
+    }
+    return result
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('schedule:getGroupSummary', async (_, planId) => {
+  try {
+    const summary = getScheduleGroupSummary(planId)
+    return { success: true, summary }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('schedule:cancelGroup', async (_, planId) => {
+  try {
+    const scheduler = getSchedulerService()
+    const result = cancelScheduleGroup(planId, null, scheduler)
+    return result
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('schedule:deleteGroupHistory', async (_, planId) => {
+  try {
+    const result = deleteScheduleGroupHistory(planId)
+    return result
   } catch (err) {
     return { success: false, error: err.message }
   }

@@ -54,8 +54,9 @@ contextBridge.exposeInMainWorld('api', {
   cancelBulkJob: (jobId) => ipcRenderer.invoke('profile:cancelJob', jobId),
   getBulkVariationTemplates: () => ipcRenderer.invoke('profile:getTemplates'),
 
-  // ── Scheduler (Phase 3A / 3B) ─────────────────────────────────────────────
+  // ── Scheduler (Phase 3A / 3B / 3C) ────────────────────────────────────────
   createSchedule: (data) => ipcRenderer.invoke('schedule:create', data),
+  createBulkSchedule: (data) => ipcRenderer.invoke('schedule:createBulk', data),
   getSchedules: () => ipcRenderer.invoke('schedule:list'),
   getSchedule: (id) => ipcRenderer.invoke('schedule:get', id),
   cancelSchedule: (id) => ipcRenderer.invoke('schedule:cancel', id),
@@ -63,6 +64,9 @@ contextBridge.exposeInMainWorld('api', {
   pauseSchedule: (id) => ipcRenderer.invoke('schedule:pause', id),
   resumeSchedule: (id) => ipcRenderer.invoke('schedule:resume', id),
   updateSchedule: (id, changes) => ipcRenderer.invoke('schedule:update', { id, changes }),
+  getScheduleGroupSummary: (planId) => ipcRenderer.invoke('schedule:getGroupSummary', planId),
+  cancelScheduleGroup: (planId) => ipcRenderer.invoke('schedule:cancelGroup', planId),
+  deleteScheduleGroupHistory: (planId) => ipcRenderer.invoke('schedule:deleteGroupHistory', planId),
   onScheduleUpdate: (cb) => ipcRenderer.on('schedule:update', (_, data) => cb(data)),
   onScheduleProgress: (cb) => ipcRenderer.on('schedule:progress', (_, data) => cb(data)),
 

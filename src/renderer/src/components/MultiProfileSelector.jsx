@@ -22,6 +22,10 @@ import {
   Gauge,
   Crop,
   ShieldCheck,
+  Calendar,
+  Clock,
+  X,
+  Loader2,
 } from 'lucide-react'
 
 const MAX_BULK_PROFILES = 10
@@ -173,6 +177,16 @@ export default function MultiProfileSelector({
   const [expandedEditorProfileId, setExpandedEditorProfileId] = useState(null)
   const [bulkApplySuccessMsg, setBulkApplySuccessMsg] = useState(null)
   const [selectedTemplateId, setSelectedTemplateId] = useState('lightColor')
+
+  // Phase 3C: Bulk Scheduling Modal State
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [scheduleStartDate, setScheduleStartDate] = useState('')
+  const [scheduleStartTime, setScheduleStartTime] = useState('')
+  const [scheduleGap, setScheduleGap] = useState(15)
+  const [customGap, setCustomGap] = useState('')
+  const [isScheduling, setIsScheduling] = useState(false)
+  const [scheduleError, setScheduleError] = useState(null)
+  const [scheduleSuccess, setScheduleSuccess] = useState(null)
 
   useEffect(() => {
     onExecutingChange?.(isExecuting)
@@ -500,6 +514,70 @@ export default function MultiProfileSelector({
   const handleShowInFolder = (filePath) => {
     if (!filePath || !window.api?.showInFolder) return
     window.api.showInFolder(filePath)
+  }
+
+  // Phase 3C: Open Bulk Schedule Modal
+  const handleOpenScheduleModal = () => {
+    if (!plan || !plan.jobs || plan.jobs.length === 0) return
+    const future = new Date(Date.now() + 5 * 60 * 1000)
+    const dateStr = future.toISOString().split('T')[0]
+    const hours = String(future.getHours()).padStart(2, '0')
+    const mins = String(future.getMinutes()).padStart(2, '0')
+    setScheduleStartDate(dateStr)
+    setScheduleStartTime(`${hours}:${mins}`)
+    setScheduleGap(15)
+    setCustomGap('')
+    setScheduleError(null)
+    setScheduleSuccess(null)
+    setShowScheduleModal(true)
+  }
+
+  // Phase 3C: Confirm & Create Bulk Schedule
+  const handleConfirmBulkSchedule = async (e) => {
+    e.preventDefault()
+    setScheduleError(null)
+    setScheduleSuccess(null)
+
+    if (!scheduleStartDate || !scheduleStartTime) {
+      setScheduleError('Please select both start date and time.')
+      return
+    }
+
+    const startDateTime = new Date(`${scheduleStartDate}T${scheduleStartTime}`)
+    if (isNaN(startDateTime.getTime())) {
+      setScheduleError('Invalid start date or time format.')
+      return
+    }
+
+    const gapVal = scheduleGap === 'custom' ? Number(customGap) : Number(scheduleGap)
+    if (!Number.isInteger(gapVal) || gapVal < 1 || gapVal > 1440) {
+      setScheduleError('Time gap must be an integer between 1 and 1440 minutes.')
+      return
+    }
+
+    setIsScheduling(true)
+    try {
+      const res = await window.api.createBulkSchedule({
+        plan,
+        startAt: startDateTime.toISOString(),
+        gapMinutes: gapVal,
+        options: exportOptions,
+      })
+
+      if (res && res.success) {
+        setScheduleSuccess(`Successfully created ${res.count} schedule records!`)
+        setTimeout(() => {
+          setShowScheduleModal(false)
+          setScheduleSuccess(null)
+        }, 1500)
+      } else {
+        setScheduleError(res?.error || 'Failed to create bulk schedule')
+      }
+    } catch (err) {
+      setScheduleError(err.message || 'An error occurred while creating bulk schedule')
+    } finally {
+      setIsScheduling(false)
+    }
   }
 
   const getDisplayStatus = (rawStatus) => {
@@ -1169,15 +1247,26 @@ export default function MultiProfileSelector({
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleStartBulkExport}
-                  disabled={disabled || isExecuting || plan.jobs.length === 0}
-                  className="w-full py-2.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-xs font-bold text-white transition-colors flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40"
-                >
-                  <Play size={13} className="fill-current" />
-                  <span>Start Bulk Export ({plan.jobs.length} Profiles)</span>
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleStartBulkExport}
+                    disabled={disabled || isExecuting || isScheduling || plan.jobs.length === 0}
+                    className="w-full py-2.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-xs font-bold text-white transition-colors flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40"
+                  >
+                    <Play size={13} className="fill-current" />
+                    <span>Start Bulk Export ({plan.jobs.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenScheduleModal}
+                    disabled={disabled || isExecuting || isScheduling || plan.jobs.length === 0}
+                    className="w-full py-2.5 px-3 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-xs font-bold text-white transition-colors flex items-center justify-center gap-2 shadow-lg shadow-brand-950/40"
+                  >
+                    <Calendar size={13} />
+                    <span>Schedule Bulk Export</span>
+                  </button>
+                </div>
               )}
 
               {/* Job List Preview */}
@@ -1344,6 +1433,195 @@ export default function MultiProfileSelector({
               )}
             </div>
           )}
+        </div>
+      )}
+      {/* Phase 3C: Schedule Bulk Export Modal */}
+      {showScheduleModal && plan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Calendar size={18} className="text-brand-400" />
+                <h2 className="text-sm font-bold text-zinc-100">Schedule Bulk Export ({plan.jobs.length} Profiles)</h2>
+              </div>
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="p-1 text-zinc-400 hover:text-zinc-100 rounded-lg hover:bg-zinc-800 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmBulkSchedule} className="flex-1 overflow-y-auto p-5 space-y-4">
+              {scheduleError && (
+                <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300">
+                  <AlertCircle size={14} className="text-red-400 shrink-0" />
+                  <span>{scheduleError}</span>
+                </div>
+              )}
+
+              {scheduleSuccess && (
+                <div className="flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-xs text-green-300">
+                  <CheckCircle2 size={14} className="text-green-400 shrink-0" />
+                  <span>{scheduleSuccess}</span>
+                </div>
+              )}
+
+              {/* Start Date & Time */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300">Start Date</label>
+                  <input
+                    type="date"
+                    value={scheduleStartDate}
+                    onChange={e => setScheduleStartDate(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300">Start Time</label>
+                  <input
+                    type="time"
+                    value={scheduleStartTime}
+                    onChange={e => setScheduleStartTime(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              {/* Time Gap */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-300 flex items-center justify-between">
+                  <span>Time Gap Between Jobs</span>
+                  <span className="text-[10px] text-zinc-500 font-normal">Min 1m • Max 24h</span>
+                </label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[1, 5, 10, 15, 30, 60].map(gap => (
+                    <button
+                      key={gap}
+                      type="button"
+                      onClick={() => { setScheduleGap(gap); setCustomGap(''); }}
+                      className={`px-2 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                        scheduleGap === gap
+                          ? 'bg-brand-600/20 text-brand-300 border-brand-500/50 shadow-sm'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                      }`}
+                    >
+                      {gap} min
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setScheduleGap('custom')}
+                    className={`col-span-2 px-2 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                      scheduleGap === 'custom'
+                        ? 'bg-brand-600/20 text-brand-300 border-brand-500/50 shadow-sm'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                    }`}
+                  >
+                    Custom Gap
+                  </button>
+                </div>
+
+                {scheduleGap === 'custom' && (
+                  <div className="pt-2 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="1440"
+                      placeholder="Minutes (1 - 1440)"
+                      value={customGap}
+                      onChange={e => setCustomGap(e.target.value)}
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-brand-500"
+                    />
+                    <span className="text-xs text-zinc-400">minutes</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Past Start Time Warning */}
+              {scheduleStartDate && scheduleStartTime && new Date(`${scheduleStartDate}T${scheduleStartTime}`) < new Date() && (
+                <div className="flex items-start gap-2 p-2.5 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-xs text-yellow-300">
+                  <AlertCircle size={14} className="text-yellow-400 shrink-0 mt-0.5" />
+                  <span>Start time is in the past. Due jobs may begin immediately.</span>
+                </div>
+              )}
+
+              {/* Timeline Preview */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock size={13} className="text-brand-400" />
+                    Timeline Preview ({plan.jobs.length} Jobs)
+                  </span>
+                  <span className="text-[10px] text-zinc-500">Order preserved</span>
+                </label>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {plan.jobs.map((job, idx) => {
+                    const currentGap = scheduleGap === 'custom' ? Number(customGap || 15) : Number(scheduleGap)
+                    let scheduledText = 'Pending time'
+                    if (scheduleStartDate && scheduleStartTime) {
+                      const baseMs = new Date(`${scheduleStartDate}T${scheduleStartTime}`).getTime()
+                      if (!isNaN(baseMs)) {
+                        const jobMs = baseMs + idx * currentGap * 60 * 1000
+                        scheduledText = new Date(jobMs).toLocaleString('en-US', {
+                          month: 'short', day: 'numeric',
+                          hour: 'numeric', minute: '2-digit', hour12: true,
+                        })
+                      }
+                    }
+                    const platformClass = PLATFORM_COLORS[job.platform] || PLATFORM_COLORS.Other
+
+                    return (
+                      <div
+                        key={job.jobId}
+                        className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-5 h-5 rounded bg-zinc-800 text-zinc-400 flex items-center justify-center text-[10px] font-bold shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span className="font-semibold text-zinc-200 truncate">{job.profileName}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${platformClass}`}>
+                            {job.platform}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-zinc-300 font-mono text-[11px] shrink-0">
+                          <Clock size={11} className="text-zinc-500" />
+                          <span>{scheduledText}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-2 flex justify-between items-center border-t border-zinc-800">
+                <span className="text-xs text-zinc-400">Total: {plan.jobs.length} schedules</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowScheduleModal(false)}
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isScheduling}
+                    className="flex items-center gap-2 px-5 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-all shadow-lg shadow-brand-900/30"
+                  >
+                    {isScheduling ? (
+                      <><Loader2 size={13} className="animate-spin" /> Scheduling…</>
+                    ) : (
+                      <><Calendar size={13} /> Confirm &amp; Schedule</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

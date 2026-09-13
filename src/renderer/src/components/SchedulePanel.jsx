@@ -21,6 +21,8 @@ import {
   ArrowUpDown,
   Info,
   Pencil,
+  Layers,
+  RotateCcw,
 } from 'lucide-react';
 import ProgressBar from './ProgressBar';
 
@@ -639,6 +641,87 @@ export default function SchedulePanel({ defaultVideoPath, defaultExportType = 'c
     }
   };
 
+  // Phase 3C: Compute bulk schedule groups and summaries
+  const bulkGroups = useMemo(() => {
+    const map = new Map();
+    for (const s of schedules) {
+      if (!s.planId) continue;
+      if (!map.has(s.planId)) {
+        map.set(s.planId, {
+          planId: s.planId,
+          sourcePath: s.sourcePath,
+          items: [],
+          total: 0,
+          scheduled: 0,
+          paused: 0,
+          ready: 0,
+          processing: 0,
+          completed: 0,
+          failed: 0,
+          cancelled: 0,
+        });
+      }
+      const g = map.get(s.planId);
+      g.items.push(s);
+      g.total++;
+      const st = (s.status || '').toUpperCase();
+      if (st === 'SCHEDULED') g.scheduled++;
+      else if (st === 'PAUSED') g.paused++;
+      else if (st === 'READY') g.ready++;
+      else if (st === 'PROCESSING') g.processing++;
+      else if (st === 'COMPLETED') g.completed++;
+      else if (st === 'FAILED') g.failed++;
+      else if (st === 'CANCELLED') g.cancelled++;
+    }
+    return Array.from(map.values());
+  }, [schedules]);
+
+  // Phase 3C: Cancel remaining active jobs in a bulk group
+  const handleCancelBulkGroup = (planId) => {
+    setConfirmDialog({
+      title: 'Cancel Remaining Jobs in Group',
+      message: `Cancel all waiting, scheduled, and processing jobs in bulk schedule "${planId}"? Completed and failed jobs will remain unchanged.`,
+      confirmLabel: 'Cancel Remaining',
+      confirmClass: 'bg-red-600 hover:bg-red-500',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const res = await window.api.cancelScheduleGroup(planId);
+          if (res && res.success) {
+            fetchSchedules();
+          } else {
+            setError(res?.error || 'Failed to cancel schedule group');
+          }
+        } catch (err) {
+          setError(err.message);
+        }
+      },
+    });
+  };
+
+  // Phase 3C: Delete terminal history for a bulk group
+  const handleDeleteBulkGroupHistory = (planId) => {
+    setConfirmDialog({
+      title: 'Delete Completed Group History',
+      message: `Permanently delete finished, failed, and cancelled records for bulk schedule "${planId}"? Any active or scheduled jobs will be kept. Output files on disk will NOT be deleted.`,
+      confirmLabel: 'Delete History Records',
+      confirmClass: 'bg-red-600 hover:bg-red-500',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const res = await window.api.deleteScheduleGroupHistory(planId);
+          if (res && res.success) {
+            fetchSchedules();
+          } else {
+            setError(res?.error || 'Failed to delete schedule group history');
+          }
+        } catch (err) {
+          setError(err.message);
+        }
+      },
+    });
+  };
+
   const selectedProfileObj = profiles.find(p => p.id === formData.profileId);
 
   return (
@@ -752,36 +835,135 @@ export default function SchedulePanel({ defaultVideoPath, defaultExportType = 'c
             </div>
           </div>
         ) : (
-          filteredSchedules.map(schedule => {
-            const badge        = STATUS_BADGES[schedule.status] || STATUS_BADGES.SCHEDULED;
-            const platformClass = PLATFORM_STYLES[schedule.profileSnapshot?.platform] || PLATFORM_STYLES.Other;
-            const progress     = liveProgress[schedule.id] !== undefined
-              ? liveProgress[schedule.id]
-              : schedule.progress || 0;
+          <>
+            {/* Phase 3C: Bulk Group Overview & Actions Banner */}
+            {bulkGroups.length > 0 && activeTab === 'ALL' && (
+              <div className="space-y-2 mb-3">
+                {bulkGroups.map(group => {
+                  const hasActiveJobs = (group.scheduled + group.paused + group.ready + group.processing) > 0;
+                  const hasTerminalJobs = (group.completed + group.failed + group.cancelled) > 0;
+                  const sourceName = group.sourcePath?.split(/[/\\]/).pop() || 'Bulk Export';
 
-            const isProcessing  = schedule.status === 'PROCESSING';
-            const isTerminal    = ['COMPLETED', 'FAILED', 'CANCELLED'].includes(schedule.status);
-            const isEditable    = schedule.status === 'SCHEDULED' || schedule.status === 'PAUSED';
-            const isCancellable = ['SCHEDULED', 'READY', 'PROCESSING', 'PAUSED'].includes(schedule.status);
+                  return (
+                    <div
+                      key={group.planId}
+                      className="p-3 bg-purple-950/20 border border-purple-800/40 rounded-xl flex flex-col gap-2 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Layers size={14} className="text-purple-400 shrink-0" />
+                          <span className="text-xs font-bold text-zinc-200 truncate">
+                            Bulk Schedule: {sourceName}
+                          </span>
+                          <span className="text-[10px] font-mono text-zinc-500 truncate" title={group.planId}>
+                            ({group.planId.slice(0, 16)}…)
+                          </span>
+                        </div>
 
-            return (
-              <div
-                key={schedule.id}
-                className="p-4 bg-zinc-900 border border-zinc-800 hover:border-zinc-700/80 rounded-xl transition-all flex flex-col gap-3 shadow-sm"
-              >
-                {/* Card Top */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-semibold text-zinc-200 truncate">
-                      {schedule.profileSnapshot?.name || 'Default Profile'}
-                    </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${platformClass}`}>
-                      {schedule.profileSnapshot?.platform || 'Other'}
-                    </span>
-                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
-                      {schedule.exportType}
-                    </span>
-                  </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {hasActiveJobs && (
+                            <button
+                              type="button"
+                              onClick={() => handleCancelBulkGroup(group.planId)}
+                              className="px-2 py-1 rounded bg-zinc-800 hover:bg-red-500/20 text-zinc-300 hover:text-red-300 border border-zinc-700 hover:border-red-500/30 text-[11px] font-medium transition-colors flex items-center gap-1"
+                              title="Cancel all remaining active jobs in this bulk schedule"
+                            >
+                              <XCircle size={11} />
+                              Cancel Remaining
+                            </button>
+                          )}
+
+                          {hasTerminalJobs && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBulkGroupHistory(group.planId)}
+                              className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-red-400 border border-zinc-700 text-[11px] font-medium transition-colors flex items-center gap-1"
+                              title="Delete history records for finished/failed/cancelled jobs"
+                            >
+                              <Trash2 size={11} />
+                              Delete History
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Live Group Summary Metrics (Requirement 14) */}
+                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 text-center text-[10px]">
+                        <div className="p-1 rounded bg-zinc-900/80 border border-zinc-800/80">
+                          <span className="text-zinc-500 block">Total</span>
+                          <span className="font-bold text-zinc-200">{group.total}</span>
+                        </div>
+                        <div className="p-1 rounded bg-amber-500/5 border border-amber-500/20">
+                          <span className="text-amber-400/80 block">Sched</span>
+                          <span className="font-bold text-amber-300">{group.scheduled}</span>
+                        </div>
+                        <div className="p-1 rounded bg-yellow-500/5 border border-yellow-500/20">
+                          <span className="text-yellow-400/80 block">Paused</span>
+                          <span className="font-bold text-yellow-300">{group.paused}</span>
+                        </div>
+                        <div className="p-1 rounded bg-blue-500/5 border border-blue-500/20">
+                          <span className="text-blue-400/80 block">Ready</span>
+                          <span className="font-bold text-blue-300">{group.ready}</span>
+                        </div>
+                        <div className="p-1 rounded bg-indigo-500/5 border border-indigo-500/20">
+                          <span className="text-indigo-400/80 block">Proc</span>
+                          <span className="font-bold text-indigo-300">{group.processing}</span>
+                        </div>
+                        <div className="p-1 rounded bg-emerald-500/5 border border-emerald-500/20">
+                          <span className="text-emerald-400/80 block">Done</span>
+                          <span className="font-bold text-emerald-300">{group.completed}</span>
+                        </div>
+                        <div className="p-1 rounded bg-red-500/5 border border-red-500/20">
+                          <span className="text-red-400/80 block">Failed</span>
+                          <span className="font-bold text-red-300">{group.failed}</span>
+                        </div>
+                        <div className="p-1 rounded bg-zinc-800/60 border border-zinc-700/60">
+                          <span className="text-zinc-400 block">Canc</span>
+                          <span className="font-bold text-zinc-300">{group.cancelled}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {filteredSchedules.map(schedule => {
+              const badge        = STATUS_BADGES[schedule.status] || STATUS_BADGES.SCHEDULED;
+              const platformClass = PLATFORM_STYLES[schedule.profileSnapshot?.platform] || PLATFORM_STYLES.Other;
+              const progress     = liveProgress[schedule.id] !== undefined
+                ? liveProgress[schedule.id]
+                : schedule.progress || 0;
+
+              const isProcessing  = schedule.status === 'PROCESSING';
+              const isTerminal    = ['COMPLETED', 'FAILED', 'CANCELLED'].includes(schedule.status);
+              const isEditable    = schedule.status === 'SCHEDULED' || schedule.status === 'PAUSED';
+              const isCancellable = ['SCHEDULED', 'READY', 'PROCESSING', 'PAUSED'].includes(schedule.status);
+
+              return (
+                <div
+                  key={schedule.id}
+                  className="p-4 bg-zinc-900 border border-zinc-800 hover:border-zinc-700/80 rounded-xl transition-all flex flex-col gap-3 shadow-sm"
+                >
+                  {/* Card Top */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-semibold text-zinc-200 truncate">
+                        {schedule.profileSnapshot?.name || 'Default Profile'}
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${platformClass}`}>
+                        {schedule.profileSnapshot?.platform || 'Other'}
+                      </span>
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                        {schedule.exportType}
+                      </span>
+                      {schedule.planId && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/30 font-medium flex items-center gap-1">
+                          <Layers size={10} />
+                          Bulk Job
+                        </span>
+                      )}
+                    </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className={`text-[11px] px-2.5 py-0.5 rounded-full border font-semibold flex items-center gap-1.5 ${badge.bg}`}>
@@ -920,9 +1102,10 @@ export default function SchedulePanel({ defaultVideoPath, defaultExportType = 'c
                 )}
               </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </>
+      )}
+    </div>
 
       {/* ── CREATE SCHEDULE MODAL ── */}
       {showCreateModal && (

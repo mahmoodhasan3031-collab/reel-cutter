@@ -22,6 +22,7 @@ const tests = [
   'bulk-variation-control.test.js',
   'scheduler.test.js',
   'schedule-management.test.js',
+  'bulk-scheduling.test.js',
 ];
 
 console.log('======================================================');
