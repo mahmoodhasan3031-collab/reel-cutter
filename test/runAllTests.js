@@ -37,6 +37,7 @@ const tests = [
   'variation-preset.test.js',
   'export-preset.test.js',
   'intelligent-profile.test.js',
+  'bulk-export-intelligence.test.js',
 ];
 
 console.log('======================================================');

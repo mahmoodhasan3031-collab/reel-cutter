@@ -698,11 +698,471 @@ function planToBatchQueueItems(plan, extraOptions = {}) {
   }));
 }
 
+// ─── Phase 5D: Intelligent Bulk Export Intelligence ─────────────────────────────
+
+const JOB_VALIDATION_STATUS = {
+  VALID: 'valid',
+  WARNING: 'warning',
+  INVALID: 'invalid',
+};
+
+const ASPECT_RATIOS = {
+  '9:16': 'Vertical',
+  '16:9': 'Landscape',
+  '1:1': 'Square',
+  '4:5': 'Portrait',
+};
+
+/**
+ * Validates a single job's configuration and returns a classification.
+ * @param {Object} job
+ * @param {string} sourceFile
+ * @returns {{ status: string, warnings: string[], errors: string[] }}
+ */
+function validateJobConfiguration(job, sourceFile) {
+  const warnings = [];
+  const errors = [];
+
+  if (!job || typeof job !== 'object') {
+    return { status: JOB_VALIDATION_STATUS.INVALID, warnings: [], errors: ['Invalid job object'] };
+  }
+
+  if (!job.profileName || typeof job.profileName !== 'string') {
+    errors.push('Missing profile name');
+  }
+
+  if (!job.outputPath || typeof job.outputPath !== 'string') {
+    errors.push('Missing output path');
+  } else {
+    const resolvedOutput = path.resolve(job.outputPath);
+    const resolvedSource = path.resolve(sourceFile);
+    if (resolvedOutput.toLowerCase() === resolvedSource.toLowerCase()) {
+      errors.push('Output path matches source file');
+    }
+    // Path traversal: detect raw `..` segments in the path
+    const segments = job.outputPath.replace(/\\/g, '/').split('/');
+    if (segments.includes('..')) {
+      errors.push('Output path contains traversal sequences');
+    }
+  }
+
+  if (!job.variationPreset || typeof job.variationPreset !== 'object') {
+    errors.push('Missing variation preset');
+  } else {
+    try {
+      const vResult = validateProductVariationConfig(job.variationPreset);
+      if (!vResult.valid) {
+        errors.push('Invalid variation settings');
+      }
+    } catch (err) {
+      errors.push(`Variation validation failed: ${err.message}`);
+    }
+  }
+
+  if (job.textOverlays !== undefined && job.textOverlays !== null && !Array.isArray(job.textOverlays)) {
+    errors.push('Invalid text overlays format');
+  }
+
+  if (!job.exportPresetId) {
+    warnings.push('No export preset assigned');
+  }
+  if (!job.captionTemplateId) {
+    warnings.push('No caption template assigned');
+  }
+
+  if (job.status === 'ERROR') {
+    warnings.push('Job previously failed');
+  }
+
+  let status;
+  if (errors.length > 0) {
+    status = JOB_VALIDATION_STATUS.INVALID;
+  } else if (warnings.length > 0) {
+    status = JOB_VALIDATION_STATUS.WARNING;
+  } else {
+    status = JOB_VALIDATION_STATUS.VALID;
+  }
+
+  return { status, warnings, errors };
+}
+
+/**
+ * Validates all jobs in a plan and returns per-job and aggregate results.
+ * @param {Object} plan
+ * @returns {{ validJobs: number, warningJobs: number, invalidJobs: number, jobResults: Array<Object>, errors: string[] }}
+ */
+function validateBulkPlan(plan) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    return { validJobs: 0, warningJobs: 0, invalidJobs: 0, jobResults: [], errors: ['Invalid plan'] };
+  }
+
+  const jobResults = plan.jobs.map(job => {
+    const result = validateJobConfiguration(job, plan.sourceFile);
+    return { jobId: job.jobId, profileName: job.profileName, ...result };
+  });
+
+  const validJobs = jobResults.filter(r => r.status === JOB_VALIDATION_STATUS.VALID).length;
+  const warningJobs = jobResults.filter(r => r.status === JOB_VALIDATION_STATUS.WARNING).length;
+  const invalidJobs = jobResults.filter(r => r.status === JOB_VALIDATION_STATUS.INVALID).length;
+  const allErrors = jobResults.flatMap(r => r.errors);
+
+  return { validJobs, warningJobs, invalidJobs, jobResults, errors: allErrors };
+}
+
+/**
+ * Detects output conflicts across jobs in a plan.
+ * @param {Object} plan
+ * @returns {{ conflicts: Array<Object>, duplicateOutputs: Array<string> }}
+ */
+function detectOutputConflicts(plan) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    return { conflicts: [], duplicateOutputs: [] };
+  }
+
+  const conflicts = [];
+  const outputPaths = new Map();
+
+  for (const job of plan.jobs) {
+    const resolved = job.outputPath ? path.resolve(job.outputPath) : null;
+    if (!resolved) continue;
+
+    if (outputPaths.has(resolved)) {
+      const existingJob = outputPaths.get(resolved);
+      conflicts.push({
+        type: 'duplicate_output',
+        jobId: job.jobId,
+        profileName: job.profileName,
+        conflictingJobId: existingJob.jobId,
+        conflictingProfileName: existingJob.profileName,
+        outputPath: resolved,
+      });
+    } else {
+      outputPaths.set(resolved, job);
+    }
+
+    if (fs.existsSync(resolved)) {
+      conflicts.push({
+        type: 'existing_file',
+        jobId: job.jobId,
+        profileName: job.profileName,
+        outputPath: resolved,
+      });
+    }
+
+    const resolvedSource = plan.sourceFile ? path.resolve(plan.sourceFile) : null;
+    if (resolvedSource && resolved.toLowerCase() === resolvedSource.toLowerCase()) {
+      conflicts.push({
+        type: 'source_overwrite',
+        jobId: job.jobId,
+        profileName: job.profileName,
+        outputPath: resolved,
+      });
+    }
+
+    if (resolved.includes('..')) {
+      conflicts.push({
+        type: 'path_traversal',
+        jobId: job.jobId,
+        profileName: job.profileName,
+        outputPath: resolved,
+      });
+    } else {
+      // Check raw path for traversal segments
+      const segments = (job.outputPath || '').replace(/\\/g, '/').split('/');
+      if (segments.includes('..')) {
+        conflicts.push({
+          type: 'path_traversal',
+          jobId: job.jobId,
+          profileName: job.profileName,
+          outputPath: resolved,
+        });
+      }
+    }
+  }
+
+  const duplicateOutputs = [...new Set(conflicts.filter(c => c.type === 'duplicate_output').map(c => c.outputPath))];
+
+  return { conflicts, duplicateOutputs };
+}
+
+/**
+ * Generates a preflight analysis summary for a bulk export plan.
+ * @param {Object} plan
+ * @returns {Object} summary statistics
+ */
+function generatePreflightSummary(plan) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    return {
+      totalProfiles: 0, totalJobs: 0, validJobs: 0, warningJobs: 0, invalidJobs: 0,
+      outputDirectory: null, estimatedFiles: 0, selectedExportType: null,
+      resolutionDistribution: {}, aspectRatioDistribution: {},
+      captionEnabledCount: 0, variationEnabledCount: 0,
+    };
+  }
+
+  const validation = validateBulkPlan(plan);
+  const { conflicts } = detectOutputConflicts(plan);
+
+  const resolutionDist = {};
+  const aspectDist = {};
+  let captionCount = 0;
+  let variationCount = 0;
+
+  for (const job of plan.jobs) {
+    const ep = job.exportPresetSnapshot;
+    if (ep && ep.settings) {
+      const res = ep.settings.resolution || '1080p';
+      resolutionDist[res] = (resolutionDist[res] || 0) + 1;
+      const ar = ep.settings.aspectRatio || (plan.exportType === 'reel' ? '9:16' : '16:9');
+      aspectDist[ar] = (aspectDist[ar] || 0) + 1;
+    } else {
+      const defaultAR = plan.exportType === 'reel' ? '9:16' : '16:9';
+      aspectDist[defaultAR] = (aspectDist[defaultAR] || 0) + 1;
+      resolutionDist['1080p'] = (resolutionDist['1080p'] || 0) + 1;
+    }
+
+    if (job.captionTemplateId || (job.textOverlays && job.textOverlays.length > 0)) {
+      captionCount++;
+    }
+    if (job.isOverridden || (job.variationPreset && job.variationPreset.speed !== 1.0)) {
+      variationCount++;
+    }
+  }
+
+  const outputDir = plan.jobs.length > 0 ? path.dirname(plan.jobs[0].outputPath) : null;
+
+  return {
+    totalProfiles: plan.jobs.length,
+    totalJobs: plan.jobs.length,
+    validJobs: validation.validJobs,
+    warningJobs: validation.warningJobs,
+    invalidJobs: validation.invalidJobs,
+    conflictCount: conflicts.length,
+    outputDirectory: outputDir,
+    estimatedFiles: validation.validJobs + validation.warningJobs,
+    selectedExportType: plan.exportType,
+    resolutionDistribution: resolutionDist,
+    aspectRatioDistribution: aspectDist,
+    captionEnabledCount: captionCount,
+    variationEnabledCount: variationCount,
+  };
+}
+
+/**
+ * Generates a compact human-readable summary of a bulk plan.
+ * @param {Object} plan
+ * @returns {string}
+ */
+function generatePlanSummaryText(plan) {
+  const s = generatePreflightSummary(plan);
+  const lines = [
+    `${s.totalProfiles} Profiles`,
+    `${s.totalJobs} Export Jobs`,
+    '',
+  ];
+
+  for (const [res, count] of Object.entries(s.resolutionDistribution)) {
+    lines.push(`${res}: ${count}`);
+  }
+  lines.push('');
+
+  for (const [ar, label] of Object.entries(s.aspectRatioDistribution)) {
+    lines.push(`${label || ar}: ${ar}`);
+  }
+  lines.push('');
+
+  lines.push(`Captions: ${s.captionEnabledCount}`);
+  lines.push(`Variation: ${s.variationEnabledCount}`);
+  lines.push('');
+  lines.push(`Warnings: ${s.warningJobs}`);
+  lines.push(`Invalid: ${s.invalidJobs}`);
+
+  return lines.join('\n');
+}
+
+/**
+ * Duplicates a bulk export plan with deep-cloned jobs.
+ * @param {Object} plan
+ * @returns {Object} new plan with new planId and cloned jobs
+ */
+function duplicatePlan(plan) {
+  if (!plan || !Array.isArray(plan.jobs)) {
+    throw new Error('Invalid plan object');
+  }
+
+  const newPlanId = generatePlanId();
+  const clonedJobs = plan.jobs.map((job, idx) => ({
+    ...JSON.parse(JSON.stringify(job)),
+    jobId: `job_${newPlanId}_${idx + 1}_${job.profileId || 'unknown'}`,
+    orderIndex: idx + 1,
+  }));
+
+  return {
+    ...JSON.parse(JSON.stringify(plan)),
+    planId: newPlanId,
+    createdAt: new Date().toISOString(),
+    jobs: clonedJobs,
+    totalJobs: clonedJobs.length,
+    duplicatedFrom: plan.planId,
+  };
+}
+
+/**
+ * Creates a new bulk plan from a previous plan's configuration (Export Again).
+ * @param {Object} previousPlan
+ * @param {string} [customDir]
+ * @returns {Object} new plan
+ */
+function exportAgainPlan(previousPlan, customDir) {
+  if (!previousPlan || !Array.isArray(previousPlan.jobs)) {
+    throw new Error('Invalid previous plan');
+  }
+
+  const profileIds = previousPlan.jobs.map(j => j.profileId).filter(Boolean);
+  const uniqueIds = [...new Set(profileIds)];
+
+  if (uniqueIds.length === 0) {
+    throw new Error('No valid profiles found in previous plan');
+  }
+
+  return createBulkExportPlan({
+    sourcePath: previousPlan.sourceFile,
+    exportType: previousPlan.exportType,
+    profileIds: uniqueIds,
+    outputDir: previousPlan.jobs[0] ? path.dirname(previousPlan.jobs[0].outputPath) : undefined,
+    checkCollision: true,
+  }, customDir);
+}
+
+/**
+ * Returns aggregate queue state from a BatchQueueManager.
+ * @param {Object} queue
+ * @returns {Object} aggregate state
+ */
+function getQueueAggregateState(queue) {
+  if (!queue || typeof queue.getState !== 'function') {
+    return { pending: 0, processing: 0, completed: 0, failed: 0, cancelled: 0, total: 0 };
+  }
+
+  const state = queue.getState();
+  const items = state.items || [];
+
+  const pending = items.filter(i => i.status === 'WAITING').length;
+  const processing = items.filter(i => i.status === 'PROCESSING').length;
+  const completed = items.filter(i => i.status === 'DONE').length;
+  const failed = items.filter(i => i.status === 'ERROR').length;
+  const cancelled = items.filter(i => i.status === 'CANCELLED').length;
+
+  return {
+    pending,
+    processing,
+    completed,
+    failed,
+    cancelled,
+    total: items.length,
+    running: state.running || false,
+    concurrency: state.concurrency || 1,
+  };
+}
+
+/**
+ * Gets failed jobs from a plan execution for retry.
+ * @param {Object} queue
+ * @param {string} planId
+ * @returns {Array<Object>} failed items
+ */
+function getFailedJobs(queue, planId) {
+  if (!queue || typeof queue.getState !== 'function') return [];
+  const state = queue.getState();
+  return (state.items || []).filter(
+    i => i.bulkPlanId === planId && i.status === 'ERROR'
+  );
+}
+
+/**
+ * Retries only failed jobs from a plan by re-adding them to the queue.
+ * Uses the original immutable snapshot — does NOT re-resolve profiles.
+ * @param {Object} queue
+ * @param {string} planId
+ * @returns {{ success: boolean, retriedCount: number, state: Object }}
+ */
+function retryFailedJobs(queue, planId) {
+  if (!queue || typeof queue.getState !== 'function') {
+    throw new Error('Invalid queue instance');
+  }
+  if (!planId) {
+    throw new Error('planId is required for retry');
+  }
+
+  const failedItems = getFailedJobs(queue, planId);
+  if (failedItems.length === 0) {
+    return { success: true, retriedCount: 0, state: queue.getState() };
+  }
+
+  const retryItems = failedItems.map(item => {
+    const cloned = JSON.parse(JSON.stringify(item));
+    delete cloned.status;
+    delete cloned.error;
+    delete cloned.startedAt;
+    delete cloned.finishedAt;
+    cloned.retryAttempt = (cloned.retryAttempt || 0) + 1;
+    return cloned;
+  });
+
+  const created = queue.addItems(retryItems);
+  queue.startQueue();
+
+  return {
+    success: true,
+    retriedCount: created.length,
+    state: queue.getState(),
+  };
+}
+
+/**
+ * Creates an execution summary from queue state for a given plan.
+ * @param {Object} queue
+ * @param {string} planId
+ * @returns {Object} summary
+ */
+function getExecutionSummary(queue, planId) {
+  if (!queue || typeof queue.getState !== 'function') {
+    return { total: 0, completed: 0, failed: 0, cancelled: 0, skipped: 0, results: [] };
+  }
+
+  const state = queue.getState();
+  const items = (state.items || []).filter(i => i.bulkPlanId === planId);
+
+  const completed = items.filter(i => i.status === 'DONE');
+  const failed = items.filter(i => i.status === 'ERROR');
+  const cancelled = items.filter(i => i.status === 'CANCELLED');
+  const skipped = items.filter(i => i.status === 'WAITING');
+
+  const results = items.map(item => ({
+    jobId: item.bulkJobId || item.id,
+    profileName: item.profileName || 'Unknown',
+    status: item.status,
+    outputPath: item.outputPath || null,
+    error: item.error || null,
+  }));
+
+  return {
+    planId,
+    total: items.length,
+    completed: completed.length,
+    failed: failed.length,
+    cancelled: cancelled.length,
+    skipped: skipped.length,
+    results,
+  };
+}
+
 module.exports = {
   MIN_BULK_PROFILES,
   MAX_BULK_PROFILES,
   VALID_EXPORT_TYPES,
   BULK_VARIATION_TEMPLATES,
+  JOB_VALIDATION_STATUS,
   getBulkVariationTemplate,
   sanitizeFilename,
   generateBulkOutputFilename,
@@ -714,6 +1174,17 @@ module.exports = {
   restoreJobVariationToProfilePreset,
   resetJobVariationInPlan,
   planToBatchQueueItems,
+  validateJobConfiguration,
+  validateBulkPlan,
+  detectOutputConflicts,
+  generatePreflightSummary,
+  generatePlanSummaryText,
+  duplicatePlan,
+  exportAgainPlan,
+  getQueueAggregateState,
+  getFailedJobs,
+  retryFailedJobs,
+  getExecutionSummary,
 };
 
 const bulkExec = require('./bulkExecutor');

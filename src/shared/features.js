@@ -23,6 +23,7 @@ const FEATURE_KEYS = {
   VARIATION_PRESETS: 'variation_presets',
   EXPORT_PRESETS: 'export_presets',
   INTELLIGENT_PROFILES: 'intelligent_profiles',
+  BULK_EXPORT_INTELLIGENCE: 'bulk_export_intelligence',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -108,6 +109,11 @@ const FEATURE_ALIASES = {
   intelligentprofiles: FEATURE_KEYS.INTELLIGENT_PROFILES,
   intelligentProfiles: FEATURE_KEYS.INTELLIGENT_PROFILES,
   'profile configuration': FEATURE_KEYS.INTELLIGENT_PROFILES,
+  'bulk export intelligence': FEATURE_KEYS.BULK_EXPORT_INTELLIGENCE,
+  bulk_export_intelligence: FEATURE_KEYS.BULK_EXPORT_INTELLIGENCE,
+  bulkgintelligence: FEATURE_KEYS.BULK_EXPORT_INTELLIGENCE,
+  bulkExportIntelligence: FEATURE_KEYS.BULK_EXPORT_INTELLIGENCE,
+  'intelligent bulk export': FEATURE_KEYS.BULK_EXPORT_INTELLIGENCE,
 };
 
 const TIER_HIERARCHY = {
@@ -138,6 +144,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.VARIATION_PRESETS,
     FEATURE_KEYS.EXPORT_PRESETS,
     FEATURE_KEYS.INTELLIGENT_PROFILES,
+    FEATURE_KEYS.BULK_EXPORT_INTELLIGENCE,
   ],
 };
 
@@ -230,6 +237,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.INTELLIGENT_PROFILES,
     name: 'Intelligent Profile Configuration',
     description: 'Unified configuration resolver with status, preview, diff, and field-level overrides for page profiles',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.BULK_EXPORT_INTELLIGENCE,
+    name: 'Intelligent Bulk Export',
+    description: 'Advanced bulk export with preflight analysis, conflict detection, retry, and execution summaries',
     minTier: 'pro',
   },
 ];

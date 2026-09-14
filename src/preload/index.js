@@ -62,6 +62,17 @@ contextBridge.exposeInMainWorld('api', {
   applyProfileConfiguration: (profileId, currentConfig) => ipcRenderer.invoke('profile:applyConfiguration', { profileId, currentConfig }),
   validateProfileOverrides: (overrides) => ipcRenderer.invoke('profile:validateOverrides', overrides),
 
+  // ── Intelligent Bulk Export (Phase 5D) ──────────────────────────────────────
+  validateBulkPlan: (plan) => ipcRenderer.invoke('bulk:validatePlan', plan),
+  detectBulkConflicts: (plan) => ipcRenderer.invoke('bulk:detectConflicts', plan),
+  getBulkPreflight: (plan) => ipcRenderer.invoke('bulk:preflight', plan),
+  getBulkSummaryText: (plan) => ipcRenderer.invoke('bulk:summaryText', plan),
+  duplicateBulkPlan: (plan) => ipcRenderer.invoke('bulk:duplicatePlan', plan),
+  exportAgainBulk: (previousPlan) => ipcRenderer.invoke('bulk:exportAgain', previousPlan),
+  getBulkQueueState: () => ipcRenderer.invoke('bulk:getQueueState'),
+  retryBulkFailed: (planId, previousQueueState) => ipcRenderer.invoke('bulk:retryFailed', { planId, previousQueueState }),
+  getBulkExecutionSummary: (planId) => ipcRenderer.invoke('bulk:getExecutionSummary', planId),
+
   // ── Scheduler (Phase 3A / 3B / 3C) ────────────────────────────────────────
   createSchedule: (data) => ipcRenderer.invoke('schedule:create', data),
   createBulkSchedule: (data) => ipcRenderer.invoke('schedule:createBulk', data),

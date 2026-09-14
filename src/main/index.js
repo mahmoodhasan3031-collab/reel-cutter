@@ -32,7 +32,7 @@ import {
   applyProfileConfiguration,
   validateOverrides,
 } from './profiles/profileManager'
-import { createBulkExportPlan, BULK_VARIATION_TEMPLATES } from './profiles/exportPlan'
+import { createBulkExportPlan, BULK_VARIATION_TEMPLATES, validateBulkPlan, detectOutputConflicts, generatePreflightSummary, generatePlanSummaryText, duplicatePlan, exportAgainPlan, getQueueAggregateState, retryFailedJobs, getExecutionSummary } from './profiles/exportPlan'
 import { executeBulkExport, cancelBulkExport, cancelBulkJob } from './profiles/bulkExecutor'
 import {
   createSchedule,
@@ -1069,6 +1069,95 @@ ipcMain.handle('profile:validateOverrides', async (_, overrides) => {
   try {
     const validated = validateOverrides(overrides)
     return { success: true, overrides: validated }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Intelligent Bulk Export IPC (Phase 5D) ──────────────────────────────────
+
+ipcMain.handle('bulk:validatePlan', async (_, plan) => {
+  try {
+    const result = validateBulkPlan(plan)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('bulk:detectConflicts', async (_, plan) => {
+  try {
+    const result = detectOutputConflicts(plan)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('bulk:preflight', async (_, plan) => {
+  try {
+    const summary = generatePreflightSummary(plan)
+    return { success: true, summary }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('bulk:summaryText', async (_, plan) => {
+  try {
+    const text = generatePlanSummaryText(plan)
+    return { success: true, text }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('bulk:duplicatePlan', async (_, plan) => {
+  try {
+    const newPlan = duplicatePlan(plan)
+    return { success: true, plan: newPlan }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('bulk:exportAgain', async (_, previousPlan) => {
+  try {
+    const newPlan = exportAgainPlan(previousPlan)
+    return { success: true, plan: newPlan }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('bulk:getQueueState', async () => {
+  try {
+    const { getBatchQueueManager } = require('../engine/batchQueue')
+    const queue = getBatchQueueManager()
+    const state = getQueueAggregateState(queue)
+    return { success: true, state }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('bulk:retryFailed', async (_, { planId, previousQueueState } = {}) => {
+  try {
+    const { getBatchQueueManager } = require('../engine/batchQueue')
+    const queue = getBatchQueueManager()
+    const result = retryFailedJobs(queue, planId)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('bulk:getExecutionSummary', async (_, planId) => {
+  try {
+    const { getBatchQueueManager } = require('../engine/batchQueue')
+    const queue = getBatchQueueManager()
+    const summary = getExecutionSummary(queue, planId)
+    return { success: true, summary }
   } catch (err) {
     return { success: false, error: err.message }
   }

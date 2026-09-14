@@ -211,9 +211,79 @@ function cancelBulkJob(jobId, queueInstance) {
   return { success: ok, state: queue.getState() };
 }
 
+/**
+ * Retries only failed jobs from a previous execution.
+ * Uses the original immutable job snapshots — does NOT re-resolve profiles.
+ *
+ * @param {string} planId
+ * @param {Object} previousQueueState — snapshot of previous queue state with failed items
+ * @param {Object} [queueInstance]
+ * @returns {{ success: boolean, retriedCount: number, state: Object }}
+ */
+function retryFailedExport(planId, previousQueueState, queueInstance) {
+  if (!planId) {
+    throw new Error('planId is required for retry');
+  }
+  if (!previousQueueState || !Array.isArray(previousQueueState.items)) {
+    throw new Error('Previous queue state with items array is required');
+  }
+
+  const queue = queueInstance || getBatchQueueManager();
+  const failedItems = previousQueueState.items.filter(
+    it => it.bulkPlanId === planId && it.status === 'ERROR'
+  );
+
+  if (failedItems.length === 0) {
+    return { success: true, retriedCount: 0, state: queue.getState() };
+  }
+
+  const retryItems = failedItems.map(item => {
+    const cloned = JSON.parse(JSON.stringify(item));
+    delete cloned.status;
+    delete cloned.error;
+    delete cloned.startedAt;
+    delete cloned.finishedAt;
+    cloned.retryAttempt = (cloned.retryAttempt || 0) + 1;
+    return cloned;
+  });
+
+  const created = queue.addItems(retryItems);
+  queue.startQueue();
+
+  return {
+    success: true,
+    retriedCount: created.length,
+    state: queue.getState(),
+  };
+}
+
+/**
+ * Gets aggregate state counts from a queue.
+ * @param {Object} queueInstance
+ * @returns {Object}
+ */
+function getBulkQueueState(queueInstance) {
+  const queue = queueInstance || getBatchQueueManager();
+  const state = queue.getState();
+  const items = state.items || [];
+
+  return {
+    pending: items.filter(i => i.status === 'WAITING').length,
+    processing: items.filter(i => i.status === 'PROCESSING').length,
+    completed: items.filter(i => i.status === 'DONE').length,
+    failed: items.filter(i => i.status === 'ERROR').length,
+    cancelled: items.filter(i => i.status === 'CANCELLED').length,
+    total: items.length,
+    running: state.running || false,
+    concurrency: state.concurrency || 1,
+  };
+}
+
 module.exports = {
   validateBulkExportPlan,
   executeBulkExport,
   cancelBulkExport,
   cancelBulkJob,
+  retryFailedExport,
+  getBulkQueueState,
 };
