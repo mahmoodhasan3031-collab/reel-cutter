@@ -54,6 +54,14 @@ contextBridge.exposeInMainWorld('api', {
   cancelBulkJob: (jobId) => ipcRenderer.invoke('profile:cancelJob', jobId),
   getBulkVariationTemplates: () => ipcRenderer.invoke('profile:getTemplates'),
 
+  // ── Intelligent Profile Configuration (Phase 5C) ──────────────────────────
+  resolveProfileConfiguration: (profileId) => ipcRenderer.invoke('profile:resolveConfiguration', profileId),
+  getProfileConfigurationStatus: (profileId) => ipcRenderer.invoke('profile:getConfigurationStatus', profileId),
+  previewProfile: (profileId) => ipcRenderer.invoke('profile:preview', profileId),
+  diffProfiles: (profileIdA, profileIdB) => ipcRenderer.invoke('profile:diff', { profileIdA, profileIdB }),
+  applyProfileConfiguration: (profileId, currentConfig) => ipcRenderer.invoke('profile:applyConfiguration', { profileId, currentConfig }),
+  validateProfileOverrides: (overrides) => ipcRenderer.invoke('profile:validateOverrides', overrides),
+
   // ── Scheduler (Phase 3A / 3B / 3C) ────────────────────────────────────────
   createSchedule: (data) => ipcRenderer.invoke('schedule:create', data),
   createBulkSchedule: (data) => ipcRenderer.invoke('schedule:createBulk', data),

@@ -22,6 +22,7 @@ const FEATURE_KEYS = {
   CAPTION_EXPERIMENT: 'caption_experiment',
   VARIATION_PRESETS: 'variation_presets',
   EXPORT_PRESETS: 'export_presets',
+  INTELLIGENT_PROFILES: 'intelligent_profiles',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -102,6 +103,11 @@ const FEATURE_ALIASES = {
   exportPreset: FEATURE_KEYS.EXPORT_PRESETS,
   'export preset manager': FEATURE_KEYS.EXPORT_PRESETS,
   'repurposing presets': FEATURE_KEYS.VARIATION_PRESETS,
+  'intelligent profiles': FEATURE_KEYS.INTELLIGENT_PROFILES,
+  intelligent_profiles: FEATURE_KEYS.INTELLIGENT_PROFILES,
+  intelligentprofiles: FEATURE_KEYS.INTELLIGENT_PROFILES,
+  intelligentProfiles: FEATURE_KEYS.INTELLIGENT_PROFILES,
+  'profile configuration': FEATURE_KEYS.INTELLIGENT_PROFILES,
 };
 
 const TIER_HIERARCHY = {
@@ -131,6 +137,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.CAPTION_EXPERIMENT,
     FEATURE_KEYS.VARIATION_PRESETS,
     FEATURE_KEYS.EXPORT_PRESETS,
+    FEATURE_KEYS.INTELLIGENT_PROFILES,
   ],
 };
 
@@ -217,6 +224,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.EXPORT_PRESETS,
     name: 'Export Preset Manager',
     description: 'Save, manage, compare, and apply unified export presets across single, profile, bulk, and scheduled workflows',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.INTELLIGENT_PROFILES,
+    name: 'Intelligent Profile Configuration',
+    description: 'Unified configuration resolver with status, preview, diff, and field-level overrides for page profiles',
     minTier: 'pro',
   },
 ];

@@ -25,6 +25,12 @@ import {
   deleteProfile,
   duplicateProfile,
   setSelectedProfile,
+  resolveProfileConfiguration,
+  getProfileConfigurationStatus,
+  getProfilePreview,
+  diffProfileConfigurations,
+  applyProfileConfiguration,
+  validateOverrides,
 } from './profiles/profileManager'
 import { createBulkExportPlan, BULK_VARIATION_TEMPLATES } from './profiles/exportPlan'
 import { executeBulkExport, cancelBulkExport, cancelBulkJob } from './profiles/bulkExecutor'
@@ -993,6 +999,79 @@ ipcMain.handle('profile:cancelJob', async (_, jobId) => {
 
 ipcMain.handle('profile:getTemplates', async () => {
   return { success: true, templates: BULK_VARIATION_TEMPLATES }
+})
+
+// ─── Intelligent Profile Configuration IPC (Phase 5C) ─────────────────────────
+
+ipcMain.handle('profile:resolveConfiguration', async (_, profileId) => {
+  try {
+    const profiles = listProfiles()
+    const profile = [...profiles].find(p => p.id === profileId)
+    if (!profile) return { success: false, error: `Profile not found: ${profileId}` }
+    const configuration = resolveProfileConfiguration(profile)
+    return { success: true, configuration }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:getConfigurationStatus', async (_, profileId) => {
+  try {
+    const profiles = listProfiles()
+    const profile = [...profiles].find(p => p.id === profileId)
+    if (!profile) return { success: false, error: `Profile not found: ${profileId}` }
+    const status = getProfileConfigurationStatus(profile)
+    return { success: true, ...status }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:preview', async (_, profileId) => {
+  try {
+    const profiles = listProfiles()
+    const profile = [...profiles].find(p => p.id === profileId)
+    if (!profile) return { success: false, error: `Profile not found: ${profileId}` }
+    const preview = getProfilePreview(profile)
+    return { success: true, preview }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:diff', async (_, { profileIdA, profileIdB } = {}) => {
+  try {
+    const profiles = listProfiles()
+    const profileA = [...profiles].find(p => p.id === profileIdA)
+    const profileB = [...profiles].find(p => p.id === profileIdB)
+    if (!profileA) return { success: false, error: `Profile not found: ${profileIdA}` }
+    if (!profileB) return { success: false, error: `Profile not found: ${profileIdB}` }
+    const diff = diffProfileConfigurations(profileA, profileB)
+    return { success: true, diff }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:applyConfiguration', async (_, { profileId, currentConfig } = {}) => {
+  try {
+    const profiles = listProfiles()
+    const profile = [...profiles].find(p => p.id === profileId)
+    if (!profile) return { success: false, error: `Profile not found: ${profileId}` }
+    const merged = applyProfileConfiguration(profile, currentConfig || {})
+    return { success: true, configuration: merged }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('profile:validateOverrides', async (_, overrides) => {
+  try {
+    const validated = validateOverrides(overrides)
+    return { success: true, overrides: validated }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
 })
 
 // ─── Scheduler IPC Handlers (Phase 3A) ───────────────────────────────────────

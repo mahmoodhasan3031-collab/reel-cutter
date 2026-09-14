@@ -304,6 +304,11 @@ function loadProfiles(customDir) {
               exportPresetId = p.exportPresetId;
             }
 
+            let overrides = {};
+            if (p.overrides && typeof p.overrides === 'object') {
+              overrides = validateOverrides(p.overrides);
+            }
+
             return {
               id: String(p.id),
               name,
@@ -313,6 +318,7 @@ function loadProfiles(customDir) {
               variationPresetId,
               captionTemplateId,
               exportPresetId,
+              overrides,
               createdAt: p.createdAt || new Date().toISOString(),
               updatedAt: p.updatedAt || new Date().toISOString(),
             };
@@ -395,6 +401,7 @@ function createProfile(input, customDir) {
   const captionTemplateId = validateCaptionTemplateId(input.captionTemplateId, customDir);
   const variationPresetId = validateVariationPresetId(input.variationPresetId, customDir);
   const exportPresetId = validateExportPresetId(input.exportPresetId, customDir);
+  const overrides = validateOverrides(input.overrides);
 
   const data = loadProfiles(customDir);
 
@@ -414,6 +421,7 @@ function createProfile(input, customDir) {
     variationPresetId,
     captionTemplateId,
     exportPresetId,
+    overrides,
     createdAt: now,
     updatedAt: now,
   };
@@ -475,6 +483,11 @@ function updateProfile(id, updates, customDir) {
     exportPresetId = validateExportPresetId(updates.exportPresetId, customDir);
   }
 
+  let overrides = existing.overrides || {};
+  if (updates.overrides !== undefined) {
+    overrides = validateOverrides(updates.overrides);
+  }
+
   const updatedProfile = {
     ...existing,
     id: existing.id, // Strictly preserve original ID
@@ -485,6 +498,7 @@ function updateProfile(id, updates, customDir) {
     variationPresetId,
     captionTemplateId,
     exportPresetId,
+    overrides,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   };
@@ -580,6 +594,7 @@ function duplicateProfile(id, customDir) {
     variationPresetId: existing.variationPresetId !== undefined ? existing.variationPresetId : null,
     captionTemplateId: existing.captionTemplateId !== undefined ? existing.captionTemplateId : null,
     exportPresetId: existing.exportPresetId !== undefined ? existing.exportPresetId : null,
+    overrides: existing.overrides ? { ...existing.overrides } : {},
     createdAt: now,
     updatedAt: now,
   };
@@ -675,9 +690,270 @@ function resolveProfilePreset(variationPreset) {
   };
 }
 
+// ─── Phase 5C: Intelligent Profile Configuration ──────────────────────────────
+
+const CONFIGURATION_STATUS = {
+  READY: 'ready',
+  INCOMPLETE: 'incomplete',
+  FALLBACK: 'fallback',
+  INVALID: 'invalid',
+};
+
+const OVERRIDE_FIELDS = [
+  'brightness', 'saturation', 'hue', 'pitch', 'speed', 'mode', 'crop',
+  'cleanMetadata', 'codec', 'width', 'height', 'fps', 'bitrate', 'audioBitrate',
+  'audioCodec', 'sampleRate',
+];
+
+/**
+ * Validates overrides object — only known fields allowed, values must be within bounds.
+ * @param {Object} [overrides]
+ * @returns {Object} validated overrides
+ */
+function validateOverrides(overrides) {
+  if (!overrides || typeof overrides !== 'object') return {};
+  const validated = {};
+  const bounds = {
+    brightness: [-1, 1],
+    saturation: [0, 3],
+    hue: [-180, 180],
+    pitch: [-3, 3],
+    speed: [1, 1.05],
+    crop: [0, 2],
+    width: [1, 7680],
+    height: [1, 4320],
+    fps: [1, 120],
+  };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (!OVERRIDE_FIELDS.includes(key)) continue;
+    if (value === null || value === undefined || value === '') continue;
+    if (typeof value === 'boolean') { validated[key] = value; continue; }
+    if (typeof value === 'string' && ['mode', 'codec', 'audioCodec'].includes(key)) {
+      validated[key] = value;
+      continue;
+    }
+    const n = Number(value);
+    if (isNaN(n)) continue;
+    const b = bounds[key];
+    if (b) {
+      validated[key] = Math.min(b[1], Math.max(b[0], n));
+    } else {
+      validated[key] = n;
+    }
+  }
+  return validated;
+}
+
+/**
+ * Returns the configuration status for a profile.
+ * READY: all referenced presets exist.
+ * INCOMPLETE: some referenced presets are missing (fallback applied).
+ * FALLBACK: no presets referenced, using defaults.
+ * INVALID: profile has validation errors.
+ *
+ * @param {Object} profile
+ * @param {string} [customDir]
+ * @returns {{ status: string, missingRefs: string[], warnings: string[] }}
+ */
+function getProfileConfigurationStatus(profile, customDir) {
+  if (!profile || typeof profile !== 'object') {
+    return { status: CONFIGURATION_STATUS.INVALID, missingRefs: [], warnings: ['Invalid profile object'] };
+  }
+  const missingRefs = [];
+  const warnings = [];
+
+  if (profile.exportPresetId) {
+    const ep = getExportPreset(profile.exportPresetId, customDir);
+    if (!ep) {
+      missingRefs.push('exportPreset');
+      warnings.push(`Export preset not found: ${profile.exportPresetId}`);
+    }
+  }
+  if (profile.variationPresetId) {
+    const vp = getVariationPreset(profile.variationPresetId, customDir);
+    if (!vp) {
+      missingRefs.push('variationPreset');
+      warnings.push(`Variation preset not found: ${profile.variationPresetId}`);
+    }
+  }
+  if (profile.captionTemplateId) {
+    const ct = getCaptionTemplate(profile.captionTemplateId, customDir);
+    if (!ct) {
+      missingRefs.push('captionTemplate');
+      warnings.push(`Caption template not found: ${profile.captionTemplateId}`);
+    }
+  }
+
+  const hasAnyRef = profile.exportPresetId || profile.variationPresetId || profile.captionTemplateId;
+
+  let status;
+  if (missingRefs.length > 0 && hasAnyRef) {
+    status = CONFIGURATION_STATUS.INCOMPLETE;
+  } else if (!hasAnyRef) {
+    status = CONFIGURATION_STATUS.FALLBACK;
+  } else {
+    status = CONFIGURATION_STATUS.READY;
+  }
+
+  return { status, missingRefs, warnings };
+}
+
+/**
+ * Resolves the full configuration for a profile by layering:
+ *   defaults → exportPreset → variationPreset → profile.variationPreset → profile.overrides
+ *
+ * Returns a completely independent deep-cloned configuration object.
+ *
+ * @param {Object} profile
+ * @param {string} [customDir]
+ * @returns {{
+ *   variation: Object,
+ *   exportPreset: Object|null,
+ *   captionTemplate: Object|null,
+ *   overrides: Object,
+ *   status: string,
+ *   resolvedAt: string
+ * }}
+ */
+function resolveProfileConfiguration(profile, customDir) {
+  if (!profile || typeof profile !== 'object') {
+    return {
+      variation: getDefaultVariation(),
+      exportPreset: null,
+      captionTemplate: null,
+      overrides: {},
+      status: CONFIGURATION_STATUS.INVALID,
+      resolvedAt: new Date().toISOString(),
+    };
+  }
+
+  const { status } = getProfileConfigurationStatus(profile, customDir);
+
+  const epResult = resolveProfileExportPreset(profile, customDir);
+  const vpResult = resolveProfileVariationPreset(profile, customDir);
+  const ctResult = resolveProfileCaptionTemplate(profile, customDir);
+
+  // Layer: defaults → exportPreset variation → variationPreset → profile.variationPreset → overrides
+  let variationBase = getDefaultVariation();
+
+  // If export preset has inline variation and no explicit variationPresetId, use export preset variation as base
+  if (epResult.preset && epResult.preset.settings && epResult.preset.settings.variation && !profile?.variationPresetId) {
+    variationBase = { ...variationBase, ...epResult.preset.settings.variation };
+    // Skip the profile's inline variationPreset since export preset provides it
+  } else {
+    // Use variationPresetId if available, otherwise profile's inline variationPreset
+    variationBase = { ...variationBase, ...(vpResult.variation || {}) };
+  }
+
+  const overrides = validateOverrides(profile.overrides || {});
+  for (const [key, value] of Object.entries(overrides)) {
+    if (OVERRIDE_FIELDS.includes(key)) {
+      variationBase[key] = value;
+    }
+  }
+
+  return {
+    variation: variationBase,
+    exportPreset: epResult.preset,
+    captionTemplate: ctResult.overlays ? { templateId: ctResult.templateId, templateName: ctResult.templateName, overlays: ctResult.overlays } : null,
+    overrides,
+    status,
+    resolvedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Returns a read-only preview of a profile's resolved configuration.
+ * Includes the source of each configuration layer for transparency.
+ *
+ * @param {Object} profile
+ * @param {string} [customDir]
+ * @returns {Object}
+ */
+function getProfilePreview(profile, customDir) {
+  const config = resolveProfileConfiguration(profile, customDir);
+  const { status, missingRefs, warnings } = getProfileConfigurationStatus(profile, customDir);
+
+  return {
+    profileId: profile?.id || null,
+    profileName: profile?.name || 'Unknown',
+    platform: profile?.platform || 'Other',
+    enabled: profile?.enabled !== false,
+    configurationStatus: status,
+    missingReferences: missingRefs || [],
+    warnings: warnings || [],
+    resolvedConfiguration: config,
+    sources: {
+      exportPreset: config.exportPreset ? { id: profile?.exportPresetId || null, name: config.exportPreset.name } : null,
+      variationPreset: profile?.variationPresetId ? { id: profile.variationPresetId } : null,
+      captionTemplate: config.captionTemplate ? { id: profile?.captionTemplateId || null, name: config.captionTemplate.templateName } : null,
+      hasOverrides: Object.keys(config.overrides).length > 0,
+    },
+    previewedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Diffs two profile configurations side-by-side.
+ * Returns added, removed, and changed fields.
+ *
+ * @param {Object} profileA
+ * @param {Object} profileB
+ * @param {string} [customDir]
+ * @returns {{ added: Object, removed: Object, changed: Object, identical: boolean }}
+ */
+function diffProfileConfigurations(profileA, profileB, customDir) {
+  const configA = resolveProfileConfiguration(profileA, customDir);
+  const configB = resolveProfileConfiguration(profileB, customDir);
+
+  const added = {};
+  const removed = {};
+  const changed = {};
+
+  const allKeys = new Set([...Object.keys(configA.variation), ...Object.keys(configB.variation)]);
+  for (const key of allKeys) {
+    const valA = configA.variation[key];
+    const valB = configB.variation[key];
+    if (valA === undefined && valB !== undefined) {
+      added[key] = valB;
+    } else if (valA !== undefined && valB === undefined) {
+      removed[key] = valA;
+    } else if (JSON.stringify(valA) !== JSON.stringify(valB)) {
+      changed[key] = { from: valA, to: valB };
+    }
+  }
+
+  const identical = Object.keys(added).length === 0 && Object.keys(removed).length === 0 && Object.keys(changed).length === 0;
+
+  return { added, removed, changed, identical };
+}
+
+/**
+ * Applies a profile's resolved configuration to an existing export configuration object.
+ * Merges profile's resolved settings into the provided config.
+ *
+ * @param {Object} profile
+ * @param {Object} currentConfig — current export configuration to merge into
+ * @param {string} [customDir]
+ * @returns {Object} merged configuration (new object, does not mutate input)
+ */
+function applyProfileConfiguration(profile, currentConfig, customDir) {
+  const resolved = resolveProfileConfiguration(profile, customDir);
+  return {
+    ...currentConfig,
+    variation: { ...(currentConfig.variation || {}), ...resolved.variation },
+    exportPreset: resolved.exportPreset || currentConfig.exportPreset || null,
+    captionTemplate: resolved.captionTemplate || currentConfig.captionTemplate || null,
+    profileId: profile?.id || null,
+    profileName: profile?.name || null,
+  };
+}
+
 module.exports = {
   SUPPORTED_PLATFORMS,
   MAX_NAME_LENGTH,
+  CONFIGURATION_STATUS,
+  OVERRIDE_FIELDS,
   validateProfileName,
   validatePlatform,
   normalizeVariationPreset,
@@ -697,4 +973,10 @@ module.exports = {
   resolveProfileVariationPreset,
   validateExportPresetId,
   resolveProfileExportPreset,
+  validateOverrides,
+  getProfileConfigurationStatus,
+  resolveProfileConfiguration,
+  getProfilePreview,
+  diffProfileConfigurations,
+  applyProfileConfiguration,
 };

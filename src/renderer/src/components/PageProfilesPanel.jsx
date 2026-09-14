@@ -17,6 +17,11 @@ import {
   ShieldCheck,
   X,
   Loader2,
+  Info,
+  Eye,
+  GitCompare,
+  Link2,
+  AlertTriangle,
 } from 'lucide-react';
 
 const SUPPORTED_PLATFORMS = ['Facebook', 'Instagram', 'YouTube', 'TikTok', 'Other'];
@@ -81,6 +86,15 @@ export default function PageProfilesPanel() {
   // Delete confirmation state
   const [deletingProfile, setDeletingProfile] = useState(null);
 
+  // Phase 5C: Configuration status, preview, and diff states
+  const [configStatuses, setConfigStatuses] = useState({});
+  const [previewProfile, setPreviewProfile] = useState(null);
+  const [previewData, setPreviewData] = useState(null);
+  const [diffProfiles, setDiffProfiles] = useState(null);
+  const [diffData, setDiffData] = useState(null);
+  const [diffProfileA, setDiffProfileA] = useState('');
+  const [diffProfileB, setDiffProfileB] = useState('');
+
   const fetchCaptionTemplates = async () => {
     try {
       if (!window.api?.getCaptionTemplates) return;
@@ -111,6 +125,22 @@ export default function PageProfilesPanel() {
     } catch (_) {}
   };
 
+  const fetchConfigStatuses = async (profileList) => {
+    try {
+      if (!window.api?.getProfileConfigurationStatus) return;
+      const statuses = {};
+      for (const p of profileList) {
+        try {
+          const res = await window.api.getProfileConfigurationStatus(p.id);
+          if (res && res.success) {
+            statuses[p.id] = { status: res.status, missingRefs: res.missingRefs || [], warnings: res.warnings || [] };
+          }
+        } catch (_) {}
+      }
+      setConfigStatuses(statuses);
+    } catch (_) {}
+  };
+
   const fetchProfiles = async () => {
     try {
       setLoading(true);
@@ -120,6 +150,7 @@ export default function PageProfilesPanel() {
       const activeId = res?.selectedProfileId || list.selectedProfileId || null;
       setProfiles(list);
       setSelectedProfileId(activeId);
+      fetchConfigStatuses(list);
     } catch (err) {
       setError(err.message || 'Failed to load page profiles');
     } finally {
@@ -274,6 +305,33 @@ export default function PageProfilesPanel() {
       setSelectedProfileId(targetId);
     } catch (err) {
       setError(err.message || 'Failed to update active profile');
+    }
+  };
+
+  const handlePreview = async (profile) => {
+    try {
+      if (!window.api?.previewProfile) return;
+      const res = await window.api.previewProfile(profile.id);
+      if (res && res.success) {
+        setPreviewProfile(profile);
+        setPreviewData(res.preview);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to preview profile');
+    }
+  };
+
+  const handleDiff = async () => {
+    try {
+      if (!window.api?.diffProfiles || !diffProfileA || !diffProfileB) return;
+      const res = await window.api.diffProfiles(diffProfileA, diffProfileB);
+      if (res && res.success) {
+        const pA = profiles.find(p => p.id === diffProfileA);
+        const pB = profiles.find(p => p.id === diffProfileB);
+        setDiffData({ ...res.diff, profileA: pA, profileB: pB });
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to diff profiles');
     }
   };
 
@@ -462,6 +520,41 @@ export default function PageProfilesPanel() {
                       </span>
                     </div>
                   )}
+
+                  {/* Configuration Status Badge (Phase 5C) */}
+                  {configStatuses[profile.id] && (
+                    <div className={`mt-2.5 flex items-center gap-1.5 text-[11px] rounded-lg px-2.5 py-1 border ${
+                      configStatuses[profile.id].status === 'ready'
+                        ? 'text-emerald-300 bg-emerald-950/30 border-emerald-800/40'
+                        : configStatuses[profile.id].status === 'incomplete'
+                        ? 'text-amber-300 bg-amber-950/30 border-amber-800/40'
+                        : configStatuses[profile.id].status === 'fallback'
+                        ? 'text-zinc-400 bg-zinc-800/30 border-zinc-700/40'
+                        : 'text-red-300 bg-red-950/30 border-red-800/40'
+                    }`}>
+                      {configStatuses[profile.id].status === 'ready' ? (
+                        <CheckCircle2 size={12} className="text-emerald-400" />
+                      ) : configStatuses[profile.id].status === 'incomplete' ? (
+                        <AlertTriangle size={12} className="text-amber-400" />
+                      ) : configStatuses[profile.id].status === 'fallback' ? (
+                        <Info size={12} className="text-zinc-500" />
+                      ) : (
+                        <AlertCircle size={12} className="text-red-400" />
+                      )}
+                      <span className="font-semibold capitalize">{configStatuses[profile.id].status}</span>
+                      {configStatuses[profile.id].missingRefs?.length > 0 && (
+                        <span className="opacity-70">({configStatuses[profile.id].missingRefs.length} missing)</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Overrides Indicator (Phase 5C) */}
+                  {profile.overrides && Object.keys(profile.overrides).length > 0 && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cyan-300 bg-cyan-950/30 border border-cyan-800/40 rounded-lg px-2.5 py-1">
+                      <Link2 size={11} className="text-cyan-400" />
+                      <span className="font-semibold">{Object.keys(profile.overrides).length} override{Object.keys(profile.overrides).length === 1 ? '' : 's'}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Card Action Footer */}
@@ -489,6 +582,14 @@ export default function PageProfilesPanel() {
                   </button>
 
                   <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handlePreview(profile)}
+                      className="p-1.5 text-zinc-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors"
+                      title="Preview Configuration"
+                    >
+                      <Eye size={14} />
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleOpenEdit(profile)}
@@ -998,6 +1099,154 @@ export default function PageProfilesPanel() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Profile Configuration Preview Modal (Phase 5C) */}
+      {previewProfile && previewData && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-fade-in my-8">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Eye size={16} className="text-cyan-400" />
+                <h2 className="text-base font-bold text-zinc-100">Configuration Preview</h2>
+              </div>
+              <button type="button" onClick={() => { setPreviewProfile(null); setPreviewData(null); }} className="text-zinc-400 hover:text-zinc-200 transition-colors p-1">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-400">Profile:</span>
+                <span className="text-zinc-200 font-semibold">{previewData.profileName}</span>
+                <span className="text-zinc-500">({previewData.platform})</span>
+              </div>
+
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${
+                previewData.configurationStatus === 'ready'
+                  ? 'bg-emerald-950/30 border-emerald-800/40 text-emerald-300'
+                  : previewData.configurationStatus === 'incomplete'
+                  ? 'bg-amber-950/30 border-amber-800/40 text-amber-300'
+                  : 'bg-zinc-800/30 border-zinc-700/40 text-zinc-400'
+              }`}>
+                <span className="font-semibold capitalize">{previewData.configurationStatus}</span>
+                {previewData.missingReferences?.length > 0 && (
+                  <span className="opacity-70">— Missing: {previewData.missingReferences.join(', ')}</span>
+                )}
+              </div>
+
+              {previewData.warnings?.length > 0 && (
+                <div className="space-y-1">
+                  {previewData.warnings.map((w, i) => (
+                    <div key={i} className="flex items-center gap-2 text-amber-400 bg-amber-950/20 px-3 py-1.5 rounded-lg">
+                      <AlertTriangle size={12} />
+                      <span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <h3 className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">Resolved Variation</h3>
+                <div className="bg-zinc-950/60 rounded-xl p-3 border border-zinc-800/60 space-y-1.5">
+                  {Object.entries(previewData.resolvedConfiguration?.variation || {}).map(([key, val]) => (
+                    <div key={key} className="flex justify-between">
+                      <span className="text-zinc-400 capitalize">{key}</span>
+                      <span className="font-mono text-zinc-300">{typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {previewData.sources && (
+                <div className="space-y-2">
+                  <h3 className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">Sources</h3>
+                  <div className="bg-zinc-950/60 rounded-xl p-3 border border-zinc-800/60 space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Export Preset</span>
+                      <span className="text-zinc-300">{previewData.sources.exportPreset?.name || 'None'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Variation Preset</span>
+                      <span className="text-zinc-300">{previewData.sources.variationPreset?.id || 'None (inline)'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Caption Template</span>
+                      <span className="text-zinc-300">{previewData.sources.captionTemplate?.name || 'None'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Overrides</span>
+                      <span className="text-zinc-300">{previewData.sources.hasOverrides ? 'Yes' : 'None'}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Diff Tool (Phase 5C) */}
+      {profiles.length >= 2 && (
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-zinc-200">
+            <GitCompare size={14} className="text-brand-400" />
+            <span>Compare Profiles</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <select value={diffProfileA} onChange={(e) => setDiffProfileA(e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-brand-500 cursor-pointer">
+              <option value="">Select Profile A</option>
+              {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <select value={diffProfileB} onChange={(e) => setDiffProfileB(e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-brand-500 cursor-pointer">
+              <option value="">Select Profile B</option>
+              {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <button type="button" onClick={handleDiff} disabled={!diffProfileA || !diffProfileB} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 transition-colors">
+            Compare
+          </button>
+          {diffData && !diffData.identical && (
+            <div className="space-y-2 mt-2">
+              {Object.keys(diffData.changed).length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-[11px] font-bold text-amber-400">Changed:</span>
+                  {Object.entries(diffData.changed).map(([key, { from, to }]) => (
+                    <div key={key} className="flex items-center gap-2 text-[11px] bg-amber-950/20 px-3 py-1.5 rounded-lg">
+                      <span className="text-zinc-400 capitalize">{key}</span>
+                      <span className="text-red-400 font-mono">{String(from)}</span>
+                      <span className="text-zinc-500">→</span>
+                      <span className="text-emerald-400 font-mono">{String(to)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {Object.keys(diffData.added).length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-[11px] font-bold text-emerald-400">Added:</span>
+                  {Object.entries(diffData.added).map(([key, val]) => (
+                    <div key={key} className="text-[11px] text-emerald-300 bg-emerald-950/20 px-3 py-1 rounded-lg">
+                      {key}: {String(val)}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {Object.keys(diffData.removed).length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-[11px] font-bold text-red-400">Removed:</span>
+                  {Object.entries(diffData.removed).map(([key, val]) => (
+                    <div key={key} className="text-[11px] text-red-300 bg-red-950/20 px-3 py-1 rounded-lg">
+                      {key}: {String(val)}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {diffData && diffData.identical && (
+            <div className="text-xs text-zinc-500 mt-2">Profiles have identical resolved configurations.</div>
+          )}
         </div>
       )}
 

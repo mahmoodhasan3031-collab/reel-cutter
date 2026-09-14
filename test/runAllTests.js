@@ -36,10 +36,11 @@ const tests = [
   'caption-production-polish.test.js',
   'variation-preset.test.js',
   'export-preset.test.js',
+  'intelligent-profile.test.js',
 ];
 
 console.log('======================================================');
-console.log('🚀 Running All Reel Cutter Test Suites (Phases 1-5B)');
+console.log('🚀 Running All Reel Cutter Test Suites (Phases 1-5C)');
 console.log('======================================================\n');
 
 
