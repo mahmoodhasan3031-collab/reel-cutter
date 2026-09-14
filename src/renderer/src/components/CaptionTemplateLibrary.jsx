@@ -3,6 +3,7 @@ import CaptionPresetEditor from './CaptionPresetEditor'
 import AiCaptionGenerator from './AiCaptionGenerator'
 import CaptionQualityPanel from './CaptionQualityPanel'
 import CaptionIntelligenceDashboard from './CaptionIntelligenceDashboard'
+import CaptionWorkspace from './CaptionWorkspace'
 
 /**
  * CaptionTemplateLibrary (Phase 4B-1, updated Phase 4B-2)
@@ -50,6 +51,9 @@ export default function CaptionTemplateLibrary({
 
   // Phase 4B-7: Caption Intelligence Dashboard state
   const [dashboardOpen, setDashboardOpen] = useState(false)
+
+  // Phase 4B-8: Caption Workspace & Smart Rewrite state
+  const [workspaceOpen, setWorkspaceOpen] = useState(false)
 
   // Fetch templates from main process
   const loadTemplates = useCallback(async () => {
@@ -352,6 +356,28 @@ export default function CaptionTemplateLibrary({
             }}
           >
             <span>📈</span> Dashboard
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setWorkspaceOpen(true)}
+            disabled={disabled || actionLoading}
+            title="Open Caption Workspace & Smart Rewrite"
+            style={{
+              background: 'linear-gradient(135deg, #26193d 0%, #3b1f54 100%)',
+              border: '1px solid #c084fc',
+              borderRadius: 5,
+              color: '#f3e8ff',
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '4px 10px',
+              cursor: disabled || actionLoading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <span>🖊️</span> Workspace
           </button>
 
           <button
@@ -922,6 +948,78 @@ export default function CaptionTemplateLibrary({
         }}
         onOpenAnalyzer={() => setQualityModalOpen(true)}
       />
+
+      {/* ── Caption Workspace & Smart Rewrite Modal (Phase 4B-8) ── */}
+      {workspaceOpen && (
+        <CaptionWorkspace
+          caption={currentOverlays?.[0]?.text || ''}
+          existingOverlays={currentOverlays}
+          onClose={() => {
+            setWorkspaceOpen(false)
+            loadTemplates()
+          }}
+          onApply={(captionText) => {
+            handleApply({
+              id: `temp_${Date.now()}`,
+              name: 'Workspace Caption',
+              overlays: [
+                {
+                  id: `overlay_${Date.now()}`,
+                  text: captionText,
+                  fontFamily: 'Arial',
+                  fontSize: 48,
+                  fontWeight: 'bold',
+                  color: '#FFFFFF',
+                  opacity: 1,
+                  backgroundColor: '#000000',
+                  backgroundOpacity: 0.4,
+                  outlineColor: '#000000',
+                  outlineWidth: 2,
+                  position: 'bottom',
+                  x: 0.5,
+                  y: 0.88,
+                  alignment: 'center',
+                  startTime: 0,
+                  endTime: null,
+                  enabled: true,
+                },
+              ],
+            })
+            setWorkspaceOpen(false)
+          }}
+          onSaveTemplate={async (data) => {
+            if (window.api?.createCaptionTemplate) {
+              const text = typeof data === 'string' ? data : data.caption || ''
+              await window.api.createCaptionTemplate({
+                name: `Workspace Caption ${Date.now()}`,
+                overlays: [
+                  {
+                    id: `overlay_${Date.now()}`,
+                    text,
+                    fontFamily: 'Arial',
+                    fontSize: 48,
+                    fontWeight: 'bold',
+                    color: '#FFFFFF',
+                    opacity: 1,
+                    backgroundColor: '#000000',
+                    backgroundOpacity: 0.4,
+                    outlineColor: '#000000',
+                    outlineWidth: 2,
+                    position: 'bottom',
+                    x: 0.5,
+                    y: 0.88,
+                    alignment: 'center',
+                    startTime: 0,
+                    endTime: null,
+                    enabled: true,
+                  },
+                ],
+              })
+              loadTemplates()
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

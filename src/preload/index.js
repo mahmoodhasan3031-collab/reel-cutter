@@ -103,6 +103,16 @@ contextBridge.exposeInMainWorld('api', {
   compareCaptionHistory: (idA, idB) => ipcRenderer.invoke('caption-history:compare', { idA, idB }),
   reanalyzeCaptionHistory: (id) => ipcRenderer.invoke('caption-history:reanalyze', id),
 
+  // ── Caption Workspace & Smart Rewrite (Phase 4B-8) ─────────────────────────
+  createCaptionWorkspace: (data) => ipcRenderer.invoke('caption-workspace:create', data),
+  addWorkspaceVersion: (ws, vd) => ipcRenderer.invoke('caption-workspace:addVersion', { workspace: ws, versionData: vd }),
+  selectWorkspaceVersion: (ws, versionId) => ipcRenderer.invoke('caption-workspace:selectVersion', { workspace: ws, versionId }),
+  updateWorkspaceCaption: (ws, text, opts) => ipcRenderer.invoke('caption-workspace:updateCaption', { workspace: ws, newText: text, options: opts }),
+  generateSmartRewrites: (request) => ipcRenderer.invoke('caption-workspace:rewrite', request),
+  rewriteWithQualityFeedback: (request) => ipcRenderer.invoke('caption-workspace:rewriteWithFeedback', request),
+  compareWorkspaceVersions: (vA, vB) => ipcRenderer.invoke('caption-workspace:compare', { versionA: vA, versionB: vB }),
+  bulkSmartRewrite: (input) => ipcRenderer.invoke('caption-workspace:bulkRewrite', input),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

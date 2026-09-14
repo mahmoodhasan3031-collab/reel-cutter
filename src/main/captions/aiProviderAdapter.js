@@ -27,6 +27,9 @@ class MockAiProvider {
   }
 
   async generate(request) {
+    if (request && request.mode) {
+      return this.rewrite(request);
+    }
     if (this.simulatedDelay > 0) {
       await new Promise((r) => setTimeout(r, this.simulatedDelay));
     }
@@ -217,6 +220,213 @@ class MockAiProvider {
 
     return `${hook}\n${body}\n${cta}`;
   }
+
+  async rewrite(request) {
+    if (this.simulatedDelay > 0) {
+      await new Promise((r) => setTimeout(r, this.simulatedDelay));
+    }
+
+    if (this.forceTimeout) {
+      const err = new Error('AI request timed out after 30000ms');
+      err.code = 'ETIMEDOUT';
+      throw err;
+    }
+
+    if (this.forceError) {
+      throw new Error(this.forceError);
+    }
+
+    if (this.forceMalformed) {
+      return { invalidStructure: true, randomField: 123 };
+    }
+
+    if (this.forceEmpty) {
+      return [];
+    }
+
+    if (this.forceExcess) {
+      return [
+        'Rewrite 1', 'Rewrite 2', 'Rewrite 3', 'Rewrite 4',
+        'Rewrite 5', 'Rewrite 6', 'Rewrite 7', 'Rewrite 8'
+      ];
+    }
+
+    const {
+      caption = '',
+      mode = 'clearer',
+      language = 'english',
+      count = 3,
+      platform,
+    } = request;
+
+    const isBangla = language === 'bangla';
+    const suggestions = [];
+    const baseText = typeof caption === 'string' ? caption.trim() : '';
+
+    for (let i = 0; i < count; i++) {
+      let rewritten = '';
+      if (isBangla) {
+        rewritten = this._rewriteBanglaCaption(baseText, mode, platform, i);
+      } else {
+        rewritten = this._rewriteEnglishCaption(baseText, mode, platform, i);
+      }
+      suggestions.push(rewritten);
+    }
+
+    return suggestions;
+  }
+
+  _rewriteEnglishCaption(caption, mode, platform, index) {
+    const base = caption.replace(/[.!?]+$/, '').trim() || 'Video content';
+    const words = base.split(/\s+/);
+
+    switch (mode) {
+      case 'clearer': {
+        const templates = [
+          `Clear breakdown: ${base}. Direct, easy to follow, and immediately actionable.`,
+          `In simple terms: ${base}. Focus on what delivers the best results.`,
+          `The straightforward guide: ${base}. Step-by-step clarity for everyone.`,
+          `Here is the key takeaway: ${base}. Simple and focused.`,
+          `A simplified look at ${base}. No fluff, just practical guidance.`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'shorter': {
+        const shortBase = words.slice(0, Math.min(words.length, 7)).join(' ');
+        const templates = [
+          `${shortBase} — keep it simple.`,
+          `${shortBase}. Quick and to the point.`,
+          `${shortBase} in seconds.`,
+          `${shortBase} — actionable now.`,
+          `${shortBase}.`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'professional': {
+        const cleanBase = base.replace(/^(hey\s+(guys|everyone|there)|what's\s+up|yo)\s*,?\s*/i, '');
+        const capitalizedBase = cleanBase ? (cleanBase.charAt(0).toUpperCase() + cleanBase.slice(1)) : 'Professional approach';
+        const templates = [
+          `Strategic overview: ${capitalizedBase}. Designed to drive measurable outcomes and lasting engagement.`,
+          `Executive insight: ${capitalizedBase}. Structured execution leads to superior performance.`,
+          `Industry perspective: ${capitalizedBase}. Elevate your standards with systematic best practices.`,
+          `Core analysis: ${capitalizedBase}. A refined approach to sustainable growth.`,
+          `Key principle: ${capitalizedBase}. Professional methodologies deliver reliable impact.`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'casual': {
+        const templates = [
+          `Wait till you try this! ${base} ✨ Save this so you never lose it 🔥`,
+          `Honestly loving this right now: ${base} 🙌 What do you think?`,
+          `Quick daily hack: ${base} 💡 Drop your thoughts below!`,
+          `Here is something fun to try: ${base} 🚀 Let me know how it goes!`,
+          `Best shortcut ever: ${base} 👀 You have to test this out!`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'promotional': {
+        const templates = [
+          `Transform your results today! ${base}. Unlock exclusive tools and level up now!`,
+          `Don't miss out on this opportunity! ${base}. Get started right away!`,
+          `Special highlight: ${base}. Everything you need to succeed right here!`,
+          `Take your content further! ${base}. Limited-time updates available now!`,
+          `Ready to level up? ${base}. Grab your guide today!`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'better_hook': {
+        const templates = [
+          `Stop scrolling! ${base}. Here is what actually makes the difference.`,
+          `Nobody talks about this secret! ${base}. Why this changes the game.`,
+          `Did you know this trick? ${base}. The fastest path to improvement.`,
+          `What if you could master this? ${base}. Watch till the end!`,
+          `The 1 thing you are missing: ${base}! Let us break it down.`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'stronger_cta': {
+        const templates = [
+          `${base}. Tap the link in bio right now to explore the full guide!`,
+          `${base}. Follow for more daily editing tips, tricks, and breakdowns!`,
+          `${base}. Save this video and share it with someone who needs this today!`,
+          `${base}. Drop a comment below and let us know your experience!`,
+          `${base}. Hit subscribe and turn on notifications for next week's episode!`,
+        ];
+        return templates[index % templates.length];
+      }
+      default: {
+        return `Refined: ${base}. Clean, effective, and ready for your audience.`;
+      }
+    }
+  }
+
+  _rewriteBanglaCaption(caption, mode, platform, index) {
+    const base = caption.replace(/[।!?]+$/, '').trim() || 'ভিডিও কন্টেন্ট';
+    const words = base.split(/\s+/);
+
+    switch (mode) {
+      case 'clearer': {
+        const templates = [
+          `সহজ ভাষায়: ${base}। নিয়মগুলো স্পষ্টভাবে মেনে চলুন।`,
+          `মূল বিষয়টি মনে রাখুন: ${base}। সহজ ও বাস্তবসম্মত পরামর্শ।`,
+          `কার্যকর পদ্ধতি: ${base}। সবার জন্য সহজে বোঝার মতো।`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'shorter': {
+        const shortBase = words.slice(0, Math.min(words.length, 6)).join(' ');
+        const templates = [
+          `${shortBase} সহজে জেনে নিন।`,
+          `${shortBase}। সংক্ষেপে গুরুত্বপূর্ণ তথ্য।`,
+          `${shortBase} মাত্র কয়েক সেকেন্ডে।`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'professional': {
+        const templates = [
+          `পেশাদার দৃষ্টিভঙ্গি: ${base}। সঠিক কৌশল ও নিয়ম মেনে সাফল্য অর্জন করুন।`,
+          `গুরুত্বপূর্ণ বিশ্লেষণ: ${base}। ধারাবাহিক অনুশীলনে উন্নতি সম্ভব।`,
+          `কার্যকর দিকনির্দেশনা: ${base}। পেশাগত মান বৃদ্ধি করুন।`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'casual': {
+        const templates = [
+          `এই সহজ ট্রিকটি একবার দেখে নিন! ${base} ✨ বন্ধুদের সাথে শেয়ার করুন 🔥`,
+          `আজকের দারুণ টিপস: ${base} 🙌 কেমন লাগলো কমেন্টে জানান!`,
+          `সহজে শিখে নিন: ${base} 💡 দারুন একটা সমাধান!`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'promotional': {
+        const templates = [
+          `আজই আপনার কাজের মান বাড়ান! ${base}। বিস্তারিত জানতে যুক্ত থাকুন!`,
+          `বিশেষ সুযোগ: ${base}। এখনই প্রস্তুতি নিন ও এগিয়ে থাকুন!`,
+          `নতুন কিছু শুরু করার এটাই সেরা সময়! ${base}।`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'better_hook': {
+        const templates = [
+          `থামুন! এই তথ্যটি আপনার জানা জরুরি: ${base}।`,
+          `অনেকেই এই সহজ বিষয়টি লক্ষ্য করেন না: ${base}।`,
+          `আপনি কি এই নিয়মটি জানতেন? ${base}।`,
+        ];
+        return templates[index % templates.length];
+      }
+      case 'stronger_cta': {
+        const templates = [
+          `${base}। নতুন ভিডিও পেতে এখনই সাবস্ক্রাইব করুন ও লাইক দিন!`,
+          `${base}। বন্ধুদের সাথে শেয়ার করুন ও কমেন্টে আপনার মতামত জানান!`,
+          `${base}। বিস্তারিত নির্দেশিকার জন্য বায়োর লিংকে ক্লিক করুন!`,
+        ];
+        return templates[index % templates.length];
+      }
+      default: {
+        return `উন্নত রূপ: ${base}। আপনার দর্শকের জন্য তৈরি।`;
+      }
+    }
+  }
 }
 
 /**
@@ -322,6 +532,24 @@ Do NOT output markdown fences, HTML, or explanations.`;
       req.write(requestPayload);
       req.end();
     });
+  }
+
+  async rewrite(request) {
+    if (this.apiKey) {
+      const prompt = `Rewrite the following caption in "${request.mode || 'clearer'}" mode.
+Original caption: "${request.caption}"
+Language: ${request.language || 'english'}
+Tone: ${request.tone || 'casual'}
+Platform: ${request.platform || 'general'}
+Return a JSON array of ${request.count || 3} rewritten caption strings. Each caption must be under 500 characters.`;
+
+      return this.generate({
+        ...request,
+        topic: prompt,
+      });
+    }
+    const mock = new MockAiProvider();
+    return mock.rewrite(request);
   }
 }
 

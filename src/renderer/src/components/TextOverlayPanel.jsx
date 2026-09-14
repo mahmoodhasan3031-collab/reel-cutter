@@ -3,6 +3,7 @@ import CaptionTemplateLibrary from './CaptionTemplateLibrary'
 import AiCaptionGenerator from './AiCaptionGenerator'
 import CaptionQualityPanel from './CaptionQualityPanel'
 import CaptionIntelligenceDashboard from './CaptionIntelligenceDashboard'
+import CaptionWorkspace from './CaptionWorkspace'
 
 const FONT_FAMILIES = ['Arial', 'Verdana', 'Tahoma', 'Georgia', 'Times New Roman', 'Courier New']
 const POSITIONS = ['top', 'center', 'bottom', 'custom']
@@ -406,6 +407,7 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [qualityModalOpen, setQualityModalOpen] = useState(false)
   const [dashboardOpen, setDashboardOpen] = useState(false)
+  const [workspaceOpen, setWorkspaceOpen] = useState(false)
 
   const MAX_OVERLAYS = 5
 
@@ -633,6 +635,30 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
             >
               <span>📈</span> Dashboard
             </button>
+            <button
+              type="button"
+              onClick={() => setWorkspaceOpen(true)}
+              disabled={disabled}
+              title="Open Caption Workspace & Smart Rewrite"
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                background: 'linear-gradient(135deg, #26193d 0%, #3b1f54 100%)',
+                border: '1px solid #c084fc',
+                borderRadius: 6,
+                color: '#f3e8ff',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                boxShadow: '0 2px 8px rgba(192, 132, 252, 0.2)',
+              }}
+            >
+              <span>🖊️</span> Workspace
+            </button>
           </div>
 
           {overlays.length >= MAX_OVERLAYS && (
@@ -692,6 +718,28 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
             }}
             onOpenAnalyzer={() => setQualityModalOpen(true)}
           />
+
+          {/* Caption Workspace & Smart Rewrite Modal (Phase 4B-8) */}
+          {workspaceOpen && (
+            <CaptionWorkspace
+              caption={activeOverlay?.text || (overlays[0]?.text || '')}
+              existingOverlays={overlays}
+              onClose={() => setWorkspaceOpen(false)}
+              onApply={(captionText) => {
+                handleApplyAiCaption(captionText)
+                setWorkspaceOpen(false)
+              }}
+              onSaveTemplate={async (data) => {
+                if (window.api?.createCaptionTemplate) {
+                  const text = typeof data === 'string' ? data : data.caption || ''
+                  await window.api.createCaptionTemplate({
+                    name: `Workspace Caption ${Date.now()}`,
+                    overlays: [createDefaultOverlay({ text })],
+                  })
+                }
+              }}
+            />
+          )}
         </>
       )}
     </div>

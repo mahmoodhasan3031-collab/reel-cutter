@@ -18,6 +18,7 @@ const FEATURE_KEYS = {
   BATCH_QUEUE: 'batch_queue',
   AI_CAPTIONS: 'ai_captions',
   CAPTION_QUALITY: 'caption_quality',
+  CAPTION_WORKSPACE: 'caption_workspace',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -67,6 +68,13 @@ const FEATURE_ALIASES = {
   'caption quality analyzer': FEATURE_KEYS.CAPTION_QUALITY,
   'caption quality intelligence': FEATURE_KEYS.CAPTION_QUALITY,
   'caption quality & intelligence': FEATURE_KEYS.CAPTION_QUALITY,
+
+  'caption workspace': FEATURE_KEYS.CAPTION_WORKSPACE,
+  caption_workspace: FEATURE_KEYS.CAPTION_WORKSPACE,
+  captionworkspace: FEATURE_KEYS.CAPTION_WORKSPACE,
+  'smart rewrite': FEATURE_KEYS.CAPTION_WORKSPACE,
+  smart_rewrite: FEATURE_KEYS.CAPTION_WORKSPACE,
+  'caption workspace & smart rewrite': FEATURE_KEYS.CAPTION_WORKSPACE,
 };
 
 const TIER_HIERARCHY = {
@@ -92,6 +100,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.BATCH_QUEUE,
     FEATURE_KEYS.AI_CAPTIONS,
     FEATURE_KEYS.CAPTION_QUALITY,
+    FEATURE_KEYS.CAPTION_WORKSPACE,
   ],
 };
 
@@ -154,6 +163,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.CAPTION_QUALITY,
     name: 'Caption Quality & Intelligence',
     description: 'Offline caption quality scoring, readability analysis, and AI-assisted improvement',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.CAPTION_WORKSPACE,
+    name: 'Caption Workspace & Smart Rewrite',
+    description: 'Unified caption workspace with AI smart rewrite, multi-version history, and quality feedback',
     minTier: 'pro',
   },
 ];

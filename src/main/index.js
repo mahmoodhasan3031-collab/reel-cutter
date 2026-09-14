@@ -76,6 +76,17 @@ import {
   compareCaptions,
   reanalyzeHistoryRecord,
 } from './captions/captionHistoryManager'
+import {
+  createWorkspace,
+  validateWorkspace,
+  addVersion,
+  selectVersion,
+  updateCurrentCaption,
+  generateSmartRewrites,
+  rewriteWithQualityFeedback,
+  compareWorkspaceVersions,
+  bulkSmartRewrite,
+} from './captions/captionWorkspaceManager'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -1361,6 +1372,109 @@ ipcMain.handle('caption-history:reanalyze', async (_, id) => {
     }
     const result = reanalyzeHistoryRecord(id)
     return { success: true, result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Caption Workspace & Smart Rewrite (Phase 4B-8) ─────────────────────────
+
+ipcMain.handle('caption-workspace:create', async (_, initialData) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const workspace = createWorkspace(initialData)
+    return { success: true, workspace }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-workspace:addVersion', async (_, { workspace, versionData } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const updatedWorkspace = addVersion(workspace, versionData)
+    return { success: true, workspace: updatedWorkspace }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-workspace:selectVersion', async (_, { workspace, versionId } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const updatedWorkspace = selectVersion(workspace, versionId)
+    return { success: true, workspace: updatedWorkspace }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-workspace:updateCaption', async (_, { workspace, newText, options } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const updatedWorkspace = updateCurrentCaption(workspace, newText, options)
+    return { success: true, workspace: updatedWorkspace }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-workspace:rewrite', async (_, request) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return await generateSmartRewrites(request)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-workspace:rewriteWithFeedback', async (_, request) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return await rewriteWithQualityFeedback(request)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-workspace:compare', async (_, { versionA, versionB } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const comparison = compareWorkspaceVersions(versionA, versionB)
+    return { success: true, comparison }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-workspace:bulkRewrite', async (_, bulkInput) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return await bulkSmartRewrite(bulkInput)
   } catch (err) {
     return { success: false, error: err.message }
   }
