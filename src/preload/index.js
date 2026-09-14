@@ -238,6 +238,14 @@ contextBridge.exposeInMainWorld('api', {
   validateRecoveryDirectory: (dirPath) => ipcRenderer.invoke('recovery:validateDirectory', { dirPath }),
   validateRecoveryOpenable: (filePath) => ipcRenderer.invoke('recovery:validateOpenable', { filePath }),
 
+  // ── Export Intelligence Dashboard (Phase 5H) ──────────────────────────────
+  getAnalyticsDashboard: (options) => ipcRenderer.invoke('analytics:getDashboard', options),
+  compareAnalyticsProfiles: (profileIds) => ipcRenderer.invoke('analytics:compareProfiles', { profileIds }),
+  compareAnalyticsPresets: (presetIds, presetType) => ipcRenderer.invoke('analytics:comparePresets', { presetIds, presetType }),
+  exportAnalyticsJSON: (options) => ipcRenderer.invoke('analytics:exportJSON', options),
+  exportAnalyticsCSV: (options) => ipcRenderer.invoke('analytics:exportCSV', options),
+  saveAnalyticsToFile: (format, options, defaultPath) => ipcRenderer.invoke('analytics:saveToFile', { format, options, defaultPath }),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

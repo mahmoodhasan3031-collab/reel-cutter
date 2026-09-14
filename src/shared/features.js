@@ -27,6 +27,7 @@ const FEATURE_KEYS = {
   EXPORT_HISTORY: 'export_history',
   EXPORT_HISTORY_INTELLIGENCE: 'export_history_intelligence',
   EXPORT_RECOVERY_CENTER: 'export_recovery_center',
+  EXPORT_INTELLIGENCE_DASHBOARD: 'export_intelligence_dashboard',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -136,6 +137,12 @@ const FEATURE_ALIASES = {
   exportRecoveryCenter: FEATURE_KEYS.EXPORT_RECOVERY_CENTER,
   recovery_center: FEATURE_KEYS.EXPORT_RECOVERY_CENTER,
   recoveryCenter: FEATURE_KEYS.EXPORT_RECOVERY_CENTER,
+
+  'export intelligence dashboard': FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+  export_intelligence_dashboard: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+  exportintelligencedashboard: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+  exportIntelligenceDashboard: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+  'intelligence dashboard': FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
 };
 
 const TIER_HIERARCHY = {
@@ -170,6 +177,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.EXPORT_HISTORY,
     FEATURE_KEYS.EXPORT_HISTORY_INTELLIGENCE,
     FEATURE_KEYS.EXPORT_RECOVERY_CENTER,
+    FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
   ],
 };
 
@@ -286,6 +294,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.EXPORT_RECOVERY_CENTER,
     name: 'Export Recovery Center',
     description: 'Output health checks, retry readiness, recovery diagnostics, archive, pin, and workspace organization',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+    name: 'Export Intelligence Dashboard',
+    description: 'Local analytics dashboard with overview, time, profile, platform, preset, recovery, bulk, scheduled, output health, workflow insights, and attention signals',
     minTier: 'pro',
   },
 ];

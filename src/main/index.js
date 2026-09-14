@@ -1239,6 +1239,14 @@ import {
   getAttemptDisplayInfo,
 } from './history/recoveryCenter'
 
+import {
+  getDashboardAnalytics,
+  compareProfiles,
+  comparePresets,
+  analyticsToJSON,
+  analyticsToCSV,
+} from './analytics/exportAnalytics'
+
 async function checkExportHistoryAccess() {
   const license = await getLicenseInfo()
   const tier = license.isValid
@@ -1894,6 +1902,114 @@ ipcMain.handle('recovery:validateOpenable', async (_, { filePath } = {}) => {
     if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
     const result = validateOpenablePath(filePath)
     return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Export Intelligence Dashboard IPC Handlers (Phase 5H) ──────────────────
+
+async function checkDashboardAccess() {
+  const license = await getLicenseInfo()
+  const tier = license.isValid
+    ? license.tier
+    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+
+  if (!hasFeature(tier, 'export_intelligence_dashboard')) {
+    return { authorized: false, error: 'Export Intelligence Dashboard requires Pro license tier.' }
+  }
+  return { authorized: true, tier }
+}
+
+ipcMain.handle('analytics:getDashboard', async (_, options = {}) => {
+  try {
+    const auth = await checkDashboardAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const records = loadHistory()
+    const analytics = getDashboardAnalytics(records, options)
+    return { success: true, analytics }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('analytics:compareProfiles', async (_, { profileIds } = {}) => {
+  try {
+    const auth = await checkDashboardAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const records = loadHistory()
+    const result = compareProfiles(records, profileIds || [])
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('analytics:comparePresets', async (_, { presetIds, presetType } = {}) => {
+  try {
+    const auth = await checkDashboardAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const records = loadHistory()
+    const result = comparePresets(records, presetIds || [], presetType || 'export')
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('analytics:exportJSON', async (_, options = {}) => {
+  try {
+    const auth = await checkDashboardAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const records = loadHistory()
+    const analytics = getDashboardAnalytics(records, options)
+    const json = analyticsToJSON(analytics)
+    return { success: true, data: json }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('analytics:exportCSV', async (_, options = {}) => {
+  try {
+    const auth = await checkDashboardAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const records = loadHistory()
+    const analytics = getDashboardAnalytics(records, options)
+    const csv = analyticsToCSV(analytics)
+    return { success: true, data: csv }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('analytics:saveToFile', async (_, { format, options, defaultPath } = {}) => {
+  try {
+    const auth = await checkDashboardAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+
+    const ext = format === 'csv' ? 'csv' : 'json'
+    const filters = [
+      { name: format === 'csv' ? 'CSV Files' : 'JSON Files', extensions: [ext] },
+    ]
+    const defaultName = `export-analytics-${Date.now()}.${ext}`
+    const filePath = defaultPath || defaultName
+
+    const result = await dialog.showSaveDialog({
+      defaultPath: filePath,
+      filters,
+      title: `Export Analytics as ${ext.toUpperCase()}`,
+    })
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, error: 'Export cancelled' }
+    }
+
+    const records = loadHistory()
+    const analytics = getDashboardAnalytics(records, options || {})
+    const content = format === 'csv' ? analyticsToCSV(analytics) : analyticsToJSON(analytics)
+    fs.writeFileSync(result.filePath, content, 'utf8')
+    return { success: true, path: result.filePath }
   } catch (err) {
     return { success: false, error: err.message }
   }
