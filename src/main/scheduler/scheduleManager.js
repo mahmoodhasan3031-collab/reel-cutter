@@ -203,10 +203,23 @@ function validateScheduleInput(input = {}) {
 
   // 6. Variation Preset (Validated via Engine Rules)
   let variationPreset = { ...DEFAULT_PRODUCT_VARIATION, enabled: false };
-  if (input.variationPreset && typeof input.variationPreset === 'object') {
+  let variationPresetId = input.variationPresetId || null;
+
+  let rawPreset = input.variationPreset;
+  if (!rawPreset && variationPresetId) {
+    try {
+      const { getVariationPreset } = require('../variations/variationPresetManager');
+      const p = getVariationPreset(variationPresetId, customDir);
+      if (p) {
+        rawPreset = p.variation;
+      }
+    } catch (_) {}
+  }
+
+  if (rawPreset && typeof rawPreset === 'object') {
     const varValidation = validateProductVariationConfig({
       ...DEFAULT_PRODUCT_VARIATION,
-      ...input.variationPreset,
+      ...rawPreset,
     });
     if (!varValidation.valid) {
       throw new Error('Invalid variation preset settings');
@@ -240,6 +253,7 @@ function validateScheduleInput(input = {}) {
       outputPath,
       profileSnapshot,
       variationPreset,
+      variationPresetId,
       exportOptions,
       planId: input.planId || null,
       jobId: input.jobId || null,
@@ -255,7 +269,7 @@ function validateScheduleInput(input = {}) {
  * @returns {Object} the newly created schedule item
  */
 function createSchedule(input, customDir) {
-  const { sanitized } = validateScheduleInput(input);
+  const { sanitized } = validateScheduleInput(input, customDir);
   const store = loadSchedules(customDir);
 
   const now = new Date().toISOString();

@@ -20,6 +20,7 @@ const FEATURE_KEYS = {
   CAPTION_QUALITY: 'caption_quality',
   CAPTION_WORKSPACE: 'caption_workspace',
   CAPTION_EXPERIMENT: 'caption_experiment',
+  VARIATION_PRESETS: 'variation_presets',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -84,6 +85,15 @@ const FEATURE_ALIASES = {
   'caption optimization': FEATURE_KEYS.CAPTION_EXPERIMENT,
   caption_optimization: FEATURE_KEYS.CAPTION_EXPERIMENT,
   'caption experiment & optimization': FEATURE_KEYS.CAPTION_EXPERIMENT,
+
+  'variation presets': FEATURE_KEYS.VARIATION_PRESETS,
+  variation_presets: FEATURE_KEYS.VARIATION_PRESETS,
+  variationpresets: FEATURE_KEYS.VARIATION_PRESETS,
+  variationPresets: FEATURE_KEYS.VARIATION_PRESETS,
+  'content variation presets': FEATURE_KEYS.VARIATION_PRESETS,
+  'variation preset': FEATURE_KEYS.VARIATION_PRESETS,
+  'export presets': FEATURE_KEYS.VARIATION_PRESETS,
+  'repurposing presets': FEATURE_KEYS.VARIATION_PRESETS,
 };
 
 const TIER_HIERARCHY = {
@@ -111,6 +121,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.CAPTION_QUALITY,
     FEATURE_KEYS.CAPTION_WORKSPACE,
     FEATURE_KEYS.CAPTION_EXPERIMENT,
+    FEATURE_KEYS.VARIATION_PRESETS,
   ],
 };
 
@@ -185,6 +196,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.CAPTION_EXPERIMENT,
     name: 'Caption Experiment & Optimization',
     description: 'A/B creative caption variant testing, quality comparison, and smart heuristic optimization',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.VARIATION_PRESETS,
+    name: 'Content Variation Presets',
+    description: 'Save, manage, and apply named variation presets for creative repurposing across profiles and exports',
     minTier: 'pro',
   },
 ];

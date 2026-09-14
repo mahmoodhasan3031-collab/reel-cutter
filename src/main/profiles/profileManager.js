@@ -17,6 +17,7 @@ const {
   DEFAULT_PRODUCT_VARIATION,
 } = require('../../engine/variation/validator');
 const { getCaptionTemplate } = require('../captions/captionTemplateManager');
+const { getVariationPreset } = require('../variations/variationPresetManager');
 
 const SUPPORTED_PLATFORMS = ['Facebook', 'Instagram', 'YouTube', 'TikTok', 'Other'];
 const PROFILES_FILENAME = 'profiles.json';
@@ -157,6 +158,59 @@ function resolveProfileCaptionTemplate(profile, customDir) {
 }
 
 /**
+ * Validates variation preset ID if provided.
+ * Must be null/undefined or an existing preset ID.
+ * @param {*} variationPresetId
+ * @param {string} [customDir]
+ * @returns {string|null}
+ */
+function validateVariationPresetId(variationPresetId, customDir) {
+  if (variationPresetId === undefined || variationPresetId === null || variationPresetId === '') {
+    return null;
+  }
+  if (typeof variationPresetId !== 'string') {
+    throw new Error('variationPresetId must be a string or null');
+  }
+  const preset = getVariationPreset(variationPresetId, customDir);
+  if (!preset) {
+    throw new Error(`Variation preset not found: ${variationPresetId}`);
+  }
+  return variationPresetId;
+}
+
+/**
+ * Resolves the variation preset for a profile, returning deep-cloned variation config or fallback.
+ * If profile references a variationPresetId, attempts to look it up.
+ * If not found (e.g. deleted preset), falls back safely to profile.variationPreset (or default).
+ * @param {Object} profile
+ * @param {string} [customDir]
+ * @returns {{ presetId: string|null, presetName: string|null, variation: Object }}
+ */
+function resolveProfileVariationPreset(profile, customDir) {
+  if (!profile) {
+    return { presetId: null, presetName: null, variation: getDefaultVariation() };
+  }
+
+  if (profile.variationPresetId) {
+    const preset = getVariationPreset(profile.variationPresetId, customDir);
+    if (preset) {
+      return {
+        presetId: preset.id,
+        presetName: preset.name,
+        variation: JSON.parse(JSON.stringify(resolveProfilePreset(preset.variation))),
+      };
+    }
+    // Fallback if deleted or not found
+  }
+
+  return {
+    presetId: null,
+    presetName: null,
+    variation: resolveProfilePreset(profile.variationPreset),
+  };
+}
+
+/**
  * Safely loads profiles from disk.
  * @param {string} [customDir]
  * @returns {{ selectedProfileId: string|null, profiles: Array<Object> }}
@@ -197,12 +251,18 @@ function loadProfiles(customDir) {
               captionTemplateId = p.captionTemplateId;
             }
 
+            let variationPresetId = null;
+            if (p.variationPresetId && typeof p.variationPresetId === 'string') {
+              variationPresetId = p.variationPresetId;
+            }
+
             return {
               id: String(p.id),
               name,
               platform: validatePlatform(p.platform),
               enabled: p.enabled !== undefined ? Boolean(p.enabled) : true,
               variationPreset: preset,
+              variationPresetId,
               captionTemplateId,
               createdAt: p.createdAt || new Date().toISOString(),
               updatedAt: p.updatedAt || new Date().toISOString(),
@@ -284,6 +344,7 @@ function createProfile(input, customDir) {
   const enabled = input.enabled !== undefined ? Boolean(input.enabled) : true;
   const variationPreset = normalizeVariationPreset(input.variationPreset);
   const captionTemplateId = validateCaptionTemplateId(input.captionTemplateId, customDir);
+  const variationPresetId = validateVariationPresetId(input.variationPresetId, customDir);
 
   const data = loadProfiles(customDir);
 
@@ -300,6 +361,7 @@ function createProfile(input, customDir) {
     platform,
     enabled,
     variationPreset,
+    variationPresetId,
     captionTemplateId,
     createdAt: now,
     updatedAt: now,
@@ -352,6 +414,11 @@ function updateProfile(id, updates, customDir) {
     captionTemplateId = validateCaptionTemplateId(updates.captionTemplateId, customDir);
   }
 
+  let variationPresetId = existing.variationPresetId !== undefined ? existing.variationPresetId : null;
+  if (updates.variationPresetId !== undefined) {
+    variationPresetId = validateVariationPresetId(updates.variationPresetId, customDir);
+  }
+
   const updatedProfile = {
     ...existing,
     id: existing.id, // Strictly preserve original ID
@@ -359,6 +426,7 @@ function updateProfile(id, updates, customDir) {
     platform,
     enabled,
     variationPreset,
+    variationPresetId,
     captionTemplateId,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
@@ -452,6 +520,7 @@ function duplicateProfile(id, customDir) {
     platform: existing.platform,
     enabled: existing.enabled,
     variationPreset: { ...existing.variationPreset },
+    variationPresetId: existing.variationPresetId !== undefined ? existing.variationPresetId : null,
     captionTemplateId: existing.captionTemplateId !== undefined ? existing.captionTemplateId : null,
     createdAt: now,
     updatedAt: now,
@@ -566,4 +635,6 @@ module.exports = {
   setSelectedProfile,
   validateCaptionTemplateId,
   resolveProfileCaptionTemplate,
+  validateVariationPresetId,
+  resolveProfileVariationPreset,
 };

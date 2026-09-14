@@ -105,6 +105,19 @@ import {
   generateAiVariants,
   bulkExperiment,
 } from './captions/captionExperimentManager'
+import {
+  getVariationPresets,
+  getVariationPreset,
+  searchVariationPresets,
+  createVariationPreset,
+  updateVariationPreset,
+  deleteVariationPreset,
+  duplicateVariationPreset,
+  compareVariationPresets,
+  applyVariationPreset,
+  resetVariationPresets,
+  resolveVariationPresetSnapshot,
+} from './variations/variationPresetManager'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -1675,6 +1688,169 @@ ipcMain.handle('caption-experiment:bulk', async (_, bulkInput) => {
       return { success: false, error: auth.error, requiresUpgrade: true }
     }
     return await bulkExperiment(bulkInput)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Variation Presets (Phase 5A) ─────────────────────────────────────────────
+
+async function checkVariationPresetsAccess() {
+  const license = await getLicenseInfo()
+  const tier = license.isValid
+    ? license.tier
+    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+
+  if (!hasFeature(tier, 'variation_presets')) {
+    return { authorized: false, error: 'Content Variation Presets requires Pro license tier.' }
+  }
+  return { authorized: true, tier }
+}
+
+ipcMain.handle('variation-preset:list', async () => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const presets = getVariationPresets()
+    return { success: true, presets }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('variation-preset:get', async (_, id) => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const preset = getVariationPreset(id)
+    if (!preset) {
+      return { success: false, error: `Variation preset not found: ${id}` }
+    }
+    return { success: true, preset }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('variation-preset:create', async (_, data) => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const preset = createVariationPreset(data)
+    return { success: true, preset }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('variation-preset:update', async (_, { id, data } = {}) => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const preset = updateVariationPreset(id, data)
+    return { success: true, preset }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('variation-preset:delete', async (_, id) => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = deleteVariationPreset(id)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('variation-preset:duplicate', async (_, { id, overrides } = {}) => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const preset = duplicateVariationPreset(id, overrides || {})
+    return { success: true, preset }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('variation-preset:reset', async () => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const presets = resetVariationPresets()
+    return { success: true, presets }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('variation-preset:resolve', async (_, presetId) => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const snapshot = resolveVariationPresetSnapshot(presetId)
+    if (!snapshot) {
+      return { success: false, error: `Variation preset not found: ${presetId}` }
+    }
+    return { success: true, snapshot }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('variation-preset:search', async (_, options) => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const presets = searchVariationPresets(options)
+    return { success: true, presets }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('variation-preset:compare', async (_, { current, selected } = {}) => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const comparison = compareVariationPresets(current, selected)
+    return { success: true, comparison }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('variation-preset:apply', async (_, { presetId, currentConfig } = {}) => {
+  try {
+    const auth = await checkVariationPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const applied = applyVariationPreset(presetId, currentConfig)
+    return { success: true, config: applied }
   } catch (err) {
     return { success: false, error: err.message }
   }

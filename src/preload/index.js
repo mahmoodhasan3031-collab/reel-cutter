@@ -129,6 +129,19 @@ contextBridge.exposeInMainWorld('api', {
   generateCaptionExperimentVariants: (request) => ipcRenderer.invoke('caption-experiment:generate', request),
   bulkCaptionExperiment: (input) => ipcRenderer.invoke('caption-experiment:bulk', input),
 
+  // ── Content Variation Presets (Phase 5A) ────────────────────────────────────
+  getVariationPresets: () => ipcRenderer.invoke('variation-preset:list'),
+  getVariationPreset: (id) => ipcRenderer.invoke('variation-preset:get', id),
+  searchVariationPresets: (options) => ipcRenderer.invoke('variation-preset:search', options),
+  createVariationPreset: (data) => ipcRenderer.invoke('variation-preset:create', data),
+  updateVariationPreset: (id, data) => ipcRenderer.invoke('variation-preset:update', { id, data }),
+  deleteVariationPreset: (id) => ipcRenderer.invoke('variation-preset:delete', id),
+  duplicateVariationPreset: (id, overrides) => ipcRenderer.invoke('variation-preset:duplicate', { id, overrides }),
+  compareVariationPresets: (current, selected) => ipcRenderer.invoke('variation-preset:compare', { current, selected }),
+  applyVariationPreset: (presetId, currentConfig) => ipcRenderer.invoke('variation-preset:apply', { presetId, currentConfig }),
+  resetVariationPresets: () => ipcRenderer.invoke('variation-preset:reset'),
+  resolveVariationPreset: (presetId) => ipcRenderer.invoke('variation-preset:resolve', presetId),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

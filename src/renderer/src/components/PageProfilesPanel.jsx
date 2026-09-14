@@ -69,6 +69,7 @@ export default function PageProfilesPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [captionTemplates, setCaptionTemplates] = useState([]);
+  const [variationPresets, setVariationPresets] = useState([]);
 
   // Modal states
   const [modalMode, setModalMode] = useState(null); // 'create' | 'edit' | null
@@ -85,6 +86,16 @@ export default function PageProfilesPanel() {
       const res = await window.api.getCaptionTemplates();
       if (res && res.success) {
         setCaptionTemplates(res.templates || []);
+      }
+    } catch (_) {}
+  };
+
+  const fetchVariationPresets = async () => {
+    try {
+      if (!window.api?.getVariationPresets) return;
+      const res = await window.api.getVariationPresets();
+      if (res && res.success) {
+        setVariationPresets(res.presets || []);
       }
     } catch (_) {}
   };
@@ -108,15 +119,18 @@ export default function PageProfilesPanel() {
   useEffect(() => {
     fetchProfiles();
     fetchCaptionTemplates();
+    fetchVariationPresets();
   }, []);
 
   const handleOpenCreate = () => {
     fetchCaptionTemplates();
+    fetchVariationPresets();
     setActiveFormData({
       name: '',
       platform: 'Facebook',
       enabled: true,
       variationPreset: { ...DEFAULT_PRESET },
+      variationPresetId: null,
       captionTemplateId: null,
     });
     setFormError(null);
@@ -125,6 +139,7 @@ export default function PageProfilesPanel() {
 
   const handleOpenEdit = (profile) => {
     fetchCaptionTemplates();
+    fetchVariationPresets();
     setActiveFormData({
       id: profile.id,
       name: profile.name,
@@ -135,6 +150,7 @@ export default function PageProfilesPanel() {
         ...(profile.variationPreset || {}),
         mode: profile.variationPreset?.mode || profile.variationPreset?.reframeMode || 'center',
       },
+      variationPresetId: profile.variationPresetId || null,
       captionTemplateId: profile.captionTemplateId || null,
     });
     setFormError(null);
@@ -172,6 +188,7 @@ export default function PageProfilesPanel() {
           platform: activeFormData.platform,
           enabled: activeFormData.enabled,
           variationPreset: activeFormData.variationPreset,
+          variationPresetId: activeFormData.variationPresetId || null,
           captionTemplateId: activeFormData.captionTemplateId || null,
         });
         if (res && res.success === false) {
@@ -183,6 +200,7 @@ export default function PageProfilesPanel() {
           platform: activeFormData.platform,
           enabled: activeFormData.enabled,
           variationPreset: activeFormData.variationPreset,
+          variationPresetId: activeFormData.variationPresetId || null,
           captionTemplateId: activeFormData.captionTemplateId || null,
         });
         if (res && res.success === false) {
@@ -597,6 +615,50 @@ export default function PageProfilesPanel() {
                     !captionTemplates.some((t) => t.id === activeFormData.captionTemplateId) && (
                       <option value={activeFormData.captionTemplateId} disabled>
                         (Unavailable / Deleted template)
+                      </option>
+                    )}
+                </select>
+              </div>
+
+              {/* Variation Preset Selector (Phase 5A) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-zinc-300">Content Variation Preset</label>
+                  <span className="text-[10px] text-zinc-500">Creative repurposing preset</span>
+                </div>
+                <select
+                  value={activeFormData.variationPresetId || ''}
+                  onChange={(e) => {
+                    const presetId = e.target.value ? e.target.value : null;
+                    if (presetId) {
+                      const found = variationPresets.find((p) => p.id === presetId);
+                      if (found && found.variation) {
+                        setActiveFormData((prev) => ({
+                          ...prev,
+                          variationPresetId: presetId,
+                          variationPreset: {
+                            ...DEFAULT_PRESET,
+                            ...found.variation,
+                            mode: found.variation.mode || 'center',
+                          },
+                        }));
+                        return;
+                      }
+                    }
+                    setActiveFormData((prev) => ({ ...prev, variationPresetId: presetId }));
+                  }}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-brand-500 transition-colors cursor-pointer"
+                >
+                  <option value="">None (Custom Settings Below)</option>
+                  {variationPresets.map((vp) => (
+                    <option key={vp.id} value={vp.id}>
+                      {vp.name} ({vp.isBuiltIn ? 'Built-in' : 'Custom'})
+                    </option>
+                  ))}
+                  {activeFormData.variationPresetId &&
+                    !variationPresets.some((p) => p.id === activeFormData.variationPresetId) && (
+                      <option value={activeFormData.variationPresetId} disabled>
+                        (Unavailable / Deleted preset)
                       </option>
                     )}
                 </select>

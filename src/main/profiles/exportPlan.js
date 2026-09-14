@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const { loadProfiles, resolveProfilePreset } = require('./profileManager');
 const { getCaptionTemplate } = require('../captions/captionTemplateManager');
+const { getVariationPreset } = require('../variations/variationPresetManager');
 const { validateProductVariationConfig, DEFAULT_PRODUCT_VARIATION } = require('../../engine/variation/validator');
 
 const MIN_BULK_PROFILES = 1;
@@ -260,9 +261,22 @@ function createBulkExportPlan(input = {}, customDir) {
       throw new Error(`Profile "${profile.name}" (${pId}) is disabled and cannot be added to a bulk export plan`);
     }
 
-    // Saved preset from authoritative profile
-    const savedPresetCopy = resolveProfilePreset(profile.variationPreset);
+    // Saved preset from authoritative profile (or referenced variationPresetId)
     let presetToUse = profile.variationPreset;
+    let variationPresetId = profile.variationPresetId || null;
+    let variationPresetName = null;
+
+    if (variationPresetId) {
+      const vPreset = getVariationPreset(variationPresetId, customDir);
+      if (vPreset) {
+        presetToUse = vPreset.variation;
+        variationPresetName = vPreset.name;
+      } else {
+        variationPresetId = null; // Fallback safely if deleted
+      }
+    }
+
+    const savedPresetCopy = resolveProfilePreset(presetToUse);
     let isOverridden = false;
 
     // Check for export-time override
@@ -270,14 +284,14 @@ function createBulkExportPlan(input = {}, customDir) {
     if (rawOverride && typeof rawOverride === 'object') {
       // Validate override directly against product rules
       const overrideVal = validateProductVariationConfig({
-        ...profile.variationPreset,
+        ...presetToUse,
         ...rawOverride,
         enabled: true,
       });
       if (!overrideVal.valid) {
         throw new Error(`Profile "${profile.name}" has invalid variation override settings`);
       }
-      presetToUse = { ...profile.variationPreset, ...rawOverride };
+      presetToUse = { ...presetToUse, ...rawOverride };
       isOverridden = true;
     }
 
@@ -326,6 +340,8 @@ function createBulkExportPlan(input = {}, customDir) {
       variationPreset: JSON.parse(JSON.stringify(resolvedPreset)),
       savedPreset: JSON.parse(JSON.stringify(savedPresetCopy)),
       isOverridden,
+      variationPresetId,
+      variationPresetName,
       captionTemplateId,
       captionTemplateName,
       textOverlays,
