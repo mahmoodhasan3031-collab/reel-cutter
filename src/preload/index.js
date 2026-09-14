@@ -93,6 +93,16 @@ contextBridge.exposeInMainWorld('api', {
   improveCaptionQuality: (payload) => ipcRenderer.invoke('caption-quality:improve', payload),
   analyzeBulkCaptionQuality: (payload) => ipcRenderer.invoke('caption-quality:analyzeBulk', payload),
 
+  // ── Caption Intelligence Dashboard & History (Phase 4B-7) ─────────────────
+  saveCaptionHistory: (record) => ipcRenderer.invoke('caption-history:save', record),
+  getCaptionHistory: (options) => ipcRenderer.invoke('caption-history:list', options),
+  getCaptionHistoryRecord: (id) => ipcRenderer.invoke('caption-history:get', id),
+  deleteCaptionHistoryRecord: (id) => ipcRenderer.invoke('caption-history:delete', id),
+  clearCaptionHistory: () => ipcRenderer.invoke('caption-history:clear'),
+  getCaptionDashboardMetrics: () => ipcRenderer.invoke('caption-history:getMetrics'),
+  compareCaptionHistory: (idA, idB) => ipcRenderer.invoke('caption-history:compare', { idA, idB }),
+  reanalyzeCaptionHistory: (id) => ipcRenderer.invoke('caption-history:reanalyze', id),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react'
 import CaptionTemplateLibrary from './CaptionTemplateLibrary'
 import AiCaptionGenerator from './AiCaptionGenerator'
 import CaptionQualityPanel from './CaptionQualityPanel'
+import CaptionIntelligenceDashboard from './CaptionIntelligenceDashboard'
 
 const FONT_FAMILIES = ['Arial', 'Verdana', 'Tahoma', 'Georgia', 'Times New Roman', 'Courier New']
 const POSITIONS = ['top', 'center', 'bottom', 'custom']
@@ -404,6 +405,7 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
   const [activeId, setActiveId] = useState(null)
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [qualityModalOpen, setQualityModalOpen] = useState(false)
+  const [dashboardOpen, setDashboardOpen] = useState(false)
 
   const MAX_OVERLAYS = 5
 
@@ -607,6 +609,30 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
             >
               <span>📊</span> Quality
             </button>
+            <button
+              type="button"
+              onClick={() => setDashboardOpen(true)}
+              disabled={disabled}
+              title="Open Caption Intelligence Dashboard & History"
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                background: 'linear-gradient(135deg, #1b263b 0%, #0d1b2a 100%)',
+                border: '1px solid #48cae4',
+                borderRadius: 6,
+                color: '#caf0f8',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                boxShadow: '0 2px 8px rgba(72, 202, 228, 0.2)',
+              }}
+            >
+              <span>📈</span> Dashboard
+            </button>
           </div>
 
           {overlays.length >= MAX_OVERLAYS && (
@@ -636,6 +662,7 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
             <CaptionQualityPanel
               caption={activeOverlay?.text || (overlays[0]?.text || '')}
               onClose={() => setQualityModalOpen(false)}
+              onOpenDashboard={() => setDashboardOpen(true)}
               onApply={(improvedText) => {
                 handleApplyAiCaption(improvedText)
               }}
@@ -649,6 +676,22 @@ export default function TextOverlayPanel({ overlays = [], onChange, disabled = f
               }}
             />
           )}
+
+          {/* Caption Intelligence Dashboard (Phase 4B-7) */}
+          <CaptionIntelligenceDashboard
+            isOpen={dashboardOpen}
+            onClose={() => setDashboardOpen(false)}
+            onApplyCaption={handleApplyAiCaption}
+            onSaveTemplate={async (captionText) => {
+              if (window.api?.createCaptionTemplate) {
+                await window.api.createCaptionTemplate({
+                  name: `Dashboard Caption ${Date.now()}`,
+                  overlays: [createDefaultOverlay({ text: captionText })],
+                })
+              }
+            }}
+            onOpenAnalyzer={() => setQualityModalOpen(true)}
+          />
         </>
       )}
     </div>

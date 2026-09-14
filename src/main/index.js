@@ -65,6 +65,17 @@ import {
   improveCaption,
   analyzeBulkQuality,
 } from './captions/captionQualityService'
+import {
+  createHistoryRecord,
+  getHistory,
+  getHistoryRecord,
+  deleteHistoryRecord,
+  clearHistory,
+  getDashboardMetrics,
+  getQualityInsights,
+  compareCaptions,
+  reanalyzeHistoryRecord,
+} from './captions/captionHistoryManager'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -1242,6 +1253,114 @@ ipcMain.handle('caption-quality:analyzeBulk', async (_, bulkPayload) => {
       return { success: false, error: auth.error, requiresUpgrade: true }
     }
     return analyzeBulkQuality(bulkPayload)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Caption Intelligence Dashboard & History (Phase 4B-7) ───────────────────
+
+ipcMain.handle('caption-history:save', async (_, rawRecord) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const record = createHistoryRecord(rawRecord)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-history:list', async (_, options) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const history = getHistory(options)
+    return { success: true, history }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-history:get', async (_, id) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const record = getHistoryRecord(id)
+    if (!record) return { success: false, error: 'History record not found' }
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-history:delete', async (_, id) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = deleteHistoryRecord(id)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-history:clear', async () => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = clearHistory()
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-history:getMetrics', async () => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const metrics = getDashboardMetrics()
+    const insights = getQualityInsights()
+    return { success: true, metrics, insights }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-history:compare', async (_, { idA, idB } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const comparison = compareCaptions(idA, idB)
+    return { success: true, comparison }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-history:reanalyze', async (_, id) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = reanalyzeHistoryRecord(id)
+    return { success: true, result }
   } catch (err) {
     return { success: false, error: err.message }
   }

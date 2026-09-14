@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import CaptionPresetEditor from './CaptionPresetEditor'
 import AiCaptionGenerator from './AiCaptionGenerator'
 import CaptionQualityPanel from './CaptionQualityPanel'
+import CaptionIntelligenceDashboard from './CaptionIntelligenceDashboard'
 
 /**
  * CaptionTemplateLibrary (Phase 4B-1, updated Phase 4B-2)
@@ -46,6 +47,9 @@ export default function CaptionTemplateLibrary({
 
   // Phase 4B-6: Caption Quality & Intelligence state
   const [qualityModalOpen, setQualityModalOpen] = useState(false)
+
+  // Phase 4B-7: Caption Intelligence Dashboard state
+  const [dashboardOpen, setDashboardOpen] = useState(false)
 
   // Fetch templates from main process
   const loadTemplates = useCallback(async () => {
@@ -326,6 +330,28 @@ export default function CaptionTemplateLibrary({
             }}
           >
             <span>📊</span> Quality
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDashboardOpen(true)}
+            disabled={disabled || actionLoading}
+            title="Open Caption Intelligence Dashboard & History"
+            style={{
+              background: 'linear-gradient(135deg, #1b263b 0%, #0d1b2a 100%)',
+              border: '1px solid #48cae4',
+              borderRadius: 5,
+              color: '#caf0f8',
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '4px 10px',
+              cursor: disabled || actionLoading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <span>📈</span> Dashboard
           </button>
 
           <button
@@ -767,6 +793,7 @@ export default function CaptionTemplateLibrary({
             setQualityModalOpen(false)
             loadTemplates()
           }}
+          onOpenDashboard={() => setDashboardOpen(true)}
           onApply={(improvedText) => {
             handleApply({
               id: `temp_${Date.now()}`,
@@ -827,6 +854,74 @@ export default function CaptionTemplateLibrary({
           }}
         />
       )}
+
+      {/* ── Caption Intelligence Dashboard Modal (Phase 4B-7) ── */}
+      <CaptionIntelligenceDashboard
+        isOpen={dashboardOpen}
+        onClose={() => {
+          setDashboardOpen(false)
+          loadTemplates()
+        }}
+        onApplyCaption={(captionText) => {
+          handleApply({
+            id: `temp_${Date.now()}`,
+            name: 'Dashboard Caption',
+            overlays: [
+              {
+                id: `overlay_${Date.now()}`,
+                text: captionText,
+                fontFamily: 'Arial',
+                fontSize: 48,
+                fontWeight: 'bold',
+                color: '#FFFFFF',
+                opacity: 1,
+                backgroundColor: '#000000',
+                backgroundOpacity: 0.4,
+                outlineColor: '#000000',
+                outlineWidth: 2,
+                position: 'bottom',
+                x: 0.5,
+                y: 0.88,
+                alignment: 'center',
+                startTime: 0,
+                endTime: null,
+                enabled: true,
+              },
+            ],
+          })
+        }}
+        onSaveTemplate={async (captionText) => {
+          if (window.api?.createCaptionTemplate) {
+            await window.api.createCaptionTemplate({
+              name: `Dashboard Caption ${Date.now()}`,
+              overlays: [
+                {
+                  id: `overlay_${Date.now()}`,
+                  text: captionText,
+                  fontFamily: 'Arial',
+                  fontSize: 48,
+                  fontWeight: 'bold',
+                  color: '#FFFFFF',
+                  opacity: 1,
+                  backgroundColor: '#000000',
+                  backgroundOpacity: 0.4,
+                  outlineColor: '#000000',
+                  outlineWidth: 2,
+                  position: 'bottom',
+                  x: 0.5,
+                  y: 0.88,
+                  alignment: 'center',
+                  startTime: 0,
+                  endTime: null,
+                  enabled: true,
+                },
+              ],
+            })
+            loadTemplates()
+          }
+        }}
+        onOpenAnalyzer={() => setQualityModalOpen(true)}
+      />
     </div>
   )
 }

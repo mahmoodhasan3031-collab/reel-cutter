@@ -30,6 +30,7 @@ const tests = [
   'bulk-caption-integration.test.js',
   'ai-caption.test.js',
   'caption-quality.test.js',
+  'caption-intelligence.test.js',
 ];
 
 console.log('======================================================');
