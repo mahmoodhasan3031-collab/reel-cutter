@@ -40,6 +40,7 @@ const tests = [
   'bulk-export-intelligence.test.js',
   'export-history.test.js',
   'export-history-intelligence.test.js',
+  'export-recovery.test.js',
 ];
 
 console.log('======================================================');

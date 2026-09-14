@@ -172,12 +172,16 @@ function loadHistory(customDir) {
       if (!item || typeof item !== 'object' || !item.id) continue;
       try {
         const validated = validateExportHistoryInput(item);
-        validList.push({
+        const record = {
           id: String(item.id),
           createdAt: item.createdAt || new Date().toISOString(),
           completedAt: item.completedAt || item.createdAt || new Date().toISOString(),
           ...validated,
-        });
+        };
+        // Preserve Phase 5G fields (archived, pinned) through load cycle
+        if (item.archived) record.archived = true;
+        if (item.pinned) record.pinned = true;
+        validList.push(record);
       } catch (err) {
         // Skip corrupt individual record without throwing
       }
@@ -204,11 +208,17 @@ function saveHistory(records, customDir) {
   // Enforce FIFO limit — remove oldest records first
   const trimmed = records.slice(0, MAX_HISTORY_LIMIT);
 
+  // Preserve Phase 5G fields (archived, pinned) through save cycle
+  const sanitized = trimmed.map(r => {
+    if (!r || typeof r !== 'object') return r;
+    return { ...r, archived: !!r.archived, pinned: !!r.pinned };
+  });
+
   const payload = JSON.stringify(
     {
       version: 1,
       updatedAt: new Date().toISOString(),
-      records: trimmed,
+      records: sanitized,
     },
     null,
     2

@@ -1203,6 +1203,42 @@ import {
   getFilteredStats,
 } from './history/exportHistoryIntelligence'
 
+import {
+  OUTPUT_HEALTH_STATUS,
+  checkOutputHealth,
+  batchCheckOutputHealth,
+  checkRecordOutputHealth,
+  batchCheckRecordOutputHealth,
+  validateDirectoryPath,
+  validateOpenablePath,
+} from './history/outputHealthService'
+
+import {
+  RECOVERY_ERROR_CATEGORY,
+  normalizeError,
+  checkRetryReadiness,
+  batchCheckRetryReadiness,
+  getRecoveryDiagnostics,
+  retryFailedExport,
+  exportAgainMissingOutput,
+  bulkRetryFailed,
+  bulkExportAgainMissing,
+  archiveRecord,
+  unarchiveRecord,
+  bulkArchive,
+  bulkUnarchive,
+  pinRecord,
+  unpinRecord,
+  bulkPin,
+  bulkUnpin,
+  isNeedsAttention,
+  getNeedsAttentionRecords,
+  getWorkspaceView,
+  getRecoveryCounts,
+  getWorkspaceSummary,
+  getAttemptDisplayInfo,
+} from './history/recoveryCenter'
+
 async function checkExportHistoryAccess() {
   const license = await getLicenseInfo()
   const tier = license.isValid
@@ -1590,6 +1626,274 @@ ipcMain.handle('export-history-views:duplicate', async (_, { id } = {}) => {
     if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
     const view = duplicateSavedView(id)
     return { success: true, view }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Export Recovery Center IPC Handlers (Phase 5G) ─────────────────────────
+
+ipcMain.handle('recovery:checkOutputHealth', async (_, { outputPath } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const health = checkOutputHealth(outputPath)
+    return { success: true, health }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:batchCheckOutputHealth', async (_, { recordIds } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const records = (recordIds || []).map(id => getExportHistoryRecord(id)).filter(Boolean)
+    const result = batchCheckRecordOutputHealth(records)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:checkRetryReadiness', async (_, { recordId } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = checkRetryReadiness(recordId)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:batchCheckRetryReadiness', async (_, { recordIds } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = batchCheckRetryReadiness(recordIds || [])
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:getDiagnostics', async (_, { recordId } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const diagnostics = getRecoveryDiagnostics(recordId)
+    return { success: true, diagnostics }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:retryFailed', async (_, { recordId } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = retryFailedExport(recordId)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:exportAgainMissing', async (_, { recordId } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = exportAgainMissingOutput(recordId)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:bulkRetryFailed', async (_, { recordIds } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = bulkRetryFailed(recordIds || [])
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:bulkExportAgainMissing', async (_, { recordIds } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = bulkExportAgainMissing(recordIds || [])
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:archive', async (_, { id } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const record = archiveRecord(id)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:unarchive', async (_, { id } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const record = unarchiveRecord(id)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:bulkArchive', async (_, { ids } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = bulkArchive(ids || [])
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:bulkUnarchive', async (_, { ids } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = bulkUnarchive(ids || [])
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:pin', async (_, { id } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const record = pinRecord(id)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:unpin', async (_, { id } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const record = unpinRecord(id)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:bulkPin', async (_, { ids } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = bulkPin(ids || [])
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:bulkUnpin', async (_, { ids } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = bulkUnpin(ids || [])
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:getWorkspaceSummary', async (_, { records } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const summary = getWorkspaceSummary(records || [])
+    return { success: true, summary }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:getWorkspaceView', async (_, { records } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const view = getWorkspaceView(records || [])
+    return { success: true, view }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:getNeedsAttention', async (_, { records } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const items = getNeedsAttentionRecords(records || [])
+    return { success: true, items }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:getAttemptDisplay', async (_, { record, recordId } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const target = record || (recordId ? getExportHistoryRecord(recordId) : null)
+    const display = target ? getAttemptDisplayInfo(target) : null
+    return { success: true, display }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:normalizeError', async (_, { error } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const normalized = normalizeError(error)
+    return { success: true, normalized }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:validateDirectory', async (_, { dirPath } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = validateDirectoryPath(dirPath)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recovery:validateOpenable', async (_, { filePath } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = validateOpenablePath(filePath)
+    return { success: true, ...result }
   } catch (err) {
     return { success: false, error: err.message }
   }
