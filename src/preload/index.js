@@ -187,6 +187,31 @@ contextBridge.exposeInMainWorld('api', {
   getExportAgainConfig: (id) => ipcRenderer.invoke('export-history:getExportAgainConfig', id),
   canRetryExport: (id) => ipcRenderer.invoke('export-history:canRetry', id),
 
+  // ── Export History Intelligence (Phase 5F) ───────────────────────────────
+  groupExportHistory: (records, groupBy) => ipcRenderer.invoke('export-history-intelligence:group', { records, groupBy }),
+  getExportHistoryTimeline: (records) => ipcRenderer.invoke('export-history-intelligence:getTimeline', { records }),
+  getExportHistoryFilteredStats: (records) => ipcRenderer.invoke('export-history-intelligence:getFilteredStats', { records }),
+  exportHistoryToCSV: (records) => ipcRenderer.invoke('export-history-intelligence:exportCSV', { records }),
+  exportHistoryToJSON: (records) => ipcRenderer.invoke('export-history-intelligence:exportJSON', { records }),
+  filterExportHistoryByTag: (records, tag) => ipcRenderer.invoke('export-history-intelligence:filterByTag', { records, tag }),
+  getExportHistoryVisibleIds: (records, selectedIds) => ipcRenderer.invoke('export-history-intelligence:getVisibleIds', { records, selectedIds }),
+  bulkDeleteExportHistory: (ids) => ipcRenderer.invoke('export-history-intelligence:bulkDelete', { ids }),
+  bulkGetExportAgainConfigs: (ids) => ipcRenderer.invoke('export-history-intelligence:bulkExportAgainConfig', { ids }),
+  bulkCanRetryExportHistory: (ids) => ipcRenderer.invoke('export-history-intelligence:bulkCanRetry', { ids }),
+  createExportHistoryRetryRecord: (originalId) => ipcRenderer.invoke('export-history-intelligence:createRetryRecord', { originalId }),
+  getExportHistoryAttemptHistory: (attemptGroupId) => ipcRenderer.invoke('export-history-intelligence:getAttemptHistory', { attemptGroupId }),
+  addExportHistoryTag: (id, tag) => ipcRenderer.invoke('export-history-intelligence:addTag', { id, tag }),
+  removeExportHistoryTag: (id, tag) => ipcRenderer.invoke('export-history-intelligence:removeTag', { id, tag }),
+  setExportHistoryNote: (id, note) => ipcRenderer.invoke('export-history-intelligence:setNote', { id, note }),
+
+  // ── Saved Views (Phase 5F) ───────────────────────────────────────────────
+  createExportHistoryView: (view) => ipcRenderer.invoke('export-history-views:create', { view }),
+  getExportHistoryViews: () => ipcRenderer.invoke('export-history-views:list'),
+  getExportHistoryView: (id) => ipcRenderer.invoke('export-history-views:get', { id }),
+  updateExportHistoryView: (id, updates) => ipcRenderer.invoke('export-history-views:update', { id, updates }),
+  deleteExportHistoryView: (id) => ipcRenderer.invoke('export-history-views:delete', { id }),
+  duplicateExportHistoryView: (id) => ipcRenderer.invoke('export-history-views:duplicate', { id }),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

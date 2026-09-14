@@ -111,7 +111,15 @@ function validateExportHistoryInput(raw) {
     ? JSON.parse(JSON.stringify(raw.settingsSnapshot))
     : null;
 
-  return {
+  // Phase 5F fields — pass through with light validation
+  const tags = Array.isArray(raw.tags) ? raw.tags.filter(t => typeof t === 'string').slice(0, 10) : undefined;
+  const note = typeof raw.note === 'string' ? raw.note.trim().slice(0, 500) : undefined;
+  const attemptGroupId = typeof raw.attemptGroupId === 'string' ? raw.attemptGroupId.trim().slice(0, 100) : undefined;
+  const parentHistoryId = typeof raw.parentHistoryId === 'string' ? raw.parentHistoryId.trim().slice(0, 100) : undefined;
+  const attemptNumber = typeof raw.attemptNumber === 'number' ? raw.attemptNumber : undefined;
+  const updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : undefined;
+
+  const result = {
     source: { name: sourceName, path: sourcePath },
     exportType,
     profile: { id: profileId, name: profileName, platform },
@@ -125,6 +133,15 @@ function validateExportHistoryInput(raw) {
     jobId,
     settingsSnapshot,
   };
+
+  if (tags !== undefined) result.tags = tags;
+  if (note !== undefined) result.note = note;
+  if (attemptGroupId !== undefined) result.attemptGroupId = attemptGroupId;
+  if (parentHistoryId !== undefined) result.parentHistoryId = parentHistoryId;
+  if (attemptNumber !== undefined) result.attemptNumber = attemptNumber;
+  if (updatedAt !== undefined) result.updatedAt = updatedAt;
+
+  return result;
 }
 
 /**
@@ -263,6 +280,14 @@ function createExportHistoryRecord(rawInput, customDir) {
     completedAt: rawInput.completedAt || now,
     ...validated,
   };
+
+  // Preserve Phase 5F fields if present
+  if (rawInput.tags !== undefined) record.tags = rawInput.tags;
+  if (rawInput.note !== undefined) record.note = rawInput.note;
+  if (rawInput.attemptGroupId !== undefined) record.attemptGroupId = rawInput.attemptGroupId;
+  if (rawInput.parentHistoryId !== undefined) record.parentHistoryId = rawInput.parentHistoryId;
+  if (rawInput.attemptNumber !== undefined) record.attemptNumber = rawInput.attemptNumber;
+  if (rawInput.updatedAt !== undefined) record.updatedAt = rawInput.updatedAt;
 
   // Prepend to list (newest first)
   const updated = [record, ...existing];
@@ -711,4 +736,5 @@ module.exports = {
   canRetryExport,
   loadHistory,
   generateHistoryId,
+  saveHistory,
 };

@@ -25,6 +25,7 @@ const FEATURE_KEYS = {
   INTELLIGENT_PROFILES: 'intelligent_profiles',
   BULK_EXPORT_INTELLIGENCE: 'bulk_export_intelligence',
   EXPORT_HISTORY: 'export_history',
+  EXPORT_HISTORY_INTELLIGENCE: 'export_history_intelligence',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -121,6 +122,12 @@ const FEATURE_ALIASES = {
   exporthistory: FEATURE_KEYS.EXPORT_HISTORY,
   exportHistory: FEATURE_KEYS.EXPORT_HISTORY,
   'export history & organization': FEATURE_KEYS.EXPORT_HISTORY,
+
+  'export history intelligence': FEATURE_KEYS.EXPORT_HISTORY_INTELLIGENCE,
+  export_history_intelligence: FEATURE_KEYS.EXPORT_HISTORY_INTELLIGENCE,
+  exporthistoryintelligence: FEATURE_KEYS.EXPORT_HISTORY_INTELLIGENCE,
+  exportHistoryIntelligence: FEATURE_KEYS.EXPORT_HISTORY_INTELLIGENCE,
+  'export history & organization 2.0': FEATURE_KEYS.EXPORT_HISTORY_INTELLIGENCE,
 };
 
 const TIER_HIERARCHY = {
@@ -153,6 +160,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.INTELLIGENT_PROFILES,
     FEATURE_KEYS.BULK_EXPORT_INTELLIGENCE,
     FEATURE_KEYS.EXPORT_HISTORY,
+    FEATURE_KEYS.EXPORT_HISTORY_INTELLIGENCE,
   ],
 };
 
@@ -257,6 +265,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.EXPORT_HISTORY,
     name: 'Export History & Organization',
     description: 'Track, search, filter, and manage completed export executions with full configuration snapshots',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.EXPORT_HISTORY_INTELLIGENCE,
+    name: 'Export History Intelligence & Organization 2.0',
+    description: 'Advanced history grouping, saved views, tags, notes, attempt tracking, bulk actions, timeline, and export',
     minTier: 'pro',
   },
 ];

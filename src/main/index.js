@@ -1180,6 +1180,29 @@ import {
   canRetryExport,
 } from './history/exportHistoryManager'
 
+import {
+  groupRecords,
+  createSavedView,
+  getSavedViews,
+  getSavedView,
+  updateSavedView,
+  deleteSavedView,
+  duplicateSavedView,
+  bulkDeleteRecords,
+  bulkGetExportAgainConfigs,
+  bulkCanRetry,
+  createRetryRecord,
+  getAttemptHistory,
+  addTag,
+  removeTag,
+  filterByTag,
+  setNote,
+  getTimeline,
+  exportToCSV,
+  exportToJSON,
+  getFilteredStats,
+} from './history/exportHistoryIntelligence'
+
 async function checkExportHistoryAccess() {
   const license = await getLicenseInfo()
   const tier = license.isValid
@@ -1332,6 +1355,241 @@ ipcMain.handle('export-history:canRetry', async (_, id) => {
     }
     const result = canRetryExport(id)
     return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Export History Intelligence IPC Handlers (Phase 5F) ─────────────────────
+
+ipcMain.handle('export-history-intelligence:group', async (_, { records, groupBy } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const groups = groupRecords(records || [], groupBy)
+    return { success: true, groups }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:getTimeline', async (_, { records } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const timeline = getTimeline(records || [])
+    return { success: true, timeline }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:getFilteredStats', async (_, { records } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const stats = getFilteredStats(records || [])
+    return { success: true, stats }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:exportCSV', async (_, { records } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const csv = exportToCSV(records || [])
+    return { success: true, csv }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:exportJSON', async (_, { records } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const json = exportToJSON(records || [])
+    return { success: true, json }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:filterByTag', async (_, { records, tag } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const filtered = filterByTag(records || [], tag)
+    return { success: true, records: filtered }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:getVisibleIds', async (_, { records, selectedIds } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const ids = getVisibleIds(records || [], selectedIds || [])
+    return { success: true, ids }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:bulkDelete', async (_, { ids } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = bulkDeleteRecords(ids || [])
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:bulkExportAgainConfig', async (_, { ids } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const configs = bulkGetExportAgainConfigs(ids || [])
+    return { success: true, configs }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:bulkCanRetry', async (_, { ids } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const results = bulkCanRetry(ids || [])
+    return { success: true, results }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:createRetryRecord', async (_, { originalId } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const record = createRetryRecord(originalId)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:getAttemptHistory', async (_, { attemptGroupId } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const history = getAttemptHistory(attemptGroupId)
+    return { success: true, history }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:addTag', async (_, { id, tag } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const record = addTag(id, tag)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:removeTag', async (_, { id, tag } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const record = removeTag(id, tag)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-intelligence:setNote', async (_, { id, note } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const record = setNote(id, note)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Saved Views IPC Handlers ───────────────────────────────────────────────
+
+ipcMain.handle('export-history-views:create', async (_, { view } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const created = createSavedView(view)
+    return { success: true, view: created }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-views:list', async () => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const views = getSavedViews()
+    return { success: true, views }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-views:get', async (_, { id } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const view = getSavedView(id)
+    return { success: true, view }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-views:update', async (_, { id, updates } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const view = updateSavedView(id, updates)
+    return { success: true, view }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-views:delete', async (_, { id } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = deleteSavedView(id)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history-views:duplicate', async (_, { id } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const view = duplicateSavedView(id)
+    return { success: true, view }
   } catch (err) {
     return { success: false, error: err.message }
   }
