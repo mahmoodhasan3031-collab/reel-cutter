@@ -12,6 +12,7 @@ import {
   Globe,
   Calendar,
   BarChart3,
+  LayoutDashboard,
 } from 'lucide-react'
 
 const NAV = [
@@ -24,6 +25,7 @@ const NAV = [
   { id: 'schedule',       label: 'Schedule',      icon: Calendar },
   { id: 'ai_thumbnails',  label: 'AI Thumbnails', icon: Sparkles, pro: true },
   { id: 'batch_queue',    label: 'Batch Queue',   icon: Layers,   pro: true },
+  { id: 'command_center', label: 'Command Center', icon: LayoutDashboard, pro: true },
   { id: 'dashboard',      label: 'Dashboard',     icon: BarChart3, pro: true },
   { id: 'settings',       label: 'Settings',      icon: Settings },
 ]
@@ -50,7 +52,7 @@ export default function Sidebar({ view, setView, hasVideo, licenseTier = 'standa
       <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
         {NAV.map(({ id, label, icon: Icon, pro }) => {
           const isActive = view === id
-          const disabled = id !== 'drop' && id !== 'settings' && id !== 'ai_thumbnails' && id !== 'batch_queue' && id !== 'profiles' && id !== 'schedule' && id !== 'dashboard' && !hasVideo
+          const disabled = id !== 'drop' && id !== 'settings' && id !== 'ai_thumbnails' && id !== 'batch_queue' && id !== 'profiles' && id !== 'schedule' && id !== 'dashboard' && id !== 'command_center' && !hasVideo
           return (
             <button
               key={id}

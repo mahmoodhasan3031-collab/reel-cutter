@@ -42,6 +42,7 @@ const tests = [
   'export-history-intelligence.test.js',
   'export-recovery.test.js',
   'export-analytics.test.js',
+  'export-command-center.test.js',
 ];
 
 console.log('======================================================');

@@ -246,6 +246,11 @@ contextBridge.exposeInMainWorld('api', {
   exportAnalyticsCSV: (options) => ipcRenderer.invoke('analytics:exportCSV', options),
   saveAnalyticsToFile: (format, options, defaultPath) => ipcRenderer.invoke('analytics:saveToFile', { format, options, defaultPath }),
 
+  // ── Export Command Center (Phase 5I) ───────────────────────────────────────
+  getCommandCenterSnapshot: (options) => ipcRenderer.invoke('commandcenter:getSnapshot', options),
+  retryCommandCenterFailed: (historyId) => ipcRenderer.invoke('commandcenter:retryFailed', { historyId }),
+  exportAgainCommandCenterMissing: (historyId) => ipcRenderer.invoke('commandcenter:exportAgainMissing', { historyId }),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

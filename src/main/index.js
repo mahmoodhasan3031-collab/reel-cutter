@@ -1167,6 +1167,7 @@ ipcMain.handle('bulk:getExecutionSummary', async (_, planId) => {
 
 import {
   EXPORT_HISTORY_STATUS,
+  loadHistory,
   createExportHistoryRecord,
   getExportHistory,
   getExportHistoryRecord,
@@ -1246,6 +1247,12 @@ import {
   analyticsToJSON,
   analyticsToCSV,
 } from './analytics/exportAnalytics'
+
+import {
+  getCommandCenterSnapshot,
+  applyCommandCenterFilter,
+  applyCommandCenterSearch,
+} from './dashboard/exportCommandCenter'
 
 async function checkExportHistoryAccess() {
   const license = await getLicenseInfo()
@@ -2010,6 +2017,103 @@ ipcMain.handle('analytics:saveToFile', async (_, { format, options, defaultPath 
     const content = format === 'csv' ? analyticsToCSV(analytics) : analyticsToJSON(analytics)
     fs.writeFileSync(result.filePath, content, 'utf8')
     return { success: true, path: result.filePath }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Export Command Center IPC Handlers (Phase 5I) ──────────────────────────
+
+async function checkCommandCenterAccess() {
+  const license = await getLicenseInfo()
+  const tier = license.isValid
+    ? license.tier
+    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+
+  if (!hasFeature(tier, 'export_command_center')) {
+    return { authorized: false, error: 'Export Command Center requires Pro license tier.' }
+  }
+  return { authorized: true, tier }
+}
+
+ipcMain.handle('commandcenter:getSnapshot', async (_, options = {}) => {
+  try {
+    const auth = await checkCommandCenterAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+
+    const bq = getBatchQueueManager()
+    const schedulesFn = () => getSchedules()
+    const records = loadHistory()
+
+    let filteredRecords = records
+    if (options.filter) filteredRecords = applyCommandCenterFilter(records, options.filter)
+    if (options.search) filteredRecords = applyCommandCenterSearch(filteredRecords, options.search)
+    if (options.profileId) {
+      const pid = String(options.profileId).trim()
+      if (pid) filteredRecords = filteredRecords.filter(r => r.profile && r.profile.id === pid)
+    }
+
+    const snapshot = getCommandCenterSnapshot({
+      getBatchQueueState: () => bq.getState(),
+      getSchedules: schedulesFn,
+    })
+
+    // Apply filters to snapshot sub-sections if needed
+    if (options.filter || options.search || options.profileId) {
+      if (snapshot.recent) {
+        let recentRecords = records
+        if (options.filter) recentRecords = applyCommandCenterFilter(recentRecords, options.filter)
+        if (options.search) recentRecords = applyCommandCenterSearch(recentRecords, options.search)
+        if (options.profileId) {
+          const pid = String(options.profileId).trim()
+          if (pid) recentRecords = recentRecords.filter(r => r.profile && r.profile.id === pid)
+        }
+        snapshot.recent = {
+          items: recentRecords.slice(0, 10).map(r => ({
+            id: r.id,
+            source: r.source ? r.source.name : '',
+            profile: r.profile ? r.profile.name : '',
+            platform: r.profile ? r.profile.platform : '',
+            exportType: r.exportType || '',
+            status: r.status,
+            error: r.error || null,
+            createdAt: r.createdAt,
+            completedAt: r.completedAt || null,
+            outputPath: r.output ? r.output.path : '',
+            outputFilename: r.output ? r.output.filename : '',
+            attemptNumber: r.attemptNumber || null,
+          })),
+        }
+      }
+    }
+
+    return { success: true, snapshot }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('commandcenter:retryFailed', async (_, { historyId } = {}) => {
+  try {
+    const auth = await checkCommandCenterAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+
+    const { retryFailedExport: retryExport } = require('./history/recoveryCenter')
+    const result = retryExport(historyId)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('commandcenter:exportAgainMissing', async (_, { historyId } = {}) => {
+  try {
+    const auth = await checkCommandCenterAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+
+    const { exportAgainMissingOutput } = require('./history/recoveryCenter')
+    const result = exportAgainMissingOutput(historyId)
+    return { success: true, ...result }
   } catch (err) {
     return { success: false, error: err.message }
   }

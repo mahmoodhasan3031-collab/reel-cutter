@@ -15,12 +15,13 @@ import BatchQueuePanel from './components/BatchQueuePanel'
 import PageProfilesPanel from './components/PageProfilesPanel'
 import SchedulePanel from './components/SchedulePanel'
 import ExportIntelligenceDashboard from './components/ExportIntelligenceDashboard'
+import ExportCommandCenter from './components/ExportCommandCenter'
 import UpdateNotification from './components/UpdateNotification'
 import { Loader2 } from 'lucide-react'
 import { hasFeature } from './utils/features'
 
 export default function App() {
-  const [view, setView] = useState('drop') // 'drop' | 'info' | 'cut' | 'reel' | 'split' | 'settings' | 'ai_thumbnails' | 'batch_queue' | 'dashboard'
+  const [view, setView] = useState('drop') // 'drop' | 'info' | 'cut' | 'reel' | 'split' | 'settings' | 'ai_thumbnails' | 'batch_queue' | 'dashboard' | 'command_center'
   const [videoPath, setVideoPath] = useState(null)
   const [metadata, setMetadata] = useState(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -317,6 +318,15 @@ export default function App() {
             </div>
           )}
 
+          {/* Export Command Center (Phase 5I) */}
+          {view === 'command_center' && (
+            <div className="flex-1 overflow-y-auto p-6">
+              <ExportCommandCenter
+                onNavigate={setView}
+              />
+            </div>
+          )}
+
           {/* Drop view — full panel */}
           {view === 'drop' && (
             <VideoDropzone onFileLoaded={handleFileLoaded} />
@@ -330,6 +340,7 @@ export default function App() {
             view !== 'profiles' &&
             view !== 'schedule' &&
             view !== 'dashboard' &&
+            view !== 'command_center' &&
             hasVideo && (
               <div className="flex-1 overflow-y-auto p-6 space-y-5">
                 <VideoInfo

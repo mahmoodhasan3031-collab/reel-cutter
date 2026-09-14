@@ -28,6 +28,7 @@ const FEATURE_KEYS = {
   EXPORT_HISTORY_INTELLIGENCE: 'export_history_intelligence',
   EXPORT_RECOVERY_CENTER: 'export_recovery_center',
   EXPORT_INTELLIGENCE_DASHBOARD: 'export_intelligence_dashboard',
+  EXPORT_COMMAND_CENTER: 'export_command_center',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -143,6 +144,12 @@ const FEATURE_ALIASES = {
   exportintelligencedashboard: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
   exportIntelligenceDashboard: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
   'intelligence dashboard': FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+
+  'export command center': FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+  export_command_center: FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+  exportcommandcenter: FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+  exportCommandCenter: FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+  'command center': FEATURE_KEYS.EXPORT_COMMAND_CENTER,
 };
 
 const TIER_HIERARCHY = {
@@ -178,6 +185,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.EXPORT_HISTORY_INTELLIGENCE,
     FEATURE_KEYS.EXPORT_RECOVERY_CENTER,
     FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+    FEATURE_KEYS.EXPORT_COMMAND_CENTER,
   ],
 };
 
@@ -300,6 +308,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
     name: 'Export Intelligence Dashboard',
     description: 'Local analytics dashboard with overview, time, profile, platform, preset, recovery, bulk, scheduled, output health, workflow insights, and attention signals',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+    name: 'Export Command Center',
+    description: 'Unified operational view of active exports, queue, schedules, attention items, recent activity, recovery, and output health',
     minTier: 'pro',
   },
 ];
