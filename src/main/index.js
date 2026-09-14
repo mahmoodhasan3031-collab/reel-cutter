@@ -1163,6 +1163,180 @@ ipcMain.handle('bulk:getExecutionSummary', async (_, planId) => {
   }
 })
 
+// ─── Export History & Organization IPC (Phase 5E) ────────────────────────────
+
+import {
+  EXPORT_HISTORY_STATUS,
+  createExportHistoryRecord,
+  getExportHistory,
+  getExportHistoryRecord,
+  updateExportHistoryRecord,
+  deleteExportHistoryRecord,
+  clearExportHistory,
+  getByPlanId,
+  getByJobId,
+  getExportHistoryStats,
+  getExportAgainConfig,
+  canRetryExport,
+} from './history/exportHistoryManager'
+
+async function checkExportHistoryAccess() {
+  const license = await getLicenseInfo()
+  const tier = license.isValid
+    ? license.tier
+    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+
+  if (!hasFeature(tier, 'export_history')) {
+    return { authorized: false, error: 'Export History & Organization requires Pro license tier.' }
+  }
+  return { authorized: true, tier }
+}
+
+ipcMain.handle('export-history:create', async (_, rawRecord) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const record = createExportHistoryRecord(rawRecord)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history:list', async (_, options) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = getExportHistory(options)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message, records: [], total: 0 }
+  }
+})
+
+ipcMain.handle('export-history:get', async (_, id) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const record = getExportHistoryRecord(id)
+    if (!record) return { success: false, error: 'Export history record not found' }
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history:update', async (_, { id, updates } = {}) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const record = updateExportHistoryRecord(id, updates)
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history:delete', async (_, id) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = deleteExportHistoryRecord(id)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history:clear', async () => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = clearExportHistory()
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history:getByPlan', async (_, planId) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const records = getByPlanId(planId)
+    return { success: true, records }
+  } catch (err) {
+    return { success: false, error: err.message, records: [] }
+  }
+})
+
+ipcMain.handle('export-history:getByJob', async (_, jobId) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const record = getByJobId(jobId)
+    if (!record) return { success: false, error: 'No history record found for this job' }
+    return { success: true, record }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history:getStats', async () => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const stats = getExportHistoryStats()
+    return { success: true, stats }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history:getExportAgainConfig', async (_, id) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const config = getExportAgainConfig(id)
+    return { success: true, config }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-history:canRetry', async (_, id) => {
+  try {
+    const auth = await checkExportHistoryAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = canRetryExport(id)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
 // ─── Scheduler IPC Handlers (Phase 3A) ───────────────────────────────────────
 
 ipcMain.handle('schedule:create', async (_, input) => {

@@ -38,6 +38,7 @@ const tests = [
   'export-preset.test.js',
   'intelligent-profile.test.js',
   'bulk-export-intelligence.test.js',
+  'export-history.test.js',
 ];
 
 console.log('======================================================');

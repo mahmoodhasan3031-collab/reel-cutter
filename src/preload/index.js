@@ -174,6 +174,19 @@ contextBridge.exposeInMainWorld('api', {
   resetExportPresets: () => ipcRenderer.invoke('export-preset:reset'),
   resolveExportPreset: (presetId) => ipcRenderer.invoke('export-preset:resolve', presetId),
 
+  // ── Export History & Organization (Phase 5E) ───────────────────────────────
+  createExportHistoryRecord: (record) => ipcRenderer.invoke('export-history:create', record),
+  getExportHistory: (options) => ipcRenderer.invoke('export-history:list', options),
+  getExportHistoryRecord: (id) => ipcRenderer.invoke('export-history:get', id),
+  updateExportHistoryRecord: (id, updates) => ipcRenderer.invoke('export-history:update', { id, updates }),
+  deleteExportHistoryRecord: (id) => ipcRenderer.invoke('export-history:delete', id),
+  clearExportHistory: () => ipcRenderer.invoke('export-history:clear'),
+  getExportHistoryByPlan: (planId) => ipcRenderer.invoke('export-history:getByPlan', planId),
+  getExportHistoryByJob: (jobId) => ipcRenderer.invoke('export-history:getByJob', jobId),
+  getExportHistoryStats: () => ipcRenderer.invoke('export-history:getStats'),
+  getExportAgainConfig: (id) => ipcRenderer.invoke('export-history:getExportAgainConfig', id),
+  canRetryExport: (id) => ipcRenderer.invoke('export-history:canRetry', id),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),
