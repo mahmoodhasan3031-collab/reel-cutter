@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react'
+import CaptionExperimentPanel from './CaptionExperimentPanel'
 
 /**
  * CaptionWorkspace (Phase 4B-8)
@@ -349,6 +350,7 @@ export default function CaptionWorkspace({
   const [applyLoading, setApplyLoading]               = useState(false)
   const [saveHistoryLoading, setSaveHistoryLoading]   = useState(false)
   const [saveTemplateLoading, setSaveTemplateLoading] = useState(false)
+  const [experimentOpen, setExperimentOpen]           = useState(false)
 
   const showMsg  = msg => { setActionMsg(msg); setTimeout(() => setActionMsg(null), 3000) }
   const showErrA = msg => { setActionErr(msg); setTimeout(() => setActionErr(null), 5000) }
@@ -491,7 +493,8 @@ export default function CaptionWorkspace({
   ]
 
   return (
-    <div style={S.backdrop} onClick={e => e.target === e.currentTarget && onClose?.()}>
+    <>
+      <div style={S.backdrop} onClick={e => e.target === e.currentTarget && onClose?.()}>
       <div style={S.modal}>
         {/* Header */}
         <div style={S.header}>
@@ -692,6 +695,9 @@ export default function CaptionWorkspace({
             <button style={S.btn('#232048', '#5c4df0', '#c2b8ff')} onClick={saveAsTemplate} disabled={saveTemplateLoading}>
               {saveTemplateLoading ? '...' : '🏷️ Save as Template'}
             </button>
+            <button style={S.btn('linear-gradient(135deg,#261c3d,#3b1f54)', '#c084fc', '#f3e8ff')} onClick={() => setExperimentOpen(true)}>
+              🧪 Experiment
+            </button>
             <button style={S.btn('transparent', '#444466', '#9090b0')} onClick={onClose}>
               Close
             </button>
@@ -699,5 +705,17 @@ export default function CaptionWorkspace({
         </div>
       </div>
     </div>
+      {experimentOpen && (
+        <CaptionExperimentPanel
+          initialCaption={caption}
+          topic={topic}
+          platform={platform}
+          tone={tone}
+          onApplyOverlay={(text) => { onApply?.(text); showMsg('Caption applied.') }}
+          onSaveTemplate={onSaveTemplate}
+          onClose={() => setExperimentOpen(false)}
+        />
+      )}
+    </>
   )
 }

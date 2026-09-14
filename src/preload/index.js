@@ -113,6 +113,22 @@ contextBridge.exposeInMainWorld('api', {
   compareWorkspaceVersions: (vA, vB) => ipcRenderer.invoke('caption-workspace:compare', { versionA: vA, versionB: vB }),
   bulkSmartRewrite: (input) => ipcRenderer.invoke('caption-workspace:bulkRewrite', input),
 
+  // ── Caption Experiment & Optimization (Phase 4B-9) ─────────────────────────
+  createCaptionExperiment: (data) => ipcRenderer.invoke('caption-experiment:create', data),
+  getCaptionExperiments: (options) => ipcRenderer.invoke('caption-experiment:list', options),
+  getCaptionExperiment: (id) => ipcRenderer.invoke('caption-experiment:get', id),
+  updateCaptionExperiment: (id, updates) => ipcRenderer.invoke('caption-experiment:update', { id, updates }),
+  deleteCaptionExperiment: (id) => ipcRenderer.invoke('caption-experiment:delete', id),
+  duplicateCaptionExperiment: (id) => ipcRenderer.invoke('caption-experiment:duplicate', id),
+  addCaptionExperimentVariant: (experimentId, variantData) => ipcRenderer.invoke('caption-experiment:add-variant', { experimentId, variantData }),
+  updateCaptionExperimentVariant: (experimentId, variantId, updates) => ipcRenderer.invoke('caption-experiment:update-variant', { experimentId, variantId, updates }),
+  deleteCaptionExperimentVariant: (experimentId, variantId) => ipcRenderer.invoke('caption-experiment:delete-variant', { experimentId, variantId }),
+  selectCaptionExperimentVariant: (experimentId, variantId) => ipcRenderer.invoke('caption-experiment:select-variant', { experimentId, variantId }),
+  compareCaptionExperimentVariants: (variantA, variantB) => ipcRenderer.invoke('caption-experiment:compare', { variantA, variantB }),
+  optimizeCaptionExperimentVariant: (text, context) => ipcRenderer.invoke('caption-experiment:optimize', { text, context }),
+  generateCaptionExperimentVariants: (request) => ipcRenderer.invoke('caption-experiment:generate', request),
+  bulkCaptionExperiment: (input) => ipcRenderer.invoke('caption-experiment:bulk', input),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

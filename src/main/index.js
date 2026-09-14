@@ -87,6 +87,24 @@ import {
   compareWorkspaceVersions,
   bulkSmartRewrite,
 } from './captions/captionWorkspaceManager'
+import {
+  createExperiment,
+  getExperiments,
+  getExperiment,
+  updateExperiment,
+  deleteExperiment,
+  duplicateExperiment,
+  addVariant,
+  updateVariant,
+  deleteVariant,
+  selectPreferredVariant,
+  compareVariants,
+  getBestVariant,
+  getWeakestSignalAcrossExperiment,
+  optimizeVariant,
+  generateAiVariants,
+  bulkExperiment,
+} from './captions/captionExperimentManager'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -1475,6 +1493,188 @@ ipcMain.handle('caption-workspace:bulkRewrite', async (_, bulkInput) => {
       return { success: false, error: auth.error, requiresUpgrade: true }
     }
     return await bulkSmartRewrite(bulkInput)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ── Caption Experiment & Optimization (Phase 4B-9) ──────────────────────────
+
+ipcMain.handle('caption-experiment:create', async (_, rawInput) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const experiment = createExperiment(rawInput)
+    return { success: true, experiment }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:list', async (_, options) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const experiments = getExperiments(options)
+    return { success: true, experiments }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:get', async (_, id) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const experiment = getExperiment(id)
+    if (!experiment) return { success: false, error: 'Experiment not found' }
+    return { success: true, experiment }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:update', async (_, { id, updates } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const experiment = updateExperiment(id, updates)
+    return { success: true, experiment }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:delete', async (_, id) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = deleteExperiment(id)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:duplicate', async (_, id) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const experiment = duplicateExperiment(id)
+    return { success: true, experiment }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:add-variant', async (_, { experimentId, variantData } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = addVariant(experimentId, variantData)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:update-variant', async (_, { experimentId, variantId, updates } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = updateVariant(experimentId, variantId, updates)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:delete-variant', async (_, { experimentId, variantId } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const experiment = deleteVariant(experimentId, variantId)
+    return { success: true, experiment }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:select-variant', async (_, { experimentId, variantId } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const experiment = selectPreferredVariant(experimentId, variantId)
+    return { success: true, experiment }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:compare', async (_, { variantA, variantB } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const comparison = compareVariants(variantA, variantB)
+    return { success: true, comparison }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:optimize', async (_, { text, context } = {}) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return await optimizeVariant(text, context)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:generate', async (_, request) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return await generateAiVariants(request)
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('caption-experiment:bulk', async (_, bulkInput) => {
+  try {
+    const auth = await checkCaptionQualityProAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    return await bulkExperiment(bulkInput)
   } catch (err) {
     return { success: false, error: err.message }
   }

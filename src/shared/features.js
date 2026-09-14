@@ -19,6 +19,7 @@ const FEATURE_KEYS = {
   AI_CAPTIONS: 'ai_captions',
   CAPTION_QUALITY: 'caption_quality',
   CAPTION_WORKSPACE: 'caption_workspace',
+  CAPTION_EXPERIMENT: 'caption_experiment',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -75,6 +76,14 @@ const FEATURE_ALIASES = {
   'smart rewrite': FEATURE_KEYS.CAPTION_WORKSPACE,
   smart_rewrite: FEATURE_KEYS.CAPTION_WORKSPACE,
   'caption workspace & smart rewrite': FEATURE_KEYS.CAPTION_WORKSPACE,
+
+  'caption experiment': FEATURE_KEYS.CAPTION_EXPERIMENT,
+  caption_experiment: FEATURE_KEYS.CAPTION_EXPERIMENT,
+  captionexperiment: FEATURE_KEYS.CAPTION_EXPERIMENT,
+  'caption experiments': FEATURE_KEYS.CAPTION_EXPERIMENT,
+  'caption optimization': FEATURE_KEYS.CAPTION_EXPERIMENT,
+  caption_optimization: FEATURE_KEYS.CAPTION_EXPERIMENT,
+  'caption experiment & optimization': FEATURE_KEYS.CAPTION_EXPERIMENT,
 };
 
 const TIER_HIERARCHY = {
@@ -101,6 +110,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.AI_CAPTIONS,
     FEATURE_KEYS.CAPTION_QUALITY,
     FEATURE_KEYS.CAPTION_WORKSPACE,
+    FEATURE_KEYS.CAPTION_EXPERIMENT,
   ],
 };
 
@@ -169,6 +179,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.CAPTION_WORKSPACE,
     name: 'Caption Workspace & Smart Rewrite',
     description: 'Unified caption workspace with AI smart rewrite, multi-version history, and quality feedback',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.CAPTION_EXPERIMENT,
+    name: 'Caption Experiment & Optimization',
+    description: 'A/B creative caption variant testing, quality comparison, and smart heuristic optimization',
     minTier: 'pro',
   },
 ];

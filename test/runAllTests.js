@@ -32,10 +32,11 @@ const tests = [
   'caption-quality.test.js',
   'caption-intelligence.test.js',
   'caption-workspace.test.js',
+  'caption-experiment.test.js',
 ];
 
 console.log('======================================================');
-console.log('🚀 Running All Reel Cutter Test Suites (Phases 1-8)');
+console.log('🚀 Running All Reel Cutter Test Suites (Phases 1-9)');
 console.log('======================================================\n');
 
 

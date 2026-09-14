@@ -4,6 +4,7 @@ import AiCaptionGenerator from './AiCaptionGenerator'
 import CaptionQualityPanel from './CaptionQualityPanel'
 import CaptionIntelligenceDashboard from './CaptionIntelligenceDashboard'
 import CaptionWorkspace from './CaptionWorkspace'
+import CaptionExperimentPanel from './CaptionExperimentPanel'
 
 /**
  * CaptionTemplateLibrary (Phase 4B-1, updated Phase 4B-2)
@@ -54,6 +55,9 @@ export default function CaptionTemplateLibrary({
 
   // Phase 4B-8: Caption Workspace & Smart Rewrite state
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
+
+  // Phase 4B-9: Caption Experiment & Optimization state
+  const [experimentOpen, setExperimentOpen] = useState(false)
 
   // Fetch templates from main process
   const loadTemplates = useCallback(async () => {
@@ -378,6 +382,28 @@ export default function CaptionTemplateLibrary({
             }}
           >
             <span>🖊️</span> Workspace
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setExperimentOpen(true)}
+            disabled={disabled || actionLoading}
+            title="Open Caption Experiment & Optimization"
+            style={{
+              background: 'linear-gradient(135deg, #26193d 0%, #3b1f54 100%)',
+              border: '1px solid #c084fc',
+              borderRadius: 5,
+              color: '#f3e8ff',
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '4px 10px',
+              cursor: disabled || actionLoading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <span>🧪</span> Experiment
           </button>
 
           <button
@@ -1018,6 +1044,76 @@ export default function CaptionTemplateLibrary({
               loadTemplates()
             }
           }}
+        />
+      )}
+
+      {/* ── Caption Experiment & Optimization Modal (Phase 4B-9) ── */}
+      {experimentOpen && (
+        <CaptionExperimentPanel
+          initialCaption={currentOverlays?.[0]?.text || ''}
+          platform="general"
+          tone="neutral"
+          onApplyOverlay={(captionText) => {
+            handleApply({
+              id: `temp_${Date.now()}`,
+              name: 'Experiment Caption',
+              overlays: [
+                {
+                  id: `overlay_${Date.now()}`,
+                  text: captionText,
+                  fontFamily: 'Arial',
+                  fontSize: 48,
+                  fontWeight: 'bold',
+                  color: '#FFFFFF',
+                  opacity: 1,
+                  backgroundColor: '#000000',
+                  backgroundOpacity: 0.4,
+                  outlineColor: '#000000',
+                  outlineWidth: 2,
+                  position: 'bottom',
+                  x: 0.5,
+                  y: 0.88,
+                  alignment: 'center',
+                  startTime: 0,
+                  endTime: null,
+                  enabled: true,
+                },
+              ],
+            })
+            setExperimentOpen(false)
+          }}
+          onSaveTemplate={async (data) => {
+            if (window.api?.createCaptionTemplate) {
+              const text = typeof data === 'string' ? data : data.caption || ''
+              await window.api.createCaptionTemplate({
+                name: `Experiment Caption ${Date.now()}`,
+                overlays: [
+                  {
+                    id: `overlay_${Date.now()}`,
+                    text,
+                    fontFamily: 'Arial',
+                    fontSize: 48,
+                    fontWeight: 'bold',
+                    color: '#FFFFFF',
+                    opacity: 1,
+                    backgroundColor: '#000000',
+                    backgroundOpacity: 0.4,
+                    outlineColor: '#000000',
+                    outlineWidth: 2,
+                    position: 'bottom',
+                    x: 0.5,
+                    y: 0.88,
+                    alignment: 'center',
+                    startTime: 0,
+                    endTime: null,
+                    enabled: true,
+                  },
+                ],
+              })
+              loadTemplates()
+            }
+          }}
+          onClose={() => setExperimentOpen(false)}
         />
       )}
     </div>
