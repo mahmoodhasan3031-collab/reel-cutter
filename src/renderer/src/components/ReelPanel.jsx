@@ -6,6 +6,8 @@ import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVaria
 import ExportProfileSelector from './ExportProfileSelector'
 import MultiProfileSelector from './MultiProfileSelector'
 import TextOverlayPanel from './TextOverlayPanel'
+import ExportPresetSelector from './ExportPresetSelector'
+import ExportPresetEditor from './ExportPresetEditor'
 
 const ASPECT_RATIOS = [
   { id: '9:16', label: '9:16', desc: 'Reels / Shorts', minTier: 'basic' },
@@ -82,6 +84,17 @@ export default function ReelPanel({
   const [variation, setVariation]     = useState(DEFAULT_VARIATION_STATE)
   const [textOverlays, setTextOverlays] = useState([])
   const [isBulkExecuting, setIsBulkExecuting] = useState(false)
+  const [selectedExportPreset, setSelectedExportPreset] = useState(null)
+  const [isPresetEditorOpen, setIsPresetEditorOpen] = useState(false)
+  const [editingPreset, setEditingPreset] = useState(null)
+
+  const handleApplyExportPreset = (applied) => {
+    if (!applied) return;
+    if (applied.aspectRatio) setAspectRatio(applied.aspectRatio);
+    if (applied.mode) setMode(applied.mode);
+    if (applied.variation) setVariation(applied.variation);
+    if (Array.isArray(applied.textOverlays)) setTextOverlays(applied.textOverlays);
+  };
 
   const canAllAspects = hasFeature(licenseTier, 'all_aspect_ratios')
   const canSmartCrop = hasFeature(licenseTier, 'smart_crop')
@@ -300,6 +313,40 @@ export default function ReelPanel({
           </div>
         )}
       </div>
+
+      {/* Export Preset Selector (Phase 5B) */}
+      <ExportPresetSelector
+        selectedPresetId={selectedExportPreset?.id}
+        onPresetSelect={setSelectedExportPreset}
+        onPresetApply={handleApplyExportPreset}
+        currentExportConfig={{
+          aspectRatio,
+          resolution: '1080p',
+          quality: '1080p',
+          mode,
+          smartCrop: mode === 'smart_crop',
+          exportType: 'reel',
+          variation,
+          textOverlays,
+        }}
+        disabled={isProcessing || isBulkExecuting}
+        onOpenEditor={(p, isNew) => {
+          setEditingPreset(isNew ? null : p);
+          setIsPresetEditorOpen(true);
+        }}
+      />
+
+      {/* Export Preset Editor Modal (Phase 5B) */}
+      <ExportPresetEditor
+        isOpen={isPresetEditorOpen}
+        preset={editingPreset}
+        onClose={() => setIsPresetEditorOpen(false)}
+        onSaved={(newPreset) => {
+          if (newPreset) {
+            setSelectedExportPreset(newPreset);
+          }
+        }}
+      />
 
       {/* Export Profile Selector (Phase 2B / 4B-3) */}
       <ExportProfileSelector

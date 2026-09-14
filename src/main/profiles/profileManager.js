@@ -18,6 +18,7 @@ const {
 } = require('../../engine/variation/validator');
 const { getCaptionTemplate } = require('../captions/captionTemplateManager');
 const { getVariationPreset } = require('../variations/variationPresetManager');
+const { getExportPreset } = require('../exportPresets/exportPresetManager');
 
 const SUPPORTED_PLATFORMS = ['Facebook', 'Instagram', 'YouTube', 'TikTok', 'Other'];
 const PROFILES_FILENAME = 'profiles.json';
@@ -211,6 +212,48 @@ function resolveProfileVariationPreset(profile, customDir) {
 }
 
 /**
+ * Validates export preset ID if provided.
+ * Must be null/undefined or an existing preset ID.
+ * @param {*} exportPresetId
+ * @param {string} [customDir]
+ * @returns {string|null}
+ */
+function validateExportPresetId(exportPresetId, customDir) {
+  if (exportPresetId === undefined || exportPresetId === null || exportPresetId === '') {
+    return null;
+  }
+  if (typeof exportPresetId !== 'string') {
+    throw new Error('exportPresetId must be a string or null');
+  }
+  const preset = getExportPreset(exportPresetId, customDir);
+  if (!preset) {
+    throw new Error(`Export preset not found: ${exportPresetId}`);
+  }
+  return exportPresetId;
+}
+
+/**
+ * Resolves the export preset for a profile, returning deep-cloned preset or fallback.
+ * @param {Object} profile
+ * @param {string} [customDir]
+ * @returns {{ presetId: string|null, presetName: string|null, preset: Object|null }}
+ */
+function resolveProfileExportPreset(profile, customDir) {
+  if (!profile || !profile.exportPresetId) {
+    return { presetId: null, presetName: null, preset: null };
+  }
+  const preset = getExportPreset(profile.exportPresetId, customDir);
+  if (!preset) {
+    return { presetId: null, presetName: null, preset: null };
+  }
+  return {
+    presetId: preset.id,
+    presetName: preset.name,
+    preset: JSON.parse(JSON.stringify(preset)),
+  };
+}
+
+/**
  * Safely loads profiles from disk.
  * @param {string} [customDir]
  * @returns {{ selectedProfileId: string|null, profiles: Array<Object> }}
@@ -256,6 +299,11 @@ function loadProfiles(customDir) {
               variationPresetId = p.variationPresetId;
             }
 
+            let exportPresetId = null;
+            if (p.exportPresetId && typeof p.exportPresetId === 'string') {
+              exportPresetId = p.exportPresetId;
+            }
+
             return {
               id: String(p.id),
               name,
@@ -264,6 +312,7 @@ function loadProfiles(customDir) {
               variationPreset: preset,
               variationPresetId,
               captionTemplateId,
+              exportPresetId,
               createdAt: p.createdAt || new Date().toISOString(),
               updatedAt: p.updatedAt || new Date().toISOString(),
             };
@@ -345,6 +394,7 @@ function createProfile(input, customDir) {
   const variationPreset = normalizeVariationPreset(input.variationPreset);
   const captionTemplateId = validateCaptionTemplateId(input.captionTemplateId, customDir);
   const variationPresetId = validateVariationPresetId(input.variationPresetId, customDir);
+  const exportPresetId = validateExportPresetId(input.exportPresetId, customDir);
 
   const data = loadProfiles(customDir);
 
@@ -363,6 +413,7 @@ function createProfile(input, customDir) {
     variationPreset,
     variationPresetId,
     captionTemplateId,
+    exportPresetId,
     createdAt: now,
     updatedAt: now,
   };
@@ -419,6 +470,11 @@ function updateProfile(id, updates, customDir) {
     variationPresetId = validateVariationPresetId(updates.variationPresetId, customDir);
   }
 
+  let exportPresetId = existing.exportPresetId !== undefined ? existing.exportPresetId : null;
+  if (updates.exportPresetId !== undefined) {
+    exportPresetId = validateExportPresetId(updates.exportPresetId, customDir);
+  }
+
   const updatedProfile = {
     ...existing,
     id: existing.id, // Strictly preserve original ID
@@ -428,6 +484,7 @@ function updateProfile(id, updates, customDir) {
     variationPreset,
     variationPresetId,
     captionTemplateId,
+    exportPresetId,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   };
@@ -522,6 +579,7 @@ function duplicateProfile(id, customDir) {
     variationPreset: { ...existing.variationPreset },
     variationPresetId: existing.variationPresetId !== undefined ? existing.variationPresetId : null,
     captionTemplateId: existing.captionTemplateId !== undefined ? existing.captionTemplateId : null,
+    exportPresetId: existing.exportPresetId !== undefined ? existing.exportPresetId : null,
     createdAt: now,
     updatedAt: now,
   };
@@ -637,4 +695,6 @@ module.exports = {
   resolveProfileCaptionTemplate,
   validateVariationPresetId,
   resolveProfileVariationPreset,
+  validateExportPresetId,
+  resolveProfileExportPreset,
 };

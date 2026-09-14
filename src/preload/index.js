@@ -142,6 +142,19 @@ contextBridge.exposeInMainWorld('api', {
   resetVariationPresets: () => ipcRenderer.invoke('variation-preset:reset'),
   resolveVariationPreset: (presetId) => ipcRenderer.invoke('variation-preset:resolve', presetId),
 
+  // ── Export Preset Manager (Phase 5B) ────────────────────────────────────────
+  getExportPresets: () => ipcRenderer.invoke('export-preset:list'),
+  getExportPreset: (id) => ipcRenderer.invoke('export-preset:get', id),
+  searchExportPresets: (options) => ipcRenderer.invoke('export-preset:search', options),
+  createExportPreset: (data) => ipcRenderer.invoke('export-preset:create', data),
+  updateExportPreset: (id, data) => ipcRenderer.invoke('export-preset:update', { id, data }),
+  deleteExportPreset: (id) => ipcRenderer.invoke('export-preset:delete', id),
+  duplicateExportPreset: (id, overrides) => ipcRenderer.invoke('export-preset:duplicate', { id, overrides }),
+  compareExportPresets: (current, selected) => ipcRenderer.invoke('export-preset:compare', { current, selected }),
+  applyExportPreset: (presetId, currentConfig) => ipcRenderer.invoke('export-preset:apply', { presetId, currentConfig }),
+  resetExportPresets: () => ipcRenderer.invoke('export-preset:reset'),
+  resolveExportPreset: (presetId) => ipcRenderer.invoke('export-preset:resolve', presetId),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

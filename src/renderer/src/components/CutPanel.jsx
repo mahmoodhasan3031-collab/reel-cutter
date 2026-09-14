@@ -6,6 +6,8 @@ import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVaria
 import ExportProfileSelector from './ExportProfileSelector'
 import MultiProfileSelector from './MultiProfileSelector'
 import TextOverlayPanel from './TextOverlayPanel'
+import ExportPresetSelector from './ExportPresetSelector'
+import ExportPresetEditor from './ExportPresetEditor'
 
 export default function CutPanel({
   videoPath,
@@ -33,6 +35,17 @@ export default function CutPanel({
   const [variation, setVariation]     = useState(DEFAULT_VARIATION_STATE)
   const [textOverlays, setTextOverlays] = useState([])
   const [isBulkExecuting, setIsBulkExecuting] = useState(false)
+  const [selectedExportPreset, setSelectedExportPreset] = useState(null)
+  const [isPresetEditorOpen, setIsPresetEditorOpen] = useState(false)
+  const [editingPreset, setEditingPreset] = useState(null)
+
+  const handleApplyExportPreset = (applied) => {
+    if (!applied) return;
+    if (applied.resolution) setResolution(applied.resolution);
+    if (applied.mode) setMode(applied.mode);
+    if (applied.variation) setVariation(applied.variation);
+    if (Array.isArray(applied.textOverlays)) setTextOverlays(applied.textOverlays);
+  };
 
   const can4K = hasFeature(licenseTier, '4k_export')
   const canCustomDurations = hasFeature(licenseTier, 'custom_durations')
@@ -325,6 +338,40 @@ export default function CutPanel({
           </div>
         )}
       </div>
+
+      {/* Export Preset Selector (Phase 5B) */}
+      <ExportPresetSelector
+        selectedPresetId={selectedExportPreset?.id}
+        onPresetSelect={setSelectedExportPreset}
+        onPresetApply={handleApplyExportPreset}
+        currentExportConfig={{
+          aspectRatio: asReel ? '9:16' : '16:9',
+          resolution,
+          quality: resolution,
+          mode,
+          smartCrop: mode === 'smart_crop',
+          exportType: 'cut',
+          variation,
+          textOverlays,
+        }}
+        disabled={isProcessing || isBulkExecuting}
+        onOpenEditor={(p, isNew) => {
+          setEditingPreset(isNew ? null : p);
+          setIsPresetEditorOpen(true);
+        }}
+      />
+
+      {/* Export Preset Editor Modal (Phase 5B) */}
+      <ExportPresetEditor
+        isOpen={isPresetEditorOpen}
+        preset={editingPreset}
+        onClose={() => setIsPresetEditorOpen(false)}
+        onSaved={(newPreset) => {
+          if (newPreset) {
+            setSelectedExportPreset(newPreset);
+          }
+        }}
+      />
 
       {/* Export Profile Selector (Phase 2B / 4B-3) */}
       <ExportProfileSelector

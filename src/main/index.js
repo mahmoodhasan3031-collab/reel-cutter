@@ -118,6 +118,19 @@ import {
   resetVariationPresets,
   resolveVariationPresetSnapshot,
 } from './variations/variationPresetManager'
+import {
+  getExportPresets,
+  getExportPreset,
+  searchExportPresets,
+  createExportPreset,
+  updateExportPreset,
+  deleteExportPreset,
+  duplicateExportPreset,
+  compareExportPresets,
+  applyExportPreset,
+  resetExportPresets,
+  resolveExportPresetSnapshot,
+} from './exportPresets/exportPresetManager'
 // CommonJS require used for logger (CJS module in ESM context is resolved by electron-vite)
 const logger = require('./logger')
 
@@ -1851,6 +1864,166 @@ ipcMain.handle('variation-preset:apply', async (_, { presetId, currentConfig } =
     }
     const applied = applyVariationPreset(presetId, currentConfig)
     return { success: true, config: applied }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Export Preset Manager (Phase 5B) ──────────────────────────────────────────
+
+async function checkExportPresetsAccess() {
+  const license = await getLicenseInfo()
+  const tier = license.isValid
+    ? license.tier
+    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+
+  if (!hasFeature(tier, 'export_presets')) {
+    return { authorized: false, error: 'Export Preset Manager requires Pro license tier.' }
+  }
+  return { authorized: true, tier }
+}
+
+ipcMain.handle('export-preset:list', async () => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const presets = getExportPresets()
+    return { success: true, presets }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-preset:get', async (_, id) => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const preset = getExportPreset(id)
+    if (!preset) {
+      return { success: false, error: `Export preset not found: ${id}` }
+    }
+    return { success: true, preset }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-preset:search', async (_, options) => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const presets = searchExportPresets(options)
+    return { success: true, presets }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-preset:create', async (_, data) => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const preset = createExportPreset(data)
+    return { success: true, preset }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-preset:update', async (_, { id, data } = {}) => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const preset = updateExportPreset(id, data)
+    return { success: true, preset }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-preset:delete', async (_, id) => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = deleteExportPreset(id)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-preset:duplicate', async (_, { id, overrides } = {}) => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const preset = duplicateExportPreset(id, overrides)
+    return { success: true, preset }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-preset:compare', async (_, { current, selected } = {}) => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const comparison = compareExportPresets(current, selected)
+    return { success: true, comparison }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-preset:apply', async (_, { presetId, currentConfig } = {}) => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const applied = applyExportPreset(presetId, currentConfig)
+    return { success: true, config: applied }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-preset:reset', async () => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const result = resetExportPresets()
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('export-preset:resolve', async (_, presetId) => {
+  try {
+    const auth = await checkExportPresetsAccess()
+    if (!auth.authorized) {
+      return { success: false, error: auth.error, requiresUpgrade: true }
+    }
+    const snapshot = resolveExportPresetSnapshot(presetId)
+    return { success: true, snapshot }
   } catch (err) {
     return { success: false, error: err.message }
   }

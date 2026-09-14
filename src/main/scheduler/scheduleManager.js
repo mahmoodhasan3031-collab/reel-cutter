@@ -118,7 +118,7 @@ function saveSchedules(data, customDir) {
  * @param {Object} input
  * @returns {{ valid: boolean, sanitized: Object }}
  */
-function validateScheduleInput(input = {}) {
+function validateScheduleInput(input = {}, customDir) {
   if (!input || typeof input !== 'object') {
     throw new Error('Schedule input must be an object');
   }
@@ -228,6 +228,19 @@ function validateScheduleInput(input = {}) {
     variationPreset = JSON.parse(JSON.stringify(varValidation.config));
   }
 
+  // 6b. Export Preset Snapshot (Phase 5B)
+  let exportPresetId = input.exportPresetId || null;
+  let exportPresetSnapshot = null;
+  if (exportPresetId) {
+    try {
+      const { getExportPreset, resolveExportPresetSnapshot } = require('../exportPresets/exportPresetManager');
+      const p = getExportPreset(exportPresetId, customDir);
+      if (p) {
+        exportPresetSnapshot = resolveExportPresetSnapshot(p, customDir);
+      }
+    } catch (_) {}
+  }
+
   // 7. Export Options Snapshot
   const rawOpts = input.exportOptions || {};
   const exportOptions = {
@@ -254,6 +267,8 @@ function validateScheduleInput(input = {}) {
       profileSnapshot,
       variationPreset,
       variationPresetId,
+      exportPresetId,
+      exportPresetSnapshot,
       exportOptions,
       planId: input.planId || null,
       jobId: input.jobId || null,

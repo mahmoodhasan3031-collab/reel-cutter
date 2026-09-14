@@ -70,6 +70,7 @@ export default function PageProfilesPanel() {
   const [error, setError] = useState(null);
   const [captionTemplates, setCaptionTemplates] = useState([]);
   const [variationPresets, setVariationPresets] = useState([]);
+  const [exportPresets, setExportPresets] = useState([]);
 
   // Modal states
   const [modalMode, setModalMode] = useState(null); // 'create' | 'edit' | null
@@ -100,6 +101,16 @@ export default function PageProfilesPanel() {
     } catch (_) {}
   };
 
+  const fetchExportPresets = async () => {
+    try {
+      if (!window.api?.getExportPresets) return;
+      const res = await window.api.getExportPresets();
+      if (res && res.success) {
+        setExportPresets(res.presets || []);
+      }
+    } catch (_) {}
+  };
+
   const fetchProfiles = async () => {
     try {
       setLoading(true);
@@ -120,11 +131,13 @@ export default function PageProfilesPanel() {
     fetchProfiles();
     fetchCaptionTemplates();
     fetchVariationPresets();
+    fetchExportPresets();
   }, []);
 
   const handleOpenCreate = () => {
     fetchCaptionTemplates();
     fetchVariationPresets();
+    fetchExportPresets();
     setActiveFormData({
       name: '',
       platform: 'Facebook',
@@ -132,6 +145,7 @@ export default function PageProfilesPanel() {
       variationPreset: { ...DEFAULT_PRESET },
       variationPresetId: null,
       captionTemplateId: null,
+      exportPresetId: null,
     });
     setFormError(null);
     setModalMode('create');
@@ -140,6 +154,7 @@ export default function PageProfilesPanel() {
   const handleOpenEdit = (profile) => {
     fetchCaptionTemplates();
     fetchVariationPresets();
+    fetchExportPresets();
     setActiveFormData({
       id: profile.id,
       name: profile.name,
@@ -152,6 +167,7 @@ export default function PageProfilesPanel() {
       },
       variationPresetId: profile.variationPresetId || null,
       captionTemplateId: profile.captionTemplateId || null,
+      exportPresetId: profile.exportPresetId || null,
     });
     setFormError(null);
     setModalMode('edit');
@@ -190,6 +206,7 @@ export default function PageProfilesPanel() {
           variationPreset: activeFormData.variationPreset,
           variationPresetId: activeFormData.variationPresetId || null,
           captionTemplateId: activeFormData.captionTemplateId || null,
+          exportPresetId: activeFormData.exportPresetId || null,
         });
         if (res && res.success === false) {
           throw new Error(res.error || 'Failed to create profile');
@@ -202,6 +219,7 @@ export default function PageProfilesPanel() {
           variationPreset: activeFormData.variationPreset,
           variationPresetId: activeFormData.variationPresetId || null,
           captionTemplateId: activeFormData.captionTemplateId || null,
+          exportPresetId: activeFormData.exportPresetId || null,
         });
         if (res && res.success === false) {
           throw new Error(res.error || 'Failed to update profile');
@@ -615,6 +633,47 @@ export default function PageProfilesPanel() {
                     !captionTemplates.some((t) => t.id === activeFormData.captionTemplateId) && (
                       <option value={activeFormData.captionTemplateId} disabled>
                         (Unavailable / Deleted template)
+                      </option>
+                    )}
+                </select>
+              </div>
+
+              {/* Export Preset Selector (Phase 5B) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-zinc-300">Default Export Preset</label>
+                  <span className="text-[10px] text-zinc-500">Unified framing & export preset</span>
+                </div>
+                <select
+                  value={activeFormData.exportPresetId || ''}
+                  onChange={(e) => {
+                    const epId = e.target.value ? e.target.value : null;
+                    if (epId) {
+                      const found = exportPresets.find((p) => p.id === epId);
+                      if (found && found.settings) {
+                        setActiveFormData((prev) => ({
+                          ...prev,
+                          exportPresetId: epId,
+                          variationPresetId: prev.variationPresetId || found.settings.variationPresetId || null,
+                          captionTemplateId: prev.captionTemplateId || found.settings.captionTemplateId || null,
+                        }));
+                        return;
+                      }
+                    }
+                    setActiveFormData((prev) => ({ ...prev, exportPresetId: epId }));
+                  }}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-brand-500 transition-colors cursor-pointer"
+                >
+                  <option value="">None (Custom Export)</option>
+                  {exportPresets.map((ep) => (
+                    <option key={ep.id} value={ep.id}>
+                      {ep.name} ({ep.isBuiltIn ? 'Built-in' : 'Custom'}) • {ep.settings?.aspectRatio || '9:16'} {ep.settings?.resolution || '1080p'}
+                    </option>
+                  ))}
+                  {activeFormData.exportPresetId &&
+                    !exportPresets.some((p) => p.id === activeFormData.exportPresetId) && (
+                      <option value={activeFormData.exportPresetId} disabled>
+                        (Unavailable / Deleted export preset)
                       </option>
                     )}
                 </select>

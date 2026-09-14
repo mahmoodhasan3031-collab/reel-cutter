@@ -13,6 +13,7 @@ const fs = require('fs');
 const { loadProfiles, resolveProfilePreset } = require('./profileManager');
 const { getCaptionTemplate } = require('../captions/captionTemplateManager');
 const { getVariationPreset } = require('../variations/variationPresetManager');
+const { getExportPreset } = require('../exportPresets/exportPresetManager');
 const { validateProductVariationConfig, DEFAULT_PRODUCT_VARIATION } = require('../../engine/variation/validator');
 
 const MIN_BULK_PROFILES = 1;
@@ -261,10 +262,28 @@ function createBulkExportPlan(input = {}, customDir) {
       throw new Error(`Profile "${profile.name}" (${pId}) is disabled and cannot be added to a bulk export plan`);
     }
 
-    // Saved preset from authoritative profile (or referenced variationPresetId)
+    // Saved preset from authoritative profile (or referenced variationPresetId / exportPresetId)
     let presetToUse = profile.variationPreset;
     let variationPresetId = profile.variationPresetId || null;
     let variationPresetName = null;
+
+    let exportPresetId = profile.exportPresetId || null;
+    let exportPresetName = null;
+    let exportPresetSnapshot = null;
+
+    if (exportPresetId) {
+      const expPreset = getExportPreset(exportPresetId, customDir);
+      if (expPreset) {
+        exportPresetName = expPreset.name;
+        exportPresetSnapshot = JSON.parse(JSON.stringify(expPreset));
+        if (!variationPresetId && expPreset.settings?.variation) {
+          presetToUse = expPreset.settings.variation;
+          variationPresetId = expPreset.settings.variationPresetId || null;
+        }
+      } else {
+        exportPresetId = null; // Fallback safely if deleted
+      }
+    }
 
     if (variationPresetId) {
       const vPreset = getVariationPreset(variationPresetId, customDir);
@@ -318,6 +337,13 @@ function createBulkExportPlan(input = {}, customDir) {
     let captionTemplateName = null;
     let textOverlays = null;
 
+    if (!captionTemplateId && exportPresetSnapshot?.settings?.captionTemplateId) {
+      captionTemplateId = exportPresetSnapshot.settings.captionTemplateId;
+    }
+    if (exportPresetSnapshot?.settings?.textOverlays && Array.isArray(exportPresetSnapshot.settings.textOverlays) && exportPresetSnapshot.settings.textOverlays.length > 0) {
+      textOverlays = JSON.parse(JSON.stringify(exportPresetSnapshot.settings.textOverlays));
+    }
+
     if (captionTemplateId) {
       const tpl = getCaptionTemplate(captionTemplateId, customDir);
       if (tpl) {
@@ -342,6 +368,9 @@ function createBulkExportPlan(input = {}, customDir) {
       isOverridden,
       variationPresetId,
       variationPresetName,
+      exportPresetId,
+      exportPresetName,
+      exportPresetSnapshot,
       captionTemplateId,
       captionTemplateName,
       textOverlays,
@@ -656,6 +685,9 @@ function planToBatchQueueItems(plan, extraOptions = {}) {
     profileName: job.profileName,
     platform: job.platform,
     orderIndex: job.orderIndex,
+    exportPresetId: job.exportPresetId || null,
+    exportPresetName: job.exportPresetName || null,
+    exportPresetSnapshot: job.exportPresetSnapshot ? JSON.parse(JSON.stringify(job.exportPresetSnapshot)) : null,
     captionTemplateId: job.captionTemplateId || null,
     captionTemplateName: job.captionTemplateName || null,
     textOverlays: job.textOverlays && Array.isArray(job.textOverlays) && job.textOverlays.length > 0

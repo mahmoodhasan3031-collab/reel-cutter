@@ -35,10 +35,11 @@ const tests = [
   'caption-experiment.test.js',
   'caption-production-polish.test.js',
   'variation-preset.test.js',
+  'export-preset.test.js',
 ];
 
 console.log('======================================================');
-console.log('🚀 Running All Reel Cutter Test Suites (Phases 1-5A)');
+console.log('🚀 Running All Reel Cutter Test Suites (Phases 1-5B)');
 console.log('======================================================\n');
 
 

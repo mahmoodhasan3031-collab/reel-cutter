@@ -21,6 +21,7 @@ const FEATURE_KEYS = {
   CAPTION_WORKSPACE: 'caption_workspace',
   CAPTION_EXPERIMENT: 'caption_experiment',
   VARIATION_PRESETS: 'variation_presets',
+  EXPORT_PRESETS: 'export_presets',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -92,7 +93,14 @@ const FEATURE_ALIASES = {
   variationPresets: FEATURE_KEYS.VARIATION_PRESETS,
   'content variation presets': FEATURE_KEYS.VARIATION_PRESETS,
   'variation preset': FEATURE_KEYS.VARIATION_PRESETS,
-  'export presets': FEATURE_KEYS.VARIATION_PRESETS,
+  'export presets': FEATURE_KEYS.EXPORT_PRESETS,
+  export_presets: FEATURE_KEYS.EXPORT_PRESETS,
+  exportpresets: FEATURE_KEYS.EXPORT_PRESETS,
+  exportPresets: FEATURE_KEYS.EXPORT_PRESETS,
+  'export preset': FEATURE_KEYS.EXPORT_PRESETS,
+  exportpreset: FEATURE_KEYS.EXPORT_PRESETS,
+  exportPreset: FEATURE_KEYS.EXPORT_PRESETS,
+  'export preset manager': FEATURE_KEYS.EXPORT_PRESETS,
   'repurposing presets': FEATURE_KEYS.VARIATION_PRESETS,
 };
 
@@ -122,6 +130,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.CAPTION_WORKSPACE,
     FEATURE_KEYS.CAPTION_EXPERIMENT,
     FEATURE_KEYS.VARIATION_PRESETS,
+    FEATURE_KEYS.EXPORT_PRESETS,
   ],
 };
 
@@ -202,6 +211,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.VARIATION_PRESETS,
     name: 'Content Variation Presets',
     description: 'Save, manage, and apply named variation presets for creative repurposing across profiles and exports',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.EXPORT_PRESETS,
+    name: 'Export Preset Manager',
+    description: 'Save, manage, compare, and apply unified export presets across single, profile, bulk, and scheduled workflows',
     minTier: 'pro',
   },
 ];
