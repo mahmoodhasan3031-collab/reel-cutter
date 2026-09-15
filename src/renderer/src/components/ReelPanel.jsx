@@ -68,8 +68,10 @@ export default function ReelPanel({
   metadata,
   progress,
   isProcessing,
-  setIsProcessing,
-  setProgress,
+  onStartExport,
+  exportResult,
+  exportError,
+  thumbnailPreview,
   licenseTier = 'standard',
   onOpenUpgrade,
 }) {
@@ -78,9 +80,6 @@ export default function ReelPanel({
   const [outputPath, setOutputPath]   = useState('')
   const [generateThumbnail, setGenerateThumbnail] = useState(false)
   const [thumbnailTitle, setThumbnailTitle] = useState('')
-  const [thumbPreviewUrl, setThumbPreviewUrl] = useState(null)
-  const [result, setResult]           = useState(null)
-  const [error, setError]             = useState(null)
   const [variation, setVariation]     = useState(DEFAULT_VARIATION_STATE)
   const [textOverlays, setTextOverlays] = useState([])
   const [isBulkExecuting, setIsBulkExecuting] = useState(false)
@@ -122,20 +121,12 @@ export default function ReelPanel({
     setMode(m.id)
   }
 
-  const handleReel = async () => {
-    if (!videoPath) return
-    setIsProcessing(true)
-    setProgress(0)
-    setResult(null)
-    setError(null)
-    setThumbPreviewUrl(null)
+  const handleReel = () => {
+    if (!videoPath || !onStartExport) return
 
     const outPath = outputPath || videoPath.replace(/(\.[^.]+)$/, '_reel$1')
 
-    window.api.off('video:progress')
-    window.api.onProgress(({ percent }) => setProgress(percent))
-
-    const res = await window.api.reel({
+    onStartExport('reel', {
       inputPath: videoPath,
       outputPath: outPath,
       mode,
@@ -145,21 +136,6 @@ export default function ReelPanel({
       variation: variation.enabled ? variation : undefined,
       textOverlays: textOverlays.length > 0 ? textOverlays : undefined,
     })
-
-    setIsProcessing(false)
-    setProgress(0)
-    window.api.off('video:progress')
-
-    if (res.success) {
-      setResult(res)
-      if (res.thumbnailPath) {
-        window.api.readImageBase64?.(res.thumbnailPath).then(url => {
-          if (url) setThumbPreviewUrl(url)
-        })
-      }
-    } else {
-      setError(res.error)
-    }
   }
 
   return (
@@ -413,7 +389,7 @@ export default function ReelPanel({
       )}
 
       {/* Result */}
-      {result && !isProcessing && (
+      {exportResult && !isProcessing && (
         <div className="space-y-3 animate-fade-in">
           <div className="flex items-start gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
             <CheckCircle size={16} className="text-green-400 mt-0.5 shrink-0" />
@@ -421,22 +397,22 @@ export default function ReelPanel({
               <p className="text-sm text-green-300 font-medium">Reel created! 🎉</p>
               <p
                 className="text-xs text-zinc-400 truncate mt-0.5 cursor-pointer hover:text-zinc-200"
-                onClick={() => window.api.showInFolder(result.outputPath)}
-                title={result.outputPath}
+                onClick={() => window.api.showInFolder(exportResult.outputPath)}
+                title={exportResult.outputPath}
               >
-                {result.outputPath}
+                {exportResult.outputPath}
               </p>
             </div>
           </div>
 
-          {result.thumbnailPath && (
+          {exportResult.thumbnailPath && (
             <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center gap-4">
-              {thumbPreviewUrl ? (
+              {thumbnailPreview ? (
                 <img
-                  src={thumbPreviewUrl}
+                  src={thumbnailPreview}
                   alt="Pro Thumbnail"
                   className="w-16 h-20 object-cover rounded-lg border border-zinc-700 shadow-md shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => window.api.showInFolder(result.thumbnailPath)}
+                  onClick={() => window.api.showInFolder(exportResult.thumbnailPath)}
                 />
               ) : (
                 <div className="w-16 h-20 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0 border border-zinc-700">
@@ -452,10 +428,10 @@ export default function ReelPanel({
                 </div>
                 <p
                   className="text-xs text-zinc-400 truncate mt-1 cursor-pointer hover:text-zinc-200"
-                  onClick={() => window.api.showInFolder(result.thumbnailPath)}
-                  title={result.thumbnailPath}
+                  onClick={() => window.api.showInFolder(exportResult.thumbnailPath)}
+                  title={exportResult.thumbnailPath}
                 >
-                  {result.thumbnailPath}
+                  {exportResult.thumbnailPath}
                 </p>
               </div>
             </div>
@@ -463,10 +439,10 @@ export default function ReelPanel({
         </div>
       )}
 
-      {error && !isProcessing && (
+      {exportError && !isProcessing && (
         <div className="flex items-start gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl animate-fade-in">
           <AlertCircle size={16} className="text-red-400 mt-0.5 shrink-0" />
-          <p className="text-sm text-red-300">{error}</p>
+          <p className="text-sm text-red-300">{exportError}</p>
         </div>
       )}
 

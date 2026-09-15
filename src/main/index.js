@@ -253,6 +253,37 @@ app.whenReady().then(() => {
   const bq = getBatchQueueManager()
   bq.on('itemUpdate', ({ item }) => {
     mainWindow?.webContents.send('batch:itemUpdate', { item })
+
+    // Bug #4 fix: create Export History record on batch completion/failure
+    if (item && (item.status === 'DONE' || item.status === 'ERROR')) {
+      try {
+        const pathLib = require('path')
+        const isCompleted = item.status === 'DONE'
+        const result = item.result || {}
+        const outPath = result.outputPath || item.outputPath || ''
+
+        // Determine export type from operation
+        const exportType = item.operation || 'cut'
+
+        createExportHistoryRecord({
+          exportType,
+          source: { name: pathLib.basename(item.inputPath || ''), path: item.inputPath || '' },
+          output: outPath
+            ? { path: outPath, filename: pathLib.basename(outPath), directory: pathLib.dirname(outPath) }
+            : undefined,
+          status: isCompleted ? 'COMPLETED' : 'FAILED',
+          error: isCompleted ? null : (item.error || 'Batch export failed'),
+          settingsSnapshot: {
+            operation: item.operation,
+            mode: item.mode,
+            start: item.start,
+            duration: item.duration,
+            width: item.width,
+            height: item.height,
+          },
+        })
+      } catch (_) { /* non-blocking */ }
+    }
   })
   bq.on('queueUpdate', (state) => {
     mainWindow?.webContents.send('batch:queueUpdate', state)
@@ -415,12 +446,29 @@ ipcMain.handle('video:cut', async (_, opts) => {
           mainWindow?.webContents.send('video:progress', { percent, operation: 'cut' })
         }
       })
-      mainWindow?.webContents.send('video:done', {
+      const donePayload = {
         operation: 'cut',
         outputPath: result.outputPath,
         duration: result.duration,
         thumbnailPath: result.thumbnailPath,
-      })
+      }
+      mainWindow?.webContents.send('video:done', donePayload)
+
+      // Persist to export history (Bug #2 fix)
+      try {
+        const { authorized } = await checkExportHistoryAccess()
+        if (authorized) {
+          const path = require('path')
+          createExportHistoryRecord({
+            exportType: 'cut',
+            source: { name: path.basename(inputPath), path: inputPath },
+            output: { path: result.outputPath, filename: path.basename(result.outputPath), directory: path.dirname(result.outputPath) },
+            status: 'COMPLETED',
+            settingsSnapshot: { start, duration, end, reel, mode, resolution, customDuration },
+          })
+        }
+      } catch (_) { /* non-blocking */ }
+
       return { success: true, outputPath: result.outputPath, duration: result.duration, thumbnailPath: result.thumbnailPath }
     } finally {
       markJobFinished()
@@ -486,12 +534,29 @@ ipcMain.handle('video:reel', async (_, opts) => {
           mainWindow?.webContents.send('video:progress', { percent, operation: 'reel' })
         }
       })
-      mainWindow?.webContents.send('video:done', {
+      const donePayload = {
         operation: 'reel',
         outputPath: result.outputPath,
         duration: result.duration,
         thumbnailPath: result.thumbnailPath,
-      })
+      }
+      mainWindow?.webContents.send('video:done', donePayload)
+
+      // Persist to export history (Bug #2 fix)
+      try {
+        const { authorized } = await checkExportHistoryAccess()
+        if (authorized) {
+          const path = require('path')
+          createExportHistoryRecord({
+            exportType: 'reel',
+            source: { name: path.basename(inputPath), path: inputPath },
+            output: { path: result.outputPath, filename: path.basename(result.outputPath), directory: path.dirname(result.outputPath) },
+            status: 'COMPLETED',
+            settingsSnapshot: { mode, aspectRatio, start, duration },
+          })
+        }
+      } catch (_) { /* non-blocking */ }
+
       return { success: true, outputPath: result.outputPath, duration: result.duration, thumbnailPath: result.thumbnailPath }
     } finally {
       markJobFinished()
@@ -555,7 +620,28 @@ ipcMain.handle('video:split', async (_, opts) => {
           mainWindow?.webContents.send('video:segment', segment)
         }
       })
-      mainWindow?.webContents.send('video:done', { operation: 'split', segments: results, outputDir })
+      const donePayload = { operation: 'split', segments: results, outputDir }
+      mainWindow?.webContents.send('video:done', donePayload)
+
+      // Persist to export history (Bug #2 fix)
+      try {
+        const { authorized } = await checkExportHistoryAccess()
+        if (authorized) {
+          const pathLib = require('path')
+          // One history record per split segment
+          for (const seg of results) {
+            const segPath = seg.outputPath || seg.path || ''
+            createExportHistoryRecord({
+              exportType: 'split',
+              source: { name: pathLib.basename(inputPath), path: inputPath },
+              output: { path: segPath, filename: pathLib.basename(segPath), directory: pathLib.dirname(segPath) || outputDir },
+              status: 'COMPLETED',
+              settingsSnapshot: { interval, reel, mode },
+            })
+          }
+        }
+      } catch (_) { /* non-blocking */ }
+
       return { success: true, segments: results, outputDir }
     } finally {
       markJobFinished()
@@ -1252,6 +1338,11 @@ import {
   getCommandCenterSnapshot,
   applyCommandCenterFilter,
   applyCommandCenterSearch,
+  getWorkflowSummary,
+  validateActionEligibility,
+  planBulkAction,
+  executeBulkAction,
+  validateSnapshotForExport,
 } from './dashboard/exportCommandCenter'
 
 async function checkExportHistoryAccess() {
@@ -2056,6 +2147,7 @@ ipcMain.handle('commandcenter:getSnapshot', async (_, options = {}) => {
     const snapshot = getCommandCenterSnapshot({
       getBatchQueueState: () => bq.getState(),
       getSchedules: schedulesFn,
+      loadHistory: () => records,
     })
 
     // Apply filters to snapshot sub-sections if needed
@@ -2113,6 +2205,73 @@ ipcMain.handle('commandcenter:exportAgainMissing', async (_, { historyId } = {})
 
     const { exportAgainMissingOutput } = require('./history/recoveryCenter')
     const result = exportAgainMissingOutput(historyId)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ─── Workflow Automation IPC Handlers (Phase 5J) ─────────────────────────────
+
+ipcMain.handle('workflow:getSummary', async (_, options = {}) => {
+  try {
+    const auth = await checkCommandCenterAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+
+    const bq = getBatchQueueManager()
+    const snapshot = getWorkflowSummary({
+      getBatchQueueState: () => bq.getState(),
+      getSchedules: () => getSchedules(),
+      loadHistory: () => loadHistory(),
+    })
+    return { success: true, snapshot }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow:validateEligibility', async (_, { actionType, recordIds } = {}) => {
+  try {
+    const auth = await checkCommandCenterAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+
+    const result = validateActionEligibility(actionType, recordIds)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow:planBulk', async (_, { actionType, recordIds } = {}) => {
+  try {
+    const auth = await checkCommandCenterAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+
+    const result = planBulkAction(actionType, recordIds)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow:executeBulk', async (_, { actionType, recordIds } = {}) => {
+  try {
+    const auth = await checkCommandCenterAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+
+    const result = executeBulkAction(actionType, recordIds)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow:validateSnapshot', async (_, { recordId } = {}) => {
+  try {
+    const auth = await checkCommandCenterAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+
+    const result = validateSnapshotForExport(recordId)
     return { success: true, ...result }
   } catch (err) {
     return { success: false, error: err.message }

@@ -12,8 +12,10 @@ export default function SplitPanel({
   metadata,
   progress,
   isProcessing,
-  setIsProcessing,
-  setProgress,
+  onStartExport,
+  exportResult,
+  exportError,
+  segments = [],
   licenseTier = 'standard',
   onOpenUpgrade,
 }) {
@@ -23,10 +25,7 @@ export default function SplitPanel({
   const [generateThumbnail, setGenerateThumbnail] = useState(false)
   const [thumbnailTitle, setThumbnailTitle] = useState('')
   const [outputDir, setOutputDir] = useState('')
-  const [segments, setSegments]   = useState([])
   const [splitProgress, setSplitProgress] = useState(null)
-  const [error, setError]         = useState(null)
-  const [done, setDone]           = useState(false)
   const [variation, setVariation] = useState(DEFAULT_VARIATION_STATE)
   const [textOverlays, setTextOverlays] = useState([])
   const [isBulkExecuting, setIsBulkExecuting] = useState(false)
@@ -41,29 +40,12 @@ export default function SplitPanel({
     if (dir) setOutputDir(dir)
   }
 
-  const handleSplit = async () => {
-    if (!videoPath) return
-    setIsProcessing(true)
-    setProgress(0)
-    setSegments([])
-    setSplitProgress(null)
-    setError(null)
-    setDone(false)
+  const handleSplit = () => {
+    if (!videoPath || !onStartExport) return
 
     const outDir = outputDir || (videoPath ? videoPath.replace(/[\\/][^\\/]+$/, '') + '/reels' : './reels')
 
-    window.api.off('video:progress')
-    window.api.off('video:segment')
-
-    window.api.onProgress(({ percent, current, total }) => {
-      setProgress(percent)
-      setSplitProgress({ current, total })
-    })
-    window.api.onSegment((seg) => {
-      setSegments(prev => [...prev, seg])
-    })
-
-    const res = await window.api.split({
+    onStartExport('split', {
       inputPath: videoPath,
       outputDir: outDir,
       interval,
@@ -74,18 +56,6 @@ export default function SplitPanel({
       variation: variation.enabled ? variation : undefined,
       textOverlays: textOverlays.length > 0 ? textOverlays : undefined,
     })
-
-    setIsProcessing(false)
-    setProgress(0)
-    window.api.off('video:progress')
-    window.api.off('video:segment')
-
-    if (res.success) {
-      setDone(true)
-      setSegments(res.segments || [])
-    } else {
-      setError(res.error)
-    }
   }
 
   return (
@@ -278,7 +248,7 @@ export default function SplitPanel({
       )}
 
       {/* Done */}
-      {done && !isProcessing && (
+      {exportResult && !isProcessing && (
         <div className="space-y-2 animate-fade-in">
           <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
             <CheckCircle size={16} className="text-green-400 shrink-0" />
@@ -311,10 +281,10 @@ export default function SplitPanel({
         </div>
       )}
 
-      {error && !isProcessing && (
+      {exportError && !isProcessing && (
         <div className="flex items-start gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl animate-fade-in">
           <AlertCircle size={16} className="text-red-400 mt-0.5 shrink-0" />
-          <p className="text-sm text-red-300">{error}</p>
+          <p className="text-sm text-red-300">{exportError}</p>
         </div>
       )}
 

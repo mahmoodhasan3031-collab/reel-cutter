@@ -22,7 +22,16 @@ const {
   isNeedsAttention,
   normalizeError,
   RECOVERY_ERROR_CATEGORY,
+  checkRetryReadiness,
 } = require('../history/recoveryCenter');
+const {
+  getWorkflowSummary,
+  validateActionEligibility,
+  planBulkAction,
+  executeBulkAction,
+  filterWorkflowRecords,
+  validateSnapshotForExport,
+} = require('./exportWorkflowAutomation');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -78,6 +87,14 @@ function getCommandCenterSnapshot(options) {
   const exportTypes = gatherExportTypeSummary(history.records);
   const profiles = gatherProfileSummary(history.records);
 
+  // Phase 5J: Add workflow summary with actionable counts
+  let workflow = null;
+  try {
+    workflow = getWorkflowSummary(options);
+  } catch (_) {
+    workflow = null;
+  }
+
   return deepClone({
     queue,
     scheduled,
@@ -87,6 +104,7 @@ function getCommandCenterSnapshot(options) {
     recovery,
     exportTypes,
     profiles,
+    workflow,
     overview: {
       processing: queue.processingCount,
       queued: queue.waitingCount,
@@ -503,4 +521,13 @@ module.exports = {
   applyCommandCenterFilter,
   applyCommandCenterSearch,
   deepClone,
+  // Phase 5J: Re-export workflow automation functions
+  getWorkflowSummary: require('./exportWorkflowAutomation').getWorkflowSummary,
+  validateActionEligibility: require('./exportWorkflowAutomation').validateActionEligibility,
+  planBulkAction: require('./exportWorkflowAutomation').planBulkAction,
+  executeBulkAction: require('./exportWorkflowAutomation').executeBulkAction,
+  filterWorkflowRecords: require('./exportWorkflowAutomation').filterWorkflowRecords,
+  executeRetry: require('./exportWorkflowAutomation').executeRetry,
+  executeExportAgain: require('./exportWorkflowAutomation').executeExportAgain,
+  validateSnapshotForExport: require('./exportWorkflowAutomation').validateSnapshotForExport,
 };

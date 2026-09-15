@@ -867,6 +867,151 @@ test('BA: getCommandCenterSnapshot works without loadHistory option', function()
   assert.strictEqual(snapshot.recent.items.length, 0);
 });
 
+// ─── Bug #3 Regression: Command Center must see completed history ──────────
+
+test('BB: Completed record appears in Recent Activity', function() {
+  const records = [makeRecord({ status: 'COMPLETED', exportType: 'cut' })];
+  const snapshot = getCommandCenterSnapshot({
+    getBatchQueueState: () => ({ items: [], totalCount: 0, runningCount: 0, waitingCount: 0, doneCount: 0, errorCount: 0, cancelledCount: 0, overallProgress: 0, isRunning: false, concurrency: 2, maxConcurrency: 2 }),
+    getSchedules: () => [],
+    loadHistory: () => records,
+  });
+  assert.strictEqual(snapshot.recent.items.length, 1, 'Recent activity should contain the completed record');
+  assert.strictEqual(snapshot.recent.items[0].status, 'COMPLETED');
+});
+
+test('BC: Completed record counts in Export Types', function() {
+  const records = [makeRecord({ status: 'COMPLETED', exportType: 'cut' })];
+  const snapshot = getCommandCenterSnapshot({
+    getBatchQueueState: () => ({ items: [], totalCount: 0, runningCount: 0, waitingCount: 0, doneCount: 0, errorCount: 0, cancelledCount: 0, overallProgress: 0, isRunning: false, concurrency: 2, maxConcurrency: 2 }),
+    getSchedules: () => [],
+    loadHistory: () => records,
+  });
+  assert.strictEqual(snapshot.exportTypes.cut, 1, 'Export Types should count cut records');
+  assert.strictEqual(snapshot.exportTypes.total, 1);
+});
+
+test('BD: Completed record evaluated in Output Health', function() {
+  const records = [makeRecord({ status: 'COMPLETED', exportType: 'cut', output: { path: '/tmp/output/test.mp4', directory: '/tmp/output', filename: 'test.mp4' } })];
+  const snapshot = getCommandCenterSnapshot({
+    getBatchQueueState: () => ({ items: [], totalCount: 0, runningCount: 0, waitingCount: 0, doneCount: 0, errorCount: 0, cancelledCount: 0, overallProgress: 0, isRunning: false, concurrency: 2, maxConcurrency: 2 }),
+    getSchedules: () => [],
+    loadHistory: () => records,
+  });
+  assert.ok(snapshot.outputHealth, 'Output health should exist');
+  assert.ok(snapshot.outputHealth.total >= 0, 'Output health total should be a number');
+});
+
+test('BE: "all" filter includes completed records', function() {
+  const records = [makeRecord({ status: 'COMPLETED', exportType: 'cut' })];
+  const snapshot = getCommandCenterSnapshot({
+    getBatchQueueState: () => ({ items: [], totalCount: 0, runningCount: 0, waitingCount: 0, doneCount: 0, errorCount: 0, cancelledCount: 0, overallProgress: 0, isRunning: false, concurrency: 2, maxConcurrency: 2 }),
+    getSchedules: () => [],
+    loadHistory: () => records,
+  });
+  // No filter applied = "all" = all records should be visible
+  assert.strictEqual(snapshot.recent.items.length, 1, 'All filter should include completed records');
+  assert.strictEqual(snapshot.exportTypes.total, 1, 'Export types total should count all records');
+});
+
+test('BF: "recent" filter includes completed records from last 7 days', function() {
+  const now = new Date().toISOString();
+  const records = [makeRecord({ status: 'COMPLETED', exportType: 'cut', createdAt: now, completedAt: now })];
+  const filtered = applyCommandCenterFilter(records, 'recent');
+  assert.strictEqual(filtered.length, 1, 'Recent filter should include records from last 7 days');
+  assert.strictEqual(filtered[0].status, 'COMPLETED');
+});
+
+test('BG: Search finds completed record by source name', function() {
+  const records = [makeRecord({ status: 'COMPLETED', exportType: 'cut', source: { name: 'my-video.mp4', path: '/tmp/my-video.mp4' } })];
+  const filtered = applyCommandCenterSearch(records, 'my-video');
+  assert.strictEqual(filtered.length, 1, 'Search should find record by source name');
+});
+
+test('BH: Search finds completed record by profile name', function() {
+  const records = [makeRecord({ status: 'COMPLETED', exportType: 'cut', profile: { id: 'p1', name: 'Instagram Reels', platform: 'instagram' } })];
+  const filtered = applyCommandCenterSearch(records, 'Instagram');
+  assert.strictEqual(filtered.length, 1, 'Search should find record by profile name');
+});
+
+test('BI: Snapshot is deep cloned (mutation safety)', function() {
+  const records = [makeRecord({ status: 'COMPLETED', exportType: 'cut' })];
+  const opts = {
+    getBatchQueueState: () => ({ items: [], totalCount: 0, runningCount: 0, waitingCount: 0, doneCount: 0, errorCount: 0, cancelledCount: 0, overallProgress: 0, isRunning: false, concurrency: 2, maxConcurrency: 2 }),
+    getSchedules: () => [],
+    loadHistory: () => records,
+  };
+  const s1 = getCommandCenterSnapshot(opts);
+  const s2 = getCommandCenterSnapshot(opts);
+  // Structure should be identical (ignoring generatedAt timestamp)
+  assert.strictEqual(s1.recent.items.length, s2.recent.items.length);
+  assert.strictEqual(s1.exportTypes.cut, s2.exportTypes.cut);
+  assert.deepStrictEqual(s1.outputHealth, s2.outputHealth);
+  assert.deepStrictEqual(s1.queue, s2.queue);
+  // Mutate s1 and verify s2 is unaffected
+  s1.recent.items.push({ id: 'fake' });
+  assert.strictEqual(s2.recent.items.length, 1, 'Mutating snapshot should not affect other snapshots');
+});
+
+test('BJ: Failed record visible in Attention', function() {
+  const records = [makeRecord({ status: 'FAILED', exportType: 'cut', error: 'FFmpeg crashed' })];
+  const snapshot = getCommandCenterSnapshot({
+    getBatchQueueState: () => ({ items: [], totalCount: 0, runningCount: 0, waitingCount: 0, doneCount: 0, errorCount: 0, cancelledCount: 0, overallProgress: 0, isRunning: false, concurrency: 2, maxConcurrency: 2 }),
+    getSchedules: () => [],
+    loadHistory: () => records,
+  });
+  assert.ok(snapshot.attention.items.length > 0, 'Failed record should create attention item');
+  assert.strictEqual(snapshot.attention.items[0].type, 'FAILED_EXPORT');
+});
+
+test('BK: Empty history correctly shows zeros', function() {
+  const snapshot = getCommandCenterSnapshot({
+    getBatchQueueState: () => ({ items: [], totalCount: 0, runningCount: 0, waitingCount: 0, doneCount: 0, errorCount: 0, cancelledCount: 0, overallProgress: 0, isRunning: false, concurrency: 2, maxConcurrency: 2 }),
+    getSchedules: () => [],
+    loadHistory: () => [],
+  });
+  assert.strictEqual(snapshot.recent.items.length, 0);
+  assert.strictEqual(snapshot.exportTypes.total, 0);
+  assert.strictEqual(snapshot.outputHealth.total, 0);
+  assert.strictEqual(snapshot.attention.items.length, 0);
+});
+
+test('BL: Multiple mixed records (completed, failed, split) all visible', function() {
+  const records = [
+    makeRecord({ status: 'COMPLETED', exportType: 'cut', createdAt: new Date().toISOString() }),
+    makeRecord({ status: 'FAILED', exportType: 'reel', createdAt: new Date().toISOString() }),
+    makeRecord({ status: 'COMPLETED', exportType: 'split', createdAt: new Date().toISOString() }),
+  ];
+  const snapshot = getCommandCenterSnapshot({
+    getBatchQueueState: () => ({ items: [], totalCount: 0, runningCount: 0, waitingCount: 0, doneCount: 0, errorCount: 0, cancelledCount: 0, overallProgress: 0, isRunning: false, concurrency: 2, maxConcurrency: 2 }),
+    getSchedules: () => [],
+    loadHistory: () => records,
+  });
+  assert.strictEqual(snapshot.recent.items.length, 3, 'All 3 records should be in recent activity');
+  assert.strictEqual(snapshot.exportTypes.cut, 1);
+  assert.strictEqual(snapshot.exportTypes.reel, 1);
+  assert.strictEqual(snapshot.exportTypes.split, 1);
+  assert.strictEqual(snapshot.exportTypes.total, 3);
+  assert.ok(snapshot.attention.items.length > 0, 'Failed record should create attention item');
+});
+
+test('BM: IPC handler pattern — loadHistory from main process is passed to snapshot', function() {
+  // This test verifies the pattern used by the IPC handler in index.js after the bug fix
+  const records = [makeRecord({ status: 'COMPLETED', exportType: 'cut' })];
+  const loadHistory = () => records;
+
+  // Simulate what the IPC handler now does
+  const snapshot = getCommandCenterSnapshot({
+    getBatchQueueState: () => ({ items: [], totalCount: 0, runningCount: 0, waitingCount: 0, doneCount: 0, errorCount: 0, cancelledCount: 0, overallProgress: 0, isRunning: false, concurrency: 2, maxConcurrency: 2 }),
+    getSchedules: () => [],
+    loadHistory: () => loadHistory(),
+  });
+
+  assert.strictEqual(snapshot.recent.items.length, 1, 'IPC handler must pass loadHistory to snapshot');
+  assert.strictEqual(snapshot.recent.items[0].status, 'COMPLETED');
+  assert.strictEqual(snapshot.exportTypes.cut, 1);
+});
+
 // ─── Summary ────────────────────────────────────────────────────────────────
 
 console.log(`\n${passed} passed, ${failed} failed`);

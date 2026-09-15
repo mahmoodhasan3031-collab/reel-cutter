@@ -43,6 +43,10 @@ const tests = [
   'export-recovery.test.js',
   'export-analytics.test.js',
   'export-command-center.test.js',
+  'export-workflow-automation.test.js',
+  'bug-fix-export-persistence.test.js',
+  'bug-fix-batch-queue-history.test.js',
+  'ui-timestamp-improvement.test.js',
 ];
 
 console.log('======================================================');

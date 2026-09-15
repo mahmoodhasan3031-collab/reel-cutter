@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
 import VideoDropzone from './components/VideoDropzone'
@@ -26,6 +26,13 @@ export default function App() {
   const [metadata, setMetadata] = useState(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
+
+  // ─── Global Export State (Bug #1 fix — survives panel unmount) ─────────────
+  const [exportResult, setExportResult] = useState(null)
+  const [exportError, setExportError] = useState(null)
+  const [thumbnailPreview, setThumbnailPreview] = useState(null)
+  const [segments, setSegments] = useState([])
+  const activeExportOpRef = useRef(null)
 
   // ─── Upgrade Modal State ──────────────────────────────────────────────────
   const [upgradeModal, setUpgradeModal] = useState({
@@ -97,6 +104,57 @@ export default function App() {
     return () => {
       window.api.off?.('license:statusChanged')
       window.removeEventListener('online', handleOnline)
+    }
+  }, [])
+
+  // ─── Global IPC listeners for export progress (Bug #1 fix) ────────────────
+  // These persist across panel unmount — the progress/result always reach App.
+  useEffect(() => {
+    const handleProgress = ({ percent }) => {
+      setProgress(percent)
+    }
+
+    const handleDone = (data) => {
+      setIsProcessing(false)
+      setProgress(0)
+      activeExportOpRef.current = null
+
+      if (data.operation === 'split') {
+        setSegments(prev => [...prev, ...(data.segments || [])])
+        setExportResult(prev => prev || data)
+      } else {
+        setExportResult(data)
+        setExportError(null)
+      }
+
+      if (data.thumbnailPath) {
+        window.api.readImageBase64?.(data.thumbnailPath).then(url => {
+          if (url) setThumbnailPreview(url)
+        }).catch(() => {})
+      }
+    }
+
+    const handleError = (data) => {
+      setIsProcessing(false)
+      setProgress(0)
+      activeExportOpRef.current = null
+      setExportError(data.error || 'Export failed')
+    }
+
+    const handleSegment = (seg) => {
+      setSegments(prev => [...prev, seg])
+    }
+
+    window.api.onProgress(handleProgress)
+    window.api.onDone(handleDone)
+    window.api.onError(handleError)
+    window.api.onSegment(handleSegment)
+
+    return () => {
+      window.api.off('video:progress')
+      window.api.off('video:done')
+      window.api.off('video:error')
+      window.api.off('video:segment')
     }
   }, [])
 
@@ -183,6 +241,38 @@ export default function App() {
     setView('drop')
   }
 
+  // ─── Global export handler (Bug #1 fix) ───────────────────────────────────
+  // Panels call this with their config; the IPC call lives here so progress
+  // and result survive panel unmount / navigation.
+  const handleStartExport = useCallback(async (opType, config) => {
+    if (isProcessing) return
+    setIsProcessing(true)
+    setProgress(0)
+    setExportResult(null)
+    setExportError(null)
+    setThumbnailPreview(null)
+    if (opType === 'split') setSegments([])
+    activeExportOpRef.current = opType
+
+    try {
+      if (opType === 'cut') {
+        await window.api.cut(config)
+      } else if (opType === 'reel') {
+        await window.api.reel(config)
+      } else if (opType === 'split') {
+        await window.api.split(config)
+      } else {
+        throw new Error(`Unknown export type: ${opType}`)
+      }
+      // onDone/onError handlers (set up in useEffect above) own the result
+    } catch (err) {
+      setIsProcessing(false)
+      setProgress(0)
+      setExportError(err.message)
+      activeExportOpRef.current = null
+    }
+  }, [isProcessing])
+
   const hasVideo = !!videoPath
   const isPro = hasFeature(licenseState.tier, 'ai_thumbnails')
 
@@ -195,6 +285,10 @@ export default function App() {
     setProgress,
     licenseTier: licenseState.tier,
     onOpenUpgrade: handleOpenUpgrade,
+    onStartExport: handleStartExport,
+    exportResult,
+    exportError,
+    thumbnailPreview,
   }
 
   // ─── 1. Checking Splash ─────────────────────────────────────────────────────
@@ -354,7 +448,7 @@ export default function App() {
                 {view === 'info' && <InfoPanel metadata={metadata} />}
                 {view === 'cut' && <CutPanel {...sharedProps} />}
                 {view === 'reel' && <ReelPanel {...sharedProps} />}
-                {view === 'split' && <SplitPanel {...sharedProps} />}
+                {view === 'split' && <SplitPanel {...sharedProps} segments={segments} setSegments={setSegments} />}
               </div>
             )}
         </main>

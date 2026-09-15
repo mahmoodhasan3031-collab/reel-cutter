@@ -251,6 +251,13 @@ contextBridge.exposeInMainWorld('api', {
   retryCommandCenterFailed: (historyId) => ipcRenderer.invoke('commandcenter:retryFailed', { historyId }),
   exportAgainCommandCenterMissing: (historyId) => ipcRenderer.invoke('commandcenter:exportAgainMissing', { historyId }),
 
+  // ── Workflow Automation (Phase 5J) ────────────────────────────────────────
+  getWorkflowSummary: (options) => ipcRenderer.invoke('workflow:getSummary', options),
+  validateWorkflowEligibility: (actionType, recordIds) => ipcRenderer.invoke('workflow:validateEligibility', { actionType, recordIds }),
+  planWorkflowBulk: (actionType, recordIds) => ipcRenderer.invoke('workflow:planBulk', { actionType, recordIds }),
+  executeWorkflowBulk: (actionType, recordIds) => ipcRenderer.invoke('workflow:executeBulk', { actionType, recordIds }),
+  validateWorkflowSnapshot: (recordId) => ipcRenderer.invoke('workflow:validateSnapshot', { recordId }),
+
   // ── Auto-Updater ───────────────────────────────────────────────────────────
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

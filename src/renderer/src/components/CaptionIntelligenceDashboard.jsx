@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { formatDateTime } from '../utils/formatDateTime.mjs';
 
 /**
  * CaptionIntelligenceDashboard — Phase 4B-7
@@ -403,7 +404,7 @@ export default function CaptionIntelligenceDashboard({
                             <div className="flex-1 min-w-0 pr-4">
                               <p className="text-sm text-gray-200 truncate">{rec.caption}</p>
                               <span className="text-xs text-gray-500">
-                                {new Date(rec.createdAt).toLocaleDateString()} • {rec.platform || 'General'}
+                                {formatDateTime(rec.createdAt)} • {rec.platform || 'General'}
                               </span>
                             </div>
                             <div className="flex items-center gap-3">
@@ -531,7 +532,7 @@ export default function CaptionIntelligenceDashboard({
                           {rec.caption}
                         </p>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                          <span>{new Date(rec.createdAt).toLocaleDateString()}</span>
+                          <span>{formatDateTime(rec.createdAt)}</span>
                           {rec.platform && (
                             <span className="bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded capitalize">
                               {rec.platform}
