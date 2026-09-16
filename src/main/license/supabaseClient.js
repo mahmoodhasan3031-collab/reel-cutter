@@ -2,8 +2,10 @@ require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
 // ─── Environment Configuration ───────────────────────────────────────────────
+// The Electron client MUST use the anon/public key only.
+// The service-role key is for server-side use and must NEVER be bundled into the client.
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
 
 // Detect packaged production build — mock DB must never be used in production
 let isPackaged = false;
@@ -125,14 +127,12 @@ async function fetchLicense(licenseKey) {
 
   const normalizedKey = licenseKey.trim().toUpperCase();
 
-  // If remote Supabase client is configured, query remote
+  // If remote Supabase client is configured, query via RPC function
+  // RPC functions run as SECURITY DEFINER and enforce least-privilege access
   if (remoteClient) {
     try {
       const { data, error } = await remoteClient
-        .from('licenses')
-        .select('*')
-        .eq('license_key', normalizedKey)
-        .maybeSingle();
+        .rpc('fetch_license_by_key', { p_license_key: normalizedKey });
 
       if (error) {
         if (isNetworkError(error)) {
@@ -141,7 +141,9 @@ async function fetchLicense(licenseKey) {
         return { data: null, error: error.message, isOffline: false };
       }
 
-      return { data, error: null, isOffline: false };
+      // RPC returns an array; we need a single record
+      const record = Array.isArray(data) ? data[0] : data;
+      return { data: record || null, error: null, isOffline: false };
     } catch (err) {
       if (isNetworkError(err)) {
         return { data: null, error: err.message, isOffline: true };
@@ -178,11 +180,7 @@ async function bindLicenseHwid(licenseKey, hwid) {
   if (remoteClient) {
     try {
       const { data, error } = await remoteClient
-        .from('licenses')
-        .update({ hwid, updated_at: new Date().toISOString() })
-        .eq('license_key', normalizedKey)
-        .select()
-        .single();
+        .rpc('bind_license_hwid', { p_license_key: normalizedKey, p_hwid: hwid });
 
       if (error) {
         if (isNetworkError(error)) {
@@ -191,7 +189,12 @@ async function bindLicenseHwid(licenseKey, hwid) {
         return { success: false, data: null, error: error.message, isOffline: false };
       }
 
-      return { success: true, data, error: null, isOffline: false };
+      // RPC returns an array; we need a single record
+      const record = Array.isArray(data) ? data[0] : data;
+      if (!record) {
+        return { success: false, data: null, error: 'License key not found or already bound', isOffline: false };
+      }
+      return { success: true, data: record, error: null, isOffline: false };
     } catch (err) {
       if (isNetworkError(err)) {
         return { success: false, data: null, error: err.message, isOffline: true };
