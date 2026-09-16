@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Sparkles, Layers, Lock, Play, Image, CheckCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { Sparkles, Layers, Lock, Play, Image, CheckCircle, ArrowRight, Loader2, BookOpen } from 'lucide-react';
 
 export default function ProFeaturePlaceholder({ type = 'ai_thumbnails', isUnlocked, onOpenUpgrade, videoPath }) {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
 
   const isThumbnails = type === 'ai_thumbnails';
-  const title = isThumbnails ? 'AI Thumbnails' : 'Batch Queue';
+  const isRecipes = type === 'workflow_recipes';
+  const title = isThumbnails ? 'AI Thumbnails' : isRecipes ? 'Workflow Recipes' : 'Batch Queue';
   const subtitle = isThumbnails
     ? 'AI-driven keyframe detector that analyzes motion and contrast to generate viral reel covers.'
+    : isRecipes
+    ? 'Reusable production configurations that combine export settings with profiles, presets, and captions into one-click workflows.'
     : 'Automate rendering of multiple video files and queued splits in the background.';
 
   const handleRunProAction = async () => {
@@ -40,6 +43,8 @@ export default function ProFeaturePlaceholder({ type = 'ai_thumbnails', isUnlock
           <h2 className="text-base font-semibold text-zinc-100 flex items-center gap-2">
             {isThumbnails ? (
               <Sparkles size={18} className="text-brand-400" />
+            ) : isRecipes ? (
+              <BookOpen size={18} className="text-brand-400" />
             ) : (
               <Layers size={18} className="text-brand-400" />
             )}
@@ -56,7 +61,13 @@ export default function ProFeaturePlaceholder({ type = 'ai_thumbnails', isUnlock
       {!isUnlocked ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 flex flex-col items-center text-center relative overflow-hidden">
           <div className="w-14 h-14 rounded-2xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 mb-4 shadow-inner">
-            <Lock size={24} className="text-brand-400" />
+            {isThumbnails ? (
+              <Lock size={24} className="text-brand-400" />
+            ) : isRecipes ? (
+              <BookOpen size={24} className="text-brand-400" />
+            ) : (
+              <Lock size={24} className="text-brand-400" />
+            )}
           </div>
 
           <h3 className="text-sm font-bold text-zinc-100 mb-1">

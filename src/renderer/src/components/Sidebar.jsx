@@ -13,6 +13,7 @@ import {
   Calendar,
   BarChart3,
   LayoutDashboard,
+  BookOpen,
 } from 'lucide-react'
 
 const NAV = [
@@ -23,6 +24,7 @@ const NAV = [
   { id: 'split',          label: 'Split',         icon: SplitSquareHorizontal },
   { id: 'profiles',       label: 'Page Profiles', icon: Globe },
   { id: 'schedule',       label: 'Schedule',      icon: Calendar },
+  { id: 'workflow_recipes', label: 'Recipes',     icon: BookOpen,  pro: true },
   { id: 'ai_thumbnails',  label: 'AI Thumbnails', icon: Sparkles, pro: true },
   { id: 'batch_queue',    label: 'Batch Queue',   icon: Layers,   pro: true },
   { id: 'command_center', label: 'Command Center', icon: LayoutDashboard, pro: true },
@@ -52,7 +54,7 @@ export default function Sidebar({ view, setView, hasVideo, licenseTier = 'standa
       <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
         {NAV.map(({ id, label, icon: Icon, pro }) => {
           const isActive = view === id
-          const disabled = id !== 'drop' && id !== 'settings' && id !== 'ai_thumbnails' && id !== 'batch_queue' && id !== 'profiles' && id !== 'schedule' && id !== 'dashboard' && id !== 'command_center' && !hasVideo
+          const disabled = id !== 'drop' && id !== 'settings' && id !== 'ai_thumbnails' && id !== 'batch_queue' && id !== 'profiles' && id !== 'schedule' && id !== 'dashboard' && id !== 'command_center' && id !== 'workflow_recipes' && !hasVideo
           return (
             <button
               key={id}

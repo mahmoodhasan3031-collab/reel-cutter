@@ -7,6 +7,7 @@ export const FEATURE_KEYS = {
   AI_THUMBNAILS: 'ai_thumbnails',
   SMART_CROP: 'smart_crop',
   BATCH_QUEUE: 'batch_queue',
+  WORKFLOW_RECIPES: 'workflow_recipes',
 };
 
 const FEATURE_ALIASES = {
@@ -38,6 +39,10 @@ const FEATURE_ALIASES = {
   batch: FEATURE_KEYS.BATCH_QUEUE,
   batchqueue: FEATURE_KEYS.BATCH_QUEUE,
   batchQueue: FEATURE_KEYS.BATCH_QUEUE,
+
+  'workflow recipes': FEATURE_KEYS.WORKFLOW_RECIPES,
+  workflow_recipes: FEATURE_KEYS.WORKFLOW_RECIPES,
+  recipes: FEATURE_KEYS.WORKFLOW_RECIPES,
 };
 
 export const TIER_HIERARCHY = {
@@ -61,6 +66,7 @@ export const TIER_HIERARCHY = {
     FEATURE_KEYS.AI_THUMBNAILS,
     FEATURE_KEYS.SMART_CROP,
     FEATURE_KEYS.BATCH_QUEUE,
+    FEATURE_KEYS.WORKFLOW_RECIPES,
   ],
 };
 
@@ -111,6 +117,12 @@ export const FEATURE_METADATA = [
     key: FEATURE_KEYS.BATCH_QUEUE,
     name: 'Batch Queue',
     description: 'Multi-video automated queue and bulk processing',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.WORKFLOW_RECIPES,
+    name: 'Workflow Recipes',
+    description: 'Reusable, immutable production configurations combining export settings with profiles, presets, and captions',
     minTier: 'pro',
   },
 ];

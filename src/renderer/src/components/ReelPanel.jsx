@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Film, CheckCircle, AlertCircle, FolderOpen, Lock, Sparkles } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Film, CheckCircle, AlertCircle, FolderOpen, Lock, Sparkles, BookOpen, X } from 'lucide-react'
 import ProgressBar from './ProgressBar'
 import { hasFeature } from '../utils/features'
 import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
@@ -74,6 +74,8 @@ export default function ReelPanel({
   thumbnailPreview,
   licenseTier = 'standard',
   onOpenUpgrade,
+  appliedRecipeSnapshot,
+  onClearRecipe,
 }) {
   const [aspectRatio, setAspectRatio] = useState('9:16')
   const [mode, setMode]               = useState('blur')
@@ -86,6 +88,15 @@ export default function ReelPanel({
   const [selectedExportPreset, setSelectedExportPreset] = useState(null)
   const [isPresetEditorOpen, setIsPresetEditorOpen] = useState(false)
   const [editingPreset, setEditingPreset] = useState(null)
+
+  // Apply recipe snapshot when it changes (Phase 5K)
+  useEffect(() => {
+    if (!appliedRecipeSnapshot || appliedRecipeSnapshot.recipeId == null) return
+    const s = appliedRecipeSnapshot
+    if (s.mode) setMode(s.mode)
+    if (s.aspectRatio) setAspectRatio(s.aspectRatio)
+    if (Array.isArray(s.textOverlays)) setTextOverlays(s.textOverlays)
+  }, [appliedRecipeSnapshot])
 
   const handleApplyExportPreset = (applied) => {
     if (!applied) return;
@@ -144,6 +155,21 @@ export default function ReelPanel({
         <Film size={18} className="text-brand-400" /> Make Reel
         <span className="ml-auto text-xs text-zinc-500 font-normal">Aspect: {aspectRatio}</span>
       </h2>
+
+      {/* Applied Recipe Indicator (Phase 5K) */}
+      {appliedRecipeSnapshot?.recipeName && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-brand-600/10 border border-brand-500/20 rounded-lg text-xs">
+          <BookOpen size={14} className="text-brand-400 shrink-0" />
+          <span className="text-brand-300 truncate">Recipe: {appliedRecipeSnapshot.recipeName}</span>
+          <button
+            onClick={onClearRecipe}
+            className="ml-auto p-0.5 text-zinc-500 hover:text-zinc-300 transition-colors"
+            title="Clear recipe"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Aspect Ratio Selector (Gated) */}
       <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 space-y-2">

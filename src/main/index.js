@@ -3311,3 +3311,153 @@ ipcMain.handle('export-preset:resolve', async (_, presetId) => {
     return { success: false, error: err.message }
   }
 })
+
+// ─── Workflow Recipe IPC (Phase 5K) ─────────────────────────────────────────
+
+const {
+  getWorkflowRecipes,
+  getWorkflowRecipe,
+  createWorkflowRecipe,
+  updateWorkflowRecipe,
+  deleteWorkflowRecipe,
+  duplicateWorkflowRecipe,
+  searchWorkflowRecipes,
+  filterWorkflowRecipes,
+  applyWorkflowRecipe,
+  incrementUsageCount,
+  resetWorkflowRecipes,
+  getRecipeUsageStats,
+} = require('./workflowRecipes/workflowRecipeManager')
+
+async function checkWorkflowRecipeAccess() {
+  const license = await getLicenseInfo()
+  const tier = license.isValid
+    ? license.tier
+    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  if (!hasFeature(tier, 'workflow_recipes')) {
+    return { authorized: false, error: 'Workflow Recipes requires Pro license tier.' }
+  }
+  return { authorized: true, tier }
+}
+
+ipcMain.handle('workflow-recipe:list', async () => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const recipes = getWorkflowRecipes()
+    return { success: true, recipes }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow-recipe:get', async (_, id) => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const recipe = getWorkflowRecipe(id)
+    return { success: true, recipe }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow-recipe:create', async (_, data) => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const recipe = createWorkflowRecipe(data)
+    return { success: true, recipe }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow-recipe:update', async (_, { id, data }) => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const recipe = updateWorkflowRecipe(id, data)
+    return { success: true, recipe }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow-recipe:delete', async (_, id) => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const result = deleteWorkflowRecipe(id)
+    return { success: true, ...result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow-recipe:duplicate', async (_, { id, overrides }) => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const recipe = duplicateWorkflowRecipe(id, overrides)
+    return { success: true, recipe }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow-recipe:search', async (_, query) => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const recipes = searchWorkflowRecipes(query)
+    return { success: true, recipes }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow-recipe:filter', async (_, filters) => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const recipes = filterWorkflowRecipes(filters)
+    return { success: true, recipes }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow-recipe:apply', async (_, recipeId) => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const config = applyWorkflowRecipe(recipeId)
+    incrementUsageCount(recipeId)
+    return { success: true, config }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow-recipe:stats', async () => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const stats = getRecipeUsageStats()
+    return { success: true, stats }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('workflow-recipe:reset', async () => {
+  try {
+    const auth = await checkWorkflowRecipeAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    const recipes = resetWorkflowRecipes()
+    return { success: true, recipes }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})

@@ -47,6 +47,9 @@ const tests = [
   'bug-fix-export-persistence.test.js',
   'bug-fix-batch-queue-history.test.js',
   'ui-timestamp-improvement.test.js',
+  'workflow-recipes.test.js',
+  'workflow-recipe-integration.test.js',
+  'phase5k-bugfix.test.js',
 ];
 
 console.log('======================================================');

@@ -265,6 +265,19 @@ contextBridge.exposeInMainWorld('api', {
   getUpdateStatus: () => ipcRenderer.invoke('updater:getStatus'),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
 
+  // ── Workflow Recipes (Phase 5K) ──────────────────────────────────────────
+  getWorkflowRecipes: () => ipcRenderer.invoke('workflow-recipe:list'),
+  getWorkflowRecipe: (id) => ipcRenderer.invoke('workflow-recipe:get', id),
+  createWorkflowRecipe: (data) => ipcRenderer.invoke('workflow-recipe:create', data),
+  updateWorkflowRecipe: (id, data) => ipcRenderer.invoke('workflow-recipe:update', { id, data }),
+  deleteWorkflowRecipe: (id) => ipcRenderer.invoke('workflow-recipe:delete', id),
+  duplicateWorkflowRecipe: (id, overrides) => ipcRenderer.invoke('workflow-recipe:duplicate', { id, overrides }),
+  searchWorkflowRecipes: (query) => ipcRenderer.invoke('workflow-recipe:search', query),
+  filterWorkflowRecipes: (filters) => ipcRenderer.invoke('workflow-recipe:filter', filters),
+  applyWorkflowRecipe: (recipeId) => ipcRenderer.invoke('workflow-recipe:apply', recipeId),
+  getWorkflowRecipeStats: () => ipcRenderer.invoke('workflow-recipe:stats'),
+  resetWorkflowRecipes: () => ipcRenderer.invoke('workflow-recipe:reset'),
+
   // ── Push Events (Main → Renderer) ─────────────────────────────────────────
   onProgress: (cb) => ipcRenderer.on('video:progress', (_, data) => cb(data)),
   onDone: (cb) => ipcRenderer.on('video:done', (_, data) => cb(data)),

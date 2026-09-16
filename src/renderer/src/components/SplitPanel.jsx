@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { SplitSquareHorizontal, FolderOpen, CheckCircle, AlertCircle, Film, Sparkles, Lock, Image } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { SplitSquareHorizontal, FolderOpen, CheckCircle, AlertCircle, Film, Sparkles, Lock, Image, BookOpen, X } from 'lucide-react'
 import ProgressBar from './ProgressBar'
 import { hasFeature } from '../utils/features'
 import ContentVariationSection, { DEFAULT_VARIATION_STATE } from './ContentVariationSection'
@@ -18,6 +18,8 @@ export default function SplitPanel({
   segments = [],
   licenseTier = 'standard',
   onOpenUpgrade,
+  appliedRecipeSnapshot,
+  onClearRecipe,
 }) {
   const [interval, setInterval]   = useState(30)
   const [asReel, setAsReel]       = useState(true)
@@ -31,6 +33,15 @@ export default function SplitPanel({
   const [isBulkExecuting, setIsBulkExecuting] = useState(false)
 
   const canThumbnail = hasFeature(licenseTier, 'ai_thumbnails')
+
+  // Apply recipe snapshot when it changes (Phase 5K)
+  useEffect(() => {
+    if (!appliedRecipeSnapshot || appliedRecipeSnapshot.recipeId == null) return
+    const s = appliedRecipeSnapshot
+    if (s.mode) setMode(s.mode)
+    if (s.interval) setInterval(s.interval)
+    if (Array.isArray(s.textOverlays)) setTextOverlays(s.textOverlays)
+  }, [appliedRecipeSnapshot])
 
   const totalDuration  = metadata?.duration || 0
   const estimatedCount = totalDuration > 0 ? Math.ceil(totalDuration / interval) : 0
@@ -63,6 +74,21 @@ export default function SplitPanel({
       <h2 className="text-base font-semibold text-zinc-100 flex items-center gap-2">
         <SplitSquareHorizontal size={18} className="text-brand-400" /> Split Video
       </h2>
+
+      {/* Applied Recipe Indicator (Phase 5K) */}
+      {appliedRecipeSnapshot?.recipeName && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-brand-600/10 border border-brand-500/20 rounded-lg text-xs">
+          <BookOpen size={14} className="text-brand-400 shrink-0" />
+          <span className="text-brand-300 truncate">Recipe: {appliedRecipeSnapshot.recipeName}</span>
+          <button
+            onClick={onClearRecipe}
+            className="ml-auto p-0.5 text-zinc-500 hover:text-zinc-300 transition-colors"
+            title="Clear recipe"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Interval slider */}
       <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 space-y-3">

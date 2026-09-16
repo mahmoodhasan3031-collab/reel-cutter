@@ -16,6 +16,8 @@ import PageProfilesPanel from './components/PageProfilesPanel'
 import SchedulePanel from './components/SchedulePanel'
 import ExportIntelligenceDashboard from './components/ExportIntelligenceDashboard'
 import ExportCommandCenter from './components/ExportCommandCenter'
+import WorkflowRecipeSelector from './components/WorkflowRecipeSelector'
+import WorkflowRecipeEditor from './components/WorkflowRecipeEditor'
 import UpdateNotification from './components/UpdateNotification'
 import { Loader2 } from 'lucide-react'
 import { hasFeature } from './utils/features'
@@ -33,6 +35,11 @@ export default function App() {
   const [thumbnailPreview, setThumbnailPreview] = useState(null)
   const [segments, setSegments] = useState([])
   const activeExportOpRef = useRef(null)
+
+  // ─── Workflow Recipe State (Phase 5K) ─────────────────────────────────────
+  const [isRecipeEditorOpen, setIsRecipeEditorOpen] = useState(false)
+  const [editingRecipe, setEditingRecipe] = useState(null)
+  const [appliedRecipeSnapshot, setAppliedRecipeSnapshot] = useState(null)
 
   // ─── Upgrade Modal State ──────────────────────────────────────────────────
   const [upgradeModal, setUpgradeModal] = useState({
@@ -274,6 +281,74 @@ export default function App() {
   }, [isProcessing])
 
   const hasVideo = !!videoPath
+
+  // ─── Workflow Recipe Handlers (Phase 5K) ──────────────────────────────────
+  const handleApplyRecipe = useCallback((recipe) => {
+    if (!recipe) return
+    const snap = {
+      mode: recipe.outputSettings?.mode || 'blur',
+      aspectRatio: recipe.outputSettings?.aspectRatio || '9:16',
+      resolution: recipe.outputSettings?.resolution || '1080p',
+      interval: recipe.outputSettings?.interval,
+      textOverlays: Array.isArray(recipe.textOverlays) ? recipe.textOverlays : [],
+      recipeId: recipe.id,
+      recipeName: recipe.name,
+    }
+    setAppliedRecipeSnapshot(snap)
+    if (recipe.exportType && ['cut', 'reel', 'split'].includes(recipe.exportType)) {
+      setView(hasVideo ? recipe.exportType : 'drop')
+    }
+    window.api.applyWorkflowRecipe?.(recipe.id).catch(() => {})
+  }, [hasVideo])
+
+  const handleRecipeEditorSave = useCallback(async (recipeData) => {
+    try {
+      if (editingRecipe?.id && !editingRecipe?.isBuiltIn) {
+        await window.api.updateWorkflowRecipe(editingRecipe.id, recipeData)
+      } else {
+        await window.api.createWorkflowRecipe(recipeData)
+      }
+      setIsRecipeEditorOpen(false)
+      setEditingRecipe(null)
+    } catch (err) {
+      console.error('[App] Recipe save failed:', err)
+    }
+  }, [editingRecipe])
+
+  const handleRecipeEditorCancel = useCallback(() => {
+    setIsRecipeEditorOpen(false)
+    setEditingRecipe(null)
+  }, [])
+
+  const handleOpenRecipeEditor = useCallback((recipe = null) => {
+    setEditingRecipe(recipe)
+    setIsRecipeEditorOpen(true)
+  }, [])
+
+  const handleDeleteRecipe = useCallback(async (recipe) => {
+    if (!recipe || recipe.isBuiltIn) return
+    try {
+      await window.api.deleteWorkflowRecipe(recipe.id)
+    } catch (err) {
+      console.error('[App] Recipe delete failed:', err)
+    }
+  }, [])
+
+  const handleDuplicateRecipe = useCallback(async (recipe) => {
+    if (!recipe) return
+    try {
+      const dup = await window.api.duplicateWorkflowRecipe(recipe.id)
+      if (dup) {
+        setEditingRecipe(dup)
+        setIsRecipeEditorOpen(true)
+      }
+    } catch (err) {
+      console.error('[App] Recipe duplicate failed:', err)
+    }
+  }, [])
+
+  const isRecipePro = hasFeature(licenseState.tier, 'workflow_recipes')
+
   const isPro = hasFeature(licenseState.tier, 'ai_thumbnails')
 
   const sharedProps = {
@@ -289,6 +364,8 @@ export default function App() {
     exportResult,
     exportError,
     thumbnailPreview,
+    appliedRecipeSnapshot,
+    onClearRecipe: () => setAppliedRecipeSnapshot(null),
   }
 
   // ─── 1. Checking Splash ─────────────────────────────────────────────────────
@@ -421,6 +498,45 @@ export default function App() {
             </div>
           )}
 
+          {/* Workflow Recipes (Phase 5K) */}
+          {view === 'workflow_recipes' && (
+            <div className="flex-1 overflow-y-auto p-6">
+              {isRecipePro ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-zinc-100">Workflow Recipes</h2>
+                    <button
+                      onClick={() => handleOpenRecipeEditor(null)}
+                      className="px-3 py-1.5 text-xs bg-brand-600 hover:bg-brand-500 text-white rounded transition-colors"
+                    >
+                      + New Recipe
+                    </button>
+                  </div>
+                  <WorkflowRecipeSelector
+                    onApply={handleApplyRecipe}
+                    onEdit={(r) => handleOpenRecipeEditor(r)}
+                    onCreate={() => handleOpenRecipeEditor(null)}
+                    onDelete={handleDeleteRecipe}
+                    onDuplicate={handleDuplicateRecipe}
+                  />
+                  {isRecipeEditorOpen && (
+                    <WorkflowRecipeEditor
+                      recipe={editingRecipe}
+                      onSave={handleRecipeEditorSave}
+                      onCancel={handleRecipeEditorCancel}
+                    />
+                  )}
+                </div>
+              ) : (
+                <ProFeaturePlaceholder
+                  type="workflow_recipes"
+                  isUnlocked={false}
+                  onOpenUpgrade={handleOpenUpgrade}
+                />
+              )}
+            </div>
+          )}
+
           {/* Drop view — full panel */}
           {view === 'drop' && (
             <VideoDropzone onFileLoaded={handleFileLoaded} />
@@ -435,6 +551,7 @@ export default function App() {
             view !== 'schedule' &&
             view !== 'dashboard' &&
             view !== 'command_center' &&
+            view !== 'workflow_recipes' &&
             hasVideo && (
               <div className="flex-1 overflow-y-auto p-6 space-y-5">
                 <VideoInfo
