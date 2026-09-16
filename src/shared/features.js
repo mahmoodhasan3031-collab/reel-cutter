@@ -30,6 +30,7 @@ const FEATURE_KEYS = {
   EXPORT_INTELLIGENCE_DASHBOARD: 'export_intelligence_dashboard',
   EXPORT_COMMAND_CENTER: 'export_command_center',
   WORKFLOW_RECIPES: 'workflow_recipes',
+  RECIPE_AUTOMATION: 'recipe_automation',
 };
 
 // Aliases mapping flexible string inputs (e.g. '4K export', 'Smart Crop') to internal keys
@@ -158,6 +159,13 @@ const FEATURE_ALIASES = {
   workflowRecipes: FEATURE_KEYS.WORKFLOW_RECIPES,
   'export recipes': FEATURE_KEYS.WORKFLOW_RECIPES,
   recipes: FEATURE_KEYS.WORKFLOW_RECIPES,
+
+  'recipe automation': FEATURE_KEYS.RECIPE_AUTOMATION,
+  recipe_automation: FEATURE_KEYS.RECIPE_AUTOMATION,
+  recipeautomation: FEATURE_KEYS.RECIPE_AUTOMATION,
+  recipeAutomation: FEATURE_KEYS.RECIPE_AUTOMATION,
+  'recipe bulk': FEATURE_KEYS.RECIPE_AUTOMATION,
+  'recipe schedule': FEATURE_KEYS.RECIPE_AUTOMATION,
 };
 
 const TIER_HIERARCHY = {
@@ -195,6 +203,7 @@ const TIER_HIERARCHY = {
     FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
     FEATURE_KEYS.EXPORT_COMMAND_CENTER,
     FEATURE_KEYS.WORKFLOW_RECIPES,
+    FEATURE_KEYS.RECIPE_AUTOMATION,
   ],
 };
 
@@ -329,6 +338,12 @@ const FEATURE_METADATA = [
     key: FEATURE_KEYS.WORKFLOW_RECIPES,
     name: 'Workflow Recipes',
     description: 'Save, manage, and apply reusable one-click export workflow recipes combining profiles, presets, captions, and output settings',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.RECIPE_AUTOMATION,
+    name: 'Recipe Automation',
+    description: 'Use workflow recipes to automate bulk multi-profile export, scheduling, and bulk scheduled export',
     minTier: 'pro',
   },
 ];

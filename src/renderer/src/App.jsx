@@ -18,6 +18,7 @@ import ExportIntelligenceDashboard from './components/ExportIntelligenceDashboar
 import ExportCommandCenter from './components/ExportCommandCenter'
 import WorkflowRecipeSelector from './components/WorkflowRecipeSelector'
 import WorkflowRecipeEditor from './components/WorkflowRecipeEditor'
+import BulkScheduleModal from './components/BulkScheduleModal'
 import UpdateNotification from './components/UpdateNotification'
 import { Loader2 } from 'lucide-react'
 import { hasFeature } from './utils/features'
@@ -40,6 +41,10 @@ export default function App() {
   const [isRecipeEditorOpen, setIsRecipeEditorOpen] = useState(false)
   const [editingRecipe, setEditingRecipe] = useState(null)
   const [appliedRecipeSnapshot, setAppliedRecipeSnapshot] = useState(null)
+
+  // ─── Bulk Schedule Modal State (Phase 5L bug fix) ─────────────────────────
+  const [isBulkScheduleModalOpen, setIsBulkScheduleModalOpen] = useState(false)
+  const [bulkScheduleRecipe, setBulkScheduleRecipe] = useState(null)
 
   // ─── Upgrade Modal State ──────────────────────────────────────────────────
   const [upgradeModal, setUpgradeModal] = useState({
@@ -347,6 +352,27 @@ export default function App() {
     }
   }, [])
 
+  // ─── Recipe Automation Handlers (Phase 5L) ─────────────────────────────────
+  const isRecipeAutomationPro = hasFeature(licenseState.tier, 'recipe_automation')
+
+  const handleRecipeBulkExport = useCallback(async (recipe) => {
+    if (!recipe) return
+    setEditingRecipe(recipe)
+    setView('batch_queue')
+  }, [])
+
+  const handleRecipeSchedule = useCallback(async (recipe) => {
+    if (!recipe) return
+    setEditingRecipe(recipe)
+    setView('schedule')
+  }, [])
+
+  const handleRecipeBulkSchedule = useCallback(async (recipe) => {
+    if (!recipe) return
+    setBulkScheduleRecipe(recipe)
+    setIsBulkScheduleModalOpen(true)
+  }, [])
+
   const isRecipePro = hasFeature(licenseState.tier, 'workflow_recipes')
 
   const isPro = hasFeature(licenseState.tier, 'ai_thumbnails')
@@ -518,6 +544,9 @@ export default function App() {
                     onCreate={() => handleOpenRecipeEditor(null)}
                     onDelete={handleDeleteRecipe}
                     onDuplicate={handleDuplicateRecipe}
+                    onBulkExport={isRecipeAutomationPro ? handleRecipeBulkExport : undefined}
+                    onSchedule={isRecipeAutomationPro ? handleRecipeSchedule : undefined}
+                    onBulkSchedule={isRecipeAutomationPro ? handleRecipeBulkSchedule : undefined}
                   />
                   {isRecipeEditorOpen && (
                     <WorkflowRecipeEditor
@@ -583,6 +612,21 @@ export default function App() {
         requiredTier={upgradeModal.requiredTier}
         featureName={upgradeModal.featureName}
       />
+
+      {/* Bulk Schedule Modal (Phase 5L bug fix) */}
+      {isBulkScheduleModalOpen && bulkScheduleRecipe && (
+        <BulkScheduleModal
+          recipe={bulkScheduleRecipe}
+          onClose={() => {
+            setIsBulkScheduleModalOpen(false)
+            setBulkScheduleRecipe(null)
+          }}
+          onCreated={() => {
+            setIsBulkScheduleModalOpen(false)
+            setBulkScheduleRecipe(null)
+          }}
+        />
+      )}
     </div>
   )
 }

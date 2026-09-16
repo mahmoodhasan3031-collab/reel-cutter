@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, Filter, Play, Copy, Edit3, Trash2, RotateCcw, ChevronDown, ChevronRight, Clock, Hash } from 'lucide-react';
+import { Search, Filter, Play, Copy, Edit3, Trash2, RotateCcw, ChevronDown, ChevronRight, Clock, Hash, Layers, Calendar, Clock as ClockIcon } from 'lucide-react';
 
 /**
- * WorkflowRecipeSelector — Phase 5K
+ * WorkflowRecipeSelector — Phase 5K/5L
  *
  * Recipe browser with search, filter, preview, and actions.
  * Applying a recipe copies a snapshot — manual changes after do NOT mutate the recipe.
+ * Phase 5L: Added Bulk Export, Schedule, and Bulk Schedule actions.
  */
 
-export default function WorkflowRecipeSelector({ onApply, onEdit, onCreate, onDelete, onDuplicate }) {
+export default function WorkflowRecipeSelector({ onApply, onEdit, onCreate, onDelete, onDuplicate, onBulkExport, onSchedule, onBulkSchedule }) {
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -179,6 +180,24 @@ export default function WorkflowRecipeSelector({ onApply, onEdit, onCreate, onDe
                       className="flex items-center gap-1 px-2 py-1 text-[10px] bg-green-600/20 text-green-400 border border-green-500/30 rounded hover:bg-green-600/30 transition-colors"
                     >
                       <Play size={10} /> Apply
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onBulkExport?.(recipe); }}
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] bg-purple-600/20 text-purple-400 border border-purple-500/30 rounded hover:bg-purple-600/30 transition-colors"
+                    >
+                      <Layers size={10} /> Bulk Export
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onSchedule?.(recipe); }}
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded hover:bg-blue-600/30 transition-colors"
+                    >
+                      <Calendar size={10} /> Schedule
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onBulkSchedule?.(recipe); }}
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] bg-orange-600/20 text-orange-400 border border-orange-500/30 rounded hover:bg-orange-600/30 transition-colors"
+                    >
+                      <ClockIcon size={10} /> Bulk Schedule
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); onDuplicate?.(recipe); }}

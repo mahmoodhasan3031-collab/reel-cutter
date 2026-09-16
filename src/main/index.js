@@ -3461,3 +3461,58 @@ ipcMain.handle('workflow-recipe:reset', async () => {
     return { success: false, error: err.message }
   }
 })
+
+// ─── Recipe Automation IPC (Phase 5L) ────────────────────────────────────────
+
+const {
+  createRecipeBulkPlan,
+  createRecipeSchedule,
+  createRecipeBulkSchedule,
+} = require('./workflowRecipes/recipeAutomation')
+
+async function checkRecipeAutomationAccess() {
+  const license = await getLicenseInfo()
+  const tier = license.isValid
+    ? license.tier
+    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  if (!hasFeature(tier, 'recipe_automation')) {
+    return { authorized: false, error: 'Recipe Automation requires Pro license tier.' }
+  }
+  return { authorized: true, tier }
+}
+
+ipcMain.handle('recipe-automation:createBulkPlan', async (_, input) => {
+  try {
+    const auth = await checkRecipeAutomationAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    if (!input || typeof input !== 'object') return { success: false, error: 'Invalid input' }
+    const plan = createRecipeBulkPlan(input)
+    return { success: true, plan }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recipe-automation:createSchedule', async (_, input) => {
+  try {
+    const auth = await checkRecipeAutomationAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    if (!input || typeof input !== 'object') return { success: false, error: 'Invalid input' }
+    const schedule = createRecipeSchedule(input)
+    return { success: true, schedule }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('recipe-automation:createBulkSchedule', async (_, input) => {
+  try {
+    const auth = await checkRecipeAutomationAccess()
+    if (!auth.authorized) return { success: false, error: auth.error, requiresUpgrade: true }
+    if (!input || typeof input !== 'object') return { success: false, error: 'Invalid input' }
+    const result = createRecipeBulkSchedule(input)
+    return { success: true, result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})

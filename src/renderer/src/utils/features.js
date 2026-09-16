@@ -8,6 +8,7 @@ export const FEATURE_KEYS = {
   SMART_CROP: 'smart_crop',
   BATCH_QUEUE: 'batch_queue',
   WORKFLOW_RECIPES: 'workflow_recipes',
+  RECIPE_AUTOMATION: 'recipe_automation',
 };
 
 const FEATURE_ALIASES = {
@@ -43,6 +44,13 @@ const FEATURE_ALIASES = {
   'workflow recipes': FEATURE_KEYS.WORKFLOW_RECIPES,
   workflow_recipes: FEATURE_KEYS.WORKFLOW_RECIPES,
   recipes: FEATURE_KEYS.WORKFLOW_RECIPES,
+
+  'recipe automation': FEATURE_KEYS.RECIPE_AUTOMATION,
+  recipe_automation: FEATURE_KEYS.RECIPE_AUTOMATION,
+  recipeautomation: FEATURE_KEYS.RECIPE_AUTOMATION,
+  recipeAutomation: FEATURE_KEYS.RECIPE_AUTOMATION,
+  'recipe bulk': FEATURE_KEYS.RECIPE_AUTOMATION,
+  'recipe schedule': FEATURE_KEYS.RECIPE_AUTOMATION,
 };
 
 export const TIER_HIERARCHY = {
@@ -67,6 +75,7 @@ export const TIER_HIERARCHY = {
     FEATURE_KEYS.SMART_CROP,
     FEATURE_KEYS.BATCH_QUEUE,
     FEATURE_KEYS.WORKFLOW_RECIPES,
+    FEATURE_KEYS.RECIPE_AUTOMATION,
   ],
 };
 
@@ -123,6 +132,12 @@ export const FEATURE_METADATA = [
     key: FEATURE_KEYS.WORKFLOW_RECIPES,
     name: 'Workflow Recipes',
     description: 'Reusable, immutable production configurations combining export settings with profiles, presets, and captions',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.RECIPE_AUTOMATION,
+    name: 'Recipe Automation',
+    description: 'Use workflow recipes to automate bulk multi-profile export, scheduling, and bulk scheduled export',
     minTier: 'pro',
   },
 ];

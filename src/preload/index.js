@@ -278,6 +278,11 @@ contextBridge.exposeInMainWorld('api', {
   getWorkflowRecipeStats: () => ipcRenderer.invoke('workflow-recipe:stats'),
   resetWorkflowRecipes: () => ipcRenderer.invoke('workflow-recipe:reset'),
 
+  // ── Recipe Automation (Phase 5L) ──────────────────────────────────────────
+  createRecipeBulkPlan: (input) => ipcRenderer.invoke('recipe-automation:createBulkPlan', input),
+  createRecipeSchedule: (input) => ipcRenderer.invoke('recipe-automation:createSchedule', input),
+  createRecipeBulkSchedule: (input) => ipcRenderer.invoke('recipe-automation:createBulkSchedule', input),
+
   // ── Push Events (Main → Renderer) ─────────────────────────────────────────
   onProgress: (cb) => ipcRenderer.on('video:progress', (_, data) => cb(data)),
   onDone: (cb) => ipcRenderer.on('video:done', (_, data) => cb(data)),

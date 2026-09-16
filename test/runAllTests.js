@@ -50,6 +50,8 @@ const tests = [
   'workflow-recipes.test.js',
   'workflow-recipe-integration.test.js',
   'phase5k-bugfix.test.js',
+  'workflow-recipe-automation.test.js',
+  'phase5l-bulk-schedule-gui.test.js',
 ];
 
 console.log('======================================================');
