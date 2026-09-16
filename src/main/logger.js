@@ -184,7 +184,7 @@ const logger = {
    */
   warn(component, message) {
     writeLog('WARN', component, String(message));
-    console.warn(`[WARN] [${component}] ${message}`);
+    console.warn(`[WARN] [${component}] ${sanitize(message)}`);
   },
 
   /**
@@ -194,7 +194,7 @@ const logger = {
    */
   error(component, message) {
     writeLog('ERROR', component, String(message));
-    console.error(`[ERROR] [${component}] ${message}`);
+    console.error(`[ERROR] [${component}] ${sanitize(message)}`);
   },
 
   // ── Utilities ──────────────────────────────────────────────────────────────

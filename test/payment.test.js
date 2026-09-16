@@ -354,7 +354,7 @@ async function runPaymentTests() {
     const firstRes = await callWebhook(rawBody, headers);
     assert.strictEqual(firstRes.status, 200);
     assert.strictEqual(firstRes.data.received, true);
-    assert(firstRes.data.licenseKey, 'License key should be created on first call');
+    assert(firstRes.data.tier, 'Tier should be included in response');
 
     // Duplicate call with exact same event ID
     const secondRes = await callWebhook(rawBody, headers);

@@ -52,6 +52,8 @@ const tests = [
   'phase5k-bugfix.test.js',
   'workflow-recipe-automation.test.js',
   'phase5l-bulk-schedule-gui.test.js',
+  'security-audit.test.js',
+  'step17-security.test.js',
 ];
 
 console.log('======================================================');

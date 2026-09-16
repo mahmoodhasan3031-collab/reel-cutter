@@ -10,6 +10,11 @@ release/
 # Generated media and splits
 test-videos/
 
+# Environment secrets
+.env
+.env.*
+!.env.example
+
 # Logs & OS artifacts
 *.log
 npm-debug.log*

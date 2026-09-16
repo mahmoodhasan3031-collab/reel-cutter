@@ -5,6 +5,15 @@ const { createClient } = require('@supabase/supabase-js');
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
 
+// Detect packaged production build — mock DB must never be used in production
+let isPackaged = false;
+try {
+  const { app } = require('electron');
+  isPackaged = !!(app && app.isPackaged);
+} catch {
+  // Not in Electron context (tests, CLI) — mock DB remains available
+}
+
 let remoteClient = null;
 if (SUPABASE_URL && SUPABASE_KEY) {
   try {
@@ -141,7 +150,10 @@ async function fetchLicense(licenseKey) {
     }
   }
 
-  // Fallback to local mock database
+  // Fallback to local mock database (dev/test only — never in packaged builds)
+  if (isPackaged) {
+    return { data: null, error: 'License verification requires internet connection. Please check your network.', isOffline: true };
+  }
   const record = mockDb[normalizedKey];
   if (!record) {
     return { data: null, error: null, isOffline: false }; // not found
@@ -188,7 +200,10 @@ async function bindLicenseHwid(licenseKey, hwid) {
     }
   }
 
-  // Mock DB update
+  // Mock DB update (dev/test only — never in packaged builds)
+  if (isPackaged) {
+    return { success: false, data: null, error: 'License activation requires internet connection. Please check your network.', isOffline: true };
+  }
   const record = mockDb[normalizedKey];
   if (!record) {
     return { success: false, data: null, error: 'License key not found', isOffline: false };

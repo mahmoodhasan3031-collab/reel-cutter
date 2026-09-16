@@ -215,6 +215,17 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => mainWindow.show())
   mainWindow.on('closed', () => { mainWindow = null })
 
+  // ─── Navigation Security Guards ─────────────────────────────────────────────
+  // Prevent unexpected navigation away from the trusted renderer origin.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const currentURL = mainWindow.webContents.getURL()
+    if (url === currentURL) return
+    event.preventDefault()
+  })
+
+  // Prevent arbitrary renderer-created child windows.
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
   // ─── Renderer Crash Detection ──────────────────────────────────────────────
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     const { reason, exitCode } = details
@@ -327,6 +338,87 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
+// ─── Path Safety Helpers ──────────────────────────────────────────────────────
+
+/**
+ * Resolves a path and checks for traversal attacks (.. segments).
+ * Returns the resolved absolute path if safe, or null if the path is unsafe.
+ *
+ * @param {string} filePath
+ * @returns {string|null}
+ */
+function safePath(filePath) {
+  if (!filePath || typeof filePath !== 'string') return null
+  // Reject path traversal
+  if (filePath.includes('..')) return null
+  try {
+    return path.resolve(filePath)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Checks whether a file path has a known video/image extension.
+ * Used to prevent reading arbitrary system files via readImageBase64.
+ *
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+function isAllowedMediaExtension(filePath) {
+  const ext = path.extname(filePath).toLowerCase()
+  return [
+    '.mp4', '.mov', '.mkv', '.avi', '.webm', '.m4v', '.flv',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff',
+  ].includes(ext)
+}
+
+/**
+ * Validates a user-supplied video input path for FFmpeg/FFprobe/Sharp operations.
+ * Rejects traversal, non-media extensions, nonexistent paths, and directories.
+ *
+ * @param {string} filePath
+ * @returns {{ valid: boolean, path?: string, error?: string }}
+ */
+function validateVideoInputPath(filePath) {
+  const safe = safePath(filePath)
+  if (!safe) return { valid: false, error: 'Invalid file path.' }
+  if (!isAllowedMediaExtension(safe)) return { valid: false, error: 'Unsupported file format.' }
+  try {
+    const stat = fs.statSync(safe)
+    if (!stat.isFile()) return { valid: false, error: 'Path is not a file.' }
+  } catch {
+    return { valid: false, error: 'File not found.' }
+  }
+  return { valid: true, path: safe }
+}
+
+/**
+ * Validates a user-supplied output path (traversal protection only).
+ * Output paths are chosen by the user via save dialogs; we only ensure no traversal.
+ *
+ * @param {string} outputPath
+ * @returns {{ valid: boolean, path?: string, error?: string }}
+ */
+function validateVideoOutputPath(outputPath) {
+  const safe = safePath(outputPath)
+  if (!safe) return { valid: false, error: 'Invalid output path.' }
+  return { valid: true, path: safe }
+}
+
+/**
+ * Returns the effective license tier, gating test/development bypasses.
+ * In packaged production builds, only real license validation is trusted.
+ *
+ * @param {{ isValid: boolean, tier?: string }} licenseInfo
+ * @returns {string|null}
+ */
+function getEffectiveTier(licenseInfo) {
+  if (licenseInfo.isValid) return licenseInfo.tier
+  if (app.isPackaged) return null
+  if (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test') return 'pro'
+  return null
+}
 
 // ─── Window Controls (frameless) ─────────────────────────────────────────────
 
@@ -384,7 +476,9 @@ ipcMain.handle('video:saveFile', async (_, defaultName) => {
 
 ipcMain.handle('video:probe', async (_, filePath) => {
   try {
-    const metadata = await getVideoMetadata(filePath)
+    const inputCheck = validateVideoInputPath(filePath)
+    if (!inputCheck.valid) return { success: false, error: inputCheck.error }
+    const metadata = await getVideoMetadata(inputCheck.path)
     return { success: true, data: metadata }
   } catch (err) {
     return { success: false, error: err.message }
@@ -396,6 +490,11 @@ ipcMain.handle('video:probe', async (_, filePath) => {
 ipcMain.handle('video:cut', async (_, opts) => {
   const { inputPath, outputPath, start, duration, end, reel, mode, resolution, customDuration, generateThumbnail, thumbnailTitle, variation, textOverlays } = opts
   try {
+    const inputCheck = validateVideoInputPath(inputPath)
+    if (!inputCheck.valid) return { success: false, error: inputCheck.error }
+    const outputCheck = validateVideoOutputPath(outputPath)
+    if (!outputCheck.valid) return { success: false, error: outputCheck.error }
+
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
 
@@ -430,7 +529,7 @@ ipcMain.handle('video:cut', async (_, opts) => {
 
     markJobStarted()
     try {
-      const result = await cutClip(inputPath, outputPath, {
+      const result = await cutClip(inputCheck.path, outputCheck.path, {
         start,
         duration,
         end,
@@ -461,7 +560,7 @@ ipcMain.handle('video:cut', async (_, opts) => {
           const path = require('path')
           createExportHistoryRecord({
             exportType: 'cut',
-            source: { name: path.basename(inputPath), path: inputPath },
+            source: { name: path.basename(inputCheck.path), path: inputCheck.path },
             output: { path: result.outputPath, filename: path.basename(result.outputPath), directory: path.dirname(result.outputPath) },
             status: 'COMPLETED',
             settingsSnapshot: { start, duration, end, reel, mode, resolution, customDuration },
@@ -484,6 +583,11 @@ ipcMain.handle('video:cut', async (_, opts) => {
 ipcMain.handle('video:reel', async (_, opts) => {
   const { inputPath, outputPath, start, duration, mode, aspectRatio, generateThumbnail, thumbnailTitle, variation, textOverlays } = opts
   try {
+    const inputCheck = validateVideoInputPath(inputPath)
+    if (!inputCheck.valid) return { success: false, error: inputCheck.error }
+    const outputCheck = validateVideoOutputPath(outputPath)
+    if (!outputCheck.valid) return { success: false, error: outputCheck.error }
+
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
 
@@ -519,7 +623,7 @@ ipcMain.handle('video:reel', async (_, opts) => {
         validatedOverlays = validateTextOverlayConfig(textOverlays, { fallbackFont: true })
       }
 
-      const result = await cutClip(inputPath, outputPath, {
+      const result = await cutClip(inputCheck.path, outputCheck.path, {
         start: start || 0,
         duration,
         reel: true,
@@ -549,7 +653,7 @@ ipcMain.handle('video:reel', async (_, opts) => {
           const path = require('path')
           createExportHistoryRecord({
             exportType: 'reel',
-            source: { name: path.basename(inputPath), path: inputPath },
+            source: { name: path.basename(inputCheck.path), path: inputCheck.path },
             output: { path: result.outputPath, filename: path.basename(result.outputPath), directory: path.dirname(result.outputPath) },
             status: 'COMPLETED',
             settingsSnapshot: { mode, aspectRatio, start, duration },
@@ -572,6 +676,11 @@ ipcMain.handle('video:reel', async (_, opts) => {
 ipcMain.handle('video:split', async (_, opts) => {
   const { inputPath, outputDir, interval, reel, mode, generateThumbnail, thumbnailTitle, variation, textOverlays } = opts
   try {
+    const inputCheck = validateVideoInputPath(inputPath)
+    if (!inputCheck.valid) return { success: false, error: inputCheck.error }
+    const outputCheck = validateVideoOutputPath(outputDir)
+    if (!outputCheck.valid) return { success: false, error: outputCheck.error }
+
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
 
@@ -597,7 +706,7 @@ ipcMain.handle('video:split', async (_, opts) => {
 
     markJobStarted()
     try {
-      const results = await splitIntoReels(inputPath, outputDir, {
+      const results = await splitIntoReels(inputCheck.path, outputCheck.path, {
         interval: interval || 30,
         reel: reel !== false,
         mode: mode || 'blur',
@@ -620,7 +729,7 @@ ipcMain.handle('video:split', async (_, opts) => {
           mainWindow?.webContents.send('video:segment', segment)
         }
       })
-      const donePayload = { operation: 'split', segments: results, outputDir }
+      const donePayload = { operation: 'split', segments: results, outputDir: outputCheck.path }
       mainWindow?.webContents.send('video:done', donePayload)
 
       // Persist to export history (Bug #2 fix)
@@ -633,8 +742,8 @@ ipcMain.handle('video:split', async (_, opts) => {
             const segPath = seg.outputPath || seg.path || ''
             createExportHistoryRecord({
               exportType: 'split',
-              source: { name: pathLib.basename(inputPath), path: inputPath },
-              output: { path: segPath, filename: pathLib.basename(segPath), directory: pathLib.dirname(segPath) || outputDir },
+              source: { name: pathLib.basename(inputCheck.path), path: inputCheck.path },
+              output: { path: segPath, filename: pathLib.basename(segPath), directory: pathLib.dirname(segPath) || outputCheck.path },
               status: 'COMPLETED',
               settingsSnapshot: { interval, reel, mode },
             })
@@ -642,7 +751,7 @@ ipcMain.handle('video:split', async (_, opts) => {
         }
       } catch (_) { /* non-blocking */ }
 
-      return { success: true, segments: results, outputDir }
+      return { success: true, segments: results, outputDir: outputCheck.path }
     } finally {
       markJobFinished()
     }
@@ -657,6 +766,11 @@ ipcMain.handle('video:split', async (_, opts) => {
 ipcMain.handle('video:variation', async (_, opts) => {
   const { inputPath, outputPath, variation } = opts || {}
   try {
+    const inputCheck = validateVideoInputPath(inputPath)
+    if (!inputCheck.valid) return { success: false, error: inputCheck.error }
+    const outputCheck = validateVideoOutputPath(outputPath)
+    if (!outputCheck.valid) return { success: false, error: outputCheck.error }
+
     const license = await getLicenseInfo()
     const tier = license.isValid ? license.tier : null
 
@@ -669,8 +783,8 @@ ipcMain.handle('video:variation', async (_, opts) => {
     markJobStarted()
     try {
       const result = await runVariationPipeline({
-        inputPath,
-        outputPath,
+        inputPath: inputCheck.path,
+        outputPath: outputCheck.path,
         color: validatedVariation.color,
         audio: validatedVariation.audio,
         speed: validatedVariation.speedConfig,
@@ -704,8 +818,10 @@ ipcMain.handle('video:variation', async (_, opts) => {
 
 ipcMain.handle('video:readImageBase64', async (_, filePath) => {
   try {
-    if (!filePath || !fs.existsSync(filePath)) return null
-    const buf = await fs.promises.readFile(filePath)
+    const safe = safePath(filePath)
+    if (!safe || !isAllowedMediaExtension(safe)) return null
+    if (!fs.existsSync(safe)) return null
+    const buf = await fs.promises.readFile(safe)
     return `data:image/jpeg;base64,${buf.toString('base64')}`
   } catch {
     return null
@@ -719,7 +835,11 @@ ipcMain.handle('video:generateThumbnail', async (_, opts) => {
     return { success: false, error: 'Pro Thumbnail generation requires a Pro license tier.' }
   }
   const { videoPath, thumbnailPath, title } = opts
-  return await generateProThumbnail(videoPath, thumbnailPath, { title })
+  const inputCheck = validateVideoInputPath(videoPath)
+  if (!inputCheck.valid) return { success: false, error: inputCheck.error }
+  const outputCheck = validateVideoOutputPath(thumbnailPath)
+  if (!outputCheck.valid) return { success: false, error: outputCheck.error }
+  return await generateProThumbnail(inputCheck.path, outputCheck.path, { title })
 })
 
 // ─── Pro Features: AI Thumbnails, Smart Crop, Batch Queue ───────────────────
@@ -750,9 +870,13 @@ ipcMain.handle('video:smartCrop', async (_, opts) => {
   // video:smartCrop is used by the UI to run a reel conversion with smart crop mode.
   // The actual face-tracking crop filter is built inside cutter.js / smartCrop.js.
   const { inputPath, outputPath, start, duration, generateThumbnail, thumbnailTitle } = opts
+  const inputCheck = validateVideoInputPath(inputPath)
+  if (!inputCheck.valid) return { success: false, error: inputCheck.error }
+  const outputCheck = validateVideoOutputPath(outputPath)
+  if (!outputCheck.valid) return { success: false, error: outputCheck.error }
   markJobStarted()
   try {
-    const result = await cutClip(inputPath, outputPath, {
+    const result = await cutClip(inputCheck.path, outputCheck.path, {
       start: start || 0,
       duration,
       reel: true,
@@ -910,7 +1034,8 @@ ipcMain.handle('batch:setConcurrency', async (_, concurrency) => {
 // ─── Open in Explorer ─────────────────────────────────────────────────────────
 
 ipcMain.on('shell:showItemInFolder', (_, filePath) => {
-  shell.showItemInFolder(filePath)
+  const safe = safePath(filePath)
+  if (safe) shell.showItemInFolder(safe)
 })
 
 // ─── Licensing & HWID IPC Handlers ───────────────────────────────────────────
@@ -1347,9 +1472,7 @@ import {
 
 async function checkExportHistoryAccess() {
   const license = await getLicenseInfo()
-  const tier = license.isValid
-    ? license.tier
-    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  const tier = getEffectiveTier(license)
 
   if (!hasFeature(tier, 'export_history')) {
     return { authorized: false, error: 'Export History & Organization requires Pro license tier.' }
@@ -2009,9 +2132,7 @@ ipcMain.handle('recovery:validateOpenable', async (_, { filePath } = {}) => {
 
 async function checkDashboardAccess() {
   const license = await getLicenseInfo()
-  const tier = license.isValid
-    ? license.tier
-    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  const tier = getEffectiveTier(license)
 
   if (!hasFeature(tier, 'export_intelligence_dashboard')) {
     return { authorized: false, error: 'Export Intelligence Dashboard requires Pro license tier.' }
@@ -2117,9 +2238,7 @@ ipcMain.handle('analytics:saveToFile', async (_, { format, options, defaultPath 
 
 async function checkCommandCenterAccess() {
   const license = await getLicenseInfo()
-  const tier = license.isValid
-    ? license.tier
-    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  const tier = getEffectiveTier(license)
 
   if (!hasFeature(tier, 'export_command_center')) {
     return { authorized: false, error: 'Export Command Center requires Pro license tier.' }
@@ -2493,9 +2612,7 @@ ipcMain.handle('caption-template:reset', async () => {
 
 async function checkAiCaptionProAccess() {
   const license = await getLicenseInfo()
-  const tier = license.isValid
-    ? license.tier
-    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  const tier = getEffectiveTier(license)
 
   if (!hasFeature(tier, 'ai_captions')) {
     return { authorized: false, error: 'AI Caption Generator requires Pro license tier.' }
@@ -2518,9 +2635,7 @@ ipcMain.handle('ai-caption:generate', async (_, rawRequest) => {
 ipcMain.handle('ai-caption:getStatus', async () => {
   try {
     const license = await getLicenseInfo()
-    const tier = license.isValid
-      ? license.tier
-      : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+    const tier = getEffectiveTier(license)
     const proUnlocked = hasFeature(tier, 'ai_captions')
     const aiStatus = getAiStatus()
     return {
@@ -2550,9 +2665,7 @@ ipcMain.handle('ai-caption:generateBulk', async (_, bulkInput) => {
 
 async function checkCaptionQualityProAccess() {
   const license = await getLicenseInfo()
-  const tier = license.isValid
-    ? license.tier
-    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  const tier = getEffectiveTier(license)
 
   if (!hasFeature(tier, 'caption_quality')) {
     return { authorized: false, error: 'Caption Quality & Intelligence requires Pro license tier.' }
@@ -2993,9 +3106,7 @@ ipcMain.handle('caption-experiment:bulk', async (_, bulkInput) => {
 
 async function checkVariationPresetsAccess() {
   const license = await getLicenseInfo()
-  const tier = license.isValid
-    ? license.tier
-    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  const tier = getEffectiveTier(license)
 
   if (!hasFeature(tier, 'variation_presets')) {
     return { authorized: false, error: 'Content Variation Presets requires Pro license tier.' }
@@ -3156,9 +3267,7 @@ ipcMain.handle('variation-preset:apply', async (_, { presetId, currentConfig } =
 
 async function checkExportPresetsAccess() {
   const license = await getLicenseInfo()
-  const tier = license.isValid
-    ? license.tier
-    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  const tier = getEffectiveTier(license)
 
   if (!hasFeature(tier, 'export_presets')) {
     return { authorized: false, error: 'Export Preset Manager requires Pro license tier.' }
@@ -3331,9 +3440,7 @@ const {
 
 async function checkWorkflowRecipeAccess() {
   const license = await getLicenseInfo()
-  const tier = license.isValid
-    ? license.tier
-    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  const tier = getEffectiveTier(license)
   if (!hasFeature(tier, 'workflow_recipes')) {
     return { authorized: false, error: 'Workflow Recipes requires Pro license tier.' }
   }
@@ -3472,9 +3579,7 @@ const {
 
 async function checkRecipeAutomationAccess() {
   const license = await getLicenseInfo()
-  const tier = license.isValid
-    ? license.tier
-    : (process.env.REEL_CUTTER_TEST_PRO === 'true' || process.env.NODE_ENV === 'test' ? 'pro' : null)
+  const tier = getEffectiveTier(license)
   if (!hasFeature(tier, 'recipe_automation')) {
     return { authorized: false, error: 'Recipe Automation requires Pro license tier.' }
   }

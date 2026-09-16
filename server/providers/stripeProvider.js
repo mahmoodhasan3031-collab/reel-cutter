@@ -92,9 +92,9 @@ class StripeProvider extends PaymentProvider {
         }
       }
 
-      // Default fallback if price was verified in metadata
+      // Reject if no valid tier could be determined from verified sources
       if (!tier) {
-        tier = 'standard';
+        return null;
       }
 
       return {
@@ -123,8 +123,9 @@ class StripeProvider extends PaymentProvider {
         }
       }
 
+      // Reject if no valid tier could be determined from verified sources
       if (!tier) {
-        tier = 'standard';
+        return null;
       }
 
       return {

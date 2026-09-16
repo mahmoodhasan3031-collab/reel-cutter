@@ -4,10 +4,10 @@ module.exports = {
   port: parseInt(process.env.PORT || '3001', 10),
   appDownloadUrl: process.env.APP_DOWNLOAD_URL || 'https://reelcutter.app/download',
 
-  // Stripe Configuration
+  // Stripe Configuration — reject startup if secrets are missing in production
   stripe: {
-    secretKey: process.env.STRIPE_SECRET_KEY || 'sk_test_mock_stripe_key',
-    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || 'whsec_mock_stripe_webhook_secret',
+    secretKey: process.env.STRIPE_SECRET_KEY || (process.env.NODE_ENV === 'production' ? (() => { throw new Error('STRIPE_SECRET_KEY is required in production') })() : 'sk_test_mock_stripe_key'),
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || (process.env.NODE_ENV === 'production' ? (() => { throw new Error('STRIPE_WEBHOOK_SECRET is required in production') })() : 'whsec_mock_stripe_webhook_secret'),
     priceIds: {
       [process.env.STRIPE_PRICE_BASIC || 'price_basic_10']: 'basic',
       [process.env.STRIPE_PRICE_STANDARD || 'price_standard_20']: 'standard',

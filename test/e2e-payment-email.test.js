@@ -188,10 +188,8 @@ async function runE2ETests() {
     assert.strictEqual(response.status, 200, `Expected 200, got ${response.status}`);
     assert.strictEqual(response.data.received, true);
 
-    // License key must be a valid XXXX-XXXX-XXXX-XXXX format
-    const { licenseKey, tier, emailStatus } = response.data;
-    assert.match(licenseKey, /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/,
-      'License key must match XXXX-XXXX-XXXX-XXXX format');
+    // Tier must be included in response
+    const { tier, emailStatus } = response.data;
     assert.strictEqual(tier, 'pro', 'Tier must be pro');
 
     // email_status in response must be sent OR pending (email delivered synchronously via deliverLicenseEmail)
@@ -201,7 +199,9 @@ async function runE2ETests() {
     // Verify record in in-memory storage
     const licenses = getInMemoryLicenses();
     assert.strictEqual(licenses.length, 1);
-    assert.strictEqual(licenses[0].license_key, licenseKey);
+    assert.ok(licenses[0].license_key, 'License key must be created');
+    assert.match(licenses[0].license_key, /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/,
+      'License key must match XXXX-XXXX-XXXX-XXXX format');
     assert.strictEqual(licenses[0].customer_email, SANDBOX_EMAIL);
     assert.strictEqual(licenses[0].transaction_id, 'pi_e2e_happy_001');
     assert.strictEqual(licenses[0].payment_provider, 'stripe');
@@ -446,7 +446,7 @@ async function runE2ETests() {
     const firstResponse = await callWebhook(rawBody, headers);
     assert.strictEqual(firstResponse.status, 200, 'First call must be 200');
     assert.strictEqual(firstResponse.data.received, true, 'First call must be received');
-    assert.ok(firstResponse.data.licenseKey, 'First call must create a license key');
+    assert.ok(firstResponse.data.tier, 'First call must include tier');
 
     // Second call — same event ID must be deduplicated
     const { rawBody: rawBody2, headers: headers2 } = createSignedStripePayload(eventPayload);

@@ -72,7 +72,6 @@ router.post(
 
       return res.status(200).json({
         received: true,
-        licenseKey: licenseResult.licenseKey,
         tier: licenseResult.tier,
         emailStatus: emailResult.email_status,
       });
