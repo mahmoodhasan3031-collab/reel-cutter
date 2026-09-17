@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { getHardwareIdSync } = require('./hwid');
 
 const LICENSE_FILENAME = 'license.enc';
-const SIGNING_SALT = 'reel-cutter-license-signing-v2';
+const SIGNING_SECRET_FILENAME = 'signing-secret.enc';
 
 /**
  * Gets the path to the encrypted license file.
@@ -25,7 +25,25 @@ function getLicenseFilePath(customDir) {
 }
 
 /**
+ * Gets the path to the encrypted signing secret file.
+ * @param {string} [customDir] Optional override for testing
+ * @returns {string}
+ */
+function getSigningSecretPath(customDir) {
+  if (customDir) {
+    return path.join(customDir, SIGNING_SECRET_FILENAME);
+  }
+  try {
+    const userDataPath = app?.getPath ? app.getPath('userData') : path.join(process.cwd(), '.appdata');
+    return path.join(userDataPath, SIGNING_SECRET_FILENAME);
+  } catch {
+    return path.join(process.cwd(), SIGNING_SECRET_FILENAME);
+  }
+}
+
+/**
  * Derives a 32-byte key from the hardware ID for AES-256-GCM fallback encryption.
+ * This key is used ONLY for encrypting/decrypting stored files — NOT for HMAC signing.
  * @returns {Buffer}
  */
 function deriveMachineKey() {
@@ -112,41 +130,137 @@ function decryptData(buffer) {
   }
 }
 
+// ─── Signing Secret Management ──────────────────────────────────────────────
+// The HMAC signing secret is a randomly generated 32-byte value stored encrypted
+// on disk. It is NOT derived from HWID, hostname, CPU, or any machine identifier.
+// HWID remains part of the signed payload but is NOT the signing key.
+
+let cachedSigningSecret = null;
+let cachedSigningSecretDir = null;
+
 /**
- * Derives a machine-specific signing key for HMAC signature.
- * Key separation: HMAC key is derived from HWID + separate salt, not raw HWID.
- * This ensures HWID is not used directly as a cryptographic key.
- * @returns {Buffer}
+ * Loads or generates a per-installation HMAC signing secret.
+ * Secret is randomly generated on first run, encrypted at rest, and cached in memory.
+ *
+ * @param {string} [customDir] Optional override for testing
+ * @returns {Buffer} 32-byte signing secret
  */
-function deriveSigningKey() {
-  const hwid = getHardwareIdSync();
-  return crypto.scryptSync(hwid, SIGNING_SALT, 32);
+function getOrCreateSigningSecret(customDir) {
+  const dirKey = customDir || '__default__';
+  if (cachedSigningSecret && cachedSigningSecretDir === dirKey) {
+    return cachedSigningSecret;
+  }
+
+  const secretPath = getSigningSecretPath(customDir);
+
+  // Try to load existing secret from disk
+  if (fs.existsSync(secretPath)) {
+    try {
+      const encrypted = fs.readFileSync(secretPath);
+      const hexSecret = decryptData(encrypted);
+      const secret = Buffer.from(hexSecret, 'hex');
+      if (secret.length === 32) {
+        cachedSigningSecret = secret;
+        cachedSigningSecretDir = dirKey;
+        return cachedSigningSecret;
+      }
+    } catch {
+      // Corrupt or unreadable — regenerate below
+    }
+  }
+
+  // Generate new 32-byte random signing secret
+  const secret = crypto.randomBytes(32);
+
+  // Persist encrypted on disk
+  try {
+    const dir = path.dirname(secretPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const encrypted = encryptData(secret.toString('hex'));
+    fs.writeFileSync(secretPath, encrypted);
+  } catch (err) {
+    console.warn('[LicenseStore] Failed to persist signing secret:', err.message);
+  }
+
+  cachedSigningSecret = secret;
+  cachedSigningSecretDir = dirKey;
+  return cachedSigningSecret;
 }
 
 /**
- * Computes an HMAC signature over payload to detect local tampering.
- * Includes security-relevant fields and timestamps for tamper protection.
+ * Returns the HMAC signing key for license integrity.
+ * Key source: securely generated random secret stored on disk.
+ * NOT derived from HWID or any machine identifier.
+ *
+ * @param {string} [customDir] Optional override for testing
+ * @returns {Buffer}
+ */
+function deriveSigningKey(customDir) {
+  return getOrCreateSigningSecret(customDir);
+}
+
+// ─── Canonical Serialization ────────────────────────────────────────────────
+
+/**
+ * Canonical deterministic serialization for HMAC payload.
+ * Uses sorted-key JSON with a fixed field set to avoid ambiguous string
+ * concatenation and field-boundary collisions.
+ *
  * @param {Object} data
  * @returns {string}
  */
-function computeSignature(data) {
-  const signingKey = deriveSigningKey();
-  const parts = [
-    data.licenseKey,
-    data.hwid,
-    data.tier,
-    data.status,
-    data.activatedAt,
-    data.lastValidatedAt || '',
-    data.lastSeenAt || '',
-  ];
-  const serialized = parts.join(':');
+function canonicalSerialize(data) {
+  const obj = {
+    activatedAt: data.activatedAt || '',
+    hwid: data.hwid || '',
+    lastSeenAt: data.lastSeenAt || '',
+    lastValidatedAt: data.lastValidatedAt || '',
+    licenseKey: data.licenseKey || '',
+    status: data.status || '',
+    tier: data.tier || '',
+  };
+  return JSON.stringify(obj);
+}
+
+// ─── Timing-Safe Signature Comparison ───────────────────────────────────────
+
+/**
+ * Compares two HMAC hex signatures using constant-time comparison
+ * to prevent timing side-channel attacks.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+function signaturesMatch(a, b) {
+  if (!a || !b || typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
+}
+
+// ─── Signature Computation ──────────────────────────────────────────────────
+
+/**
+ * Computes an HMAC-SHA256 signature over the license payload.
+ * Uses a securely generated random secret (not HWID) as the signing key.
+ * Payload includes all security-relevant fields with canonical JSON serialization.
+ *
+ * @param {Object} data
+ * @param {string} [customDir] Optional override for testing
+ * @returns {string} hex-encoded HMAC
+ */
+function computeSignature(data, customDir) {
+  const signingKey = deriveSigningKey(customDir);
+  const serialized = canonicalSerialize(data);
   return crypto.createHmac('sha256', signingKey).update(serialized).digest('hex');
 }
 
 /**
- * Computes HMAC using old format for backward compatibility with existing licenses.
- * Uses raw HWID as key and only includes 5 fields (no timestamps).
+ * Computes HMAC using legacy format for backward compatibility with existing licenses.
+ * Uses raw HWID as key and colon-separated 5-field payload (no timestamps).
+ *
  * @param {Object} data
  * @returns {string}
  */
@@ -156,8 +270,10 @@ function computeSignatureLegacy(data) {
   return crypto.createHmac('sha256', hwid).update(serialized).digest('hex');
 }
 
+// ─── License Persistence ────────────────────────────────────────────────────
+
 /**
- * Saves license record to encrypted local storage.
+ * Saves license record to encrypted local storage with integrity signature.
  * @param {Object} licenseData
  * @param {string} [customDir]
  */
@@ -170,7 +286,7 @@ function saveLicenseData(licenseData, customDir) {
 
   const payload = {
     ...licenseData,
-    signature: computeSignature(licenseData),
+    signature: computeSignature(licenseData, customDir),
     savedAt: new Date().toISOString(),
   };
 
@@ -181,6 +297,9 @@ function saveLicenseData(licenseData, customDir) {
 
 /**
  * Loads and decrypts license record from local storage.
+ * Verifies integrity signature (new format first, legacy fallback).
+ * Transparently upgrades legacy signatures and re-saves.
+ *
  * @param {string} [customDir]
  * @returns {Object|null}
  */
@@ -200,15 +319,19 @@ function loadLicenseData(customDir) {
     const data = JSON.parse(jsonString);
 
     // Verify signature — try new format first, fall back to legacy for backward compatibility
-    const expectedSig = computeSignature(data);
+    const expectedSig = computeSignature(data, customDir);
     const legacySig = computeSignatureLegacy(data);
-    if (data.signature !== expectedSig && data.signature !== legacySig) {
+
+    if (!signaturesMatch(data.signature, expectedSig) && !signaturesMatch(data.signature, legacySig)) {
       console.warn('[LicenseStore] Signature verification failed! Storage may have been tampered with.');
       return null;
     }
-    // Upgrade to new signature format on successful load
-    if (data.signature === legacySig && data.signature !== expectedSig) {
+
+    // Transparently upgrade legacy signature to new format
+    if (signaturesMatch(data.signature, legacySig) && !signaturesMatch(data.signature, expectedSig)) {
       data.signature = expectedSig;
+      // Re-save to persist the migrated format
+      saveLicenseData(data, customDir);
     }
 
     return data;
@@ -249,7 +372,10 @@ module.exports = {
   clearLicenseData,
   hasLicenseData,
   getLicenseFilePath,
+  getSigningSecretPath,
   computeSignature,
   computeSignatureLegacy,
   deriveSigningKey,
+  canonicalSerialize,
+  signaturesMatch,
 };

@@ -294,7 +294,7 @@ async function runTests() {
     const content = fs.readFileSync(storePath, 'utf8');
     
     // Verify HMAC verification exists
-    assert.ok(content.includes('signature !== expectedSig') || content.includes('signature !== expected'), 'HMAC verification should exist');
+    assert.ok(content.includes('signature !== expectedSig') || content.includes('signature !== expected') || content.includes('signaturesMatch('), 'HMAC verification should exist');
     assert.ok(content.includes('createHmac'), 'HMAC creation should exist');
   });
 

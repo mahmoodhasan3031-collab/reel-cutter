@@ -88,6 +88,7 @@ function isEventProcessed(eventId) {
 
 /**
  * Marks an event as processed and persists to disk.
+ * Called BEFORE license creation to prevent race conditions in concurrent delivery.
  * @param {string} eventId
  */
 function markEventProcessed(eventId) {
@@ -109,8 +110,26 @@ function markEventProcessed(eventId) {
 }
 
 /**
+ * Removes an event from the processed set (rollback on license creation failure).
+ * Allows Stripe to retry the delivery.
+ * @param {string} eventId
+ */
+function unmarkEventProcessed(eventId) {
+  processedEventMap.delete(eventId);
+  // Persist updated state to disk
+  const entries = Array.from(processedEventMap.entries()).map(([id, ts]) => ({ id, ts }));
+  persistIdempotencyCache(entries);
+}
+
+/**
  * Stripe webhook endpoint.
  * Note: Must receive raw Buffer body for signature verification!
+ *
+ * Idempotency strategy:
+ *   - Event is marked as processed BEFORE license creation (mark-before-create).
+ *   - If license creation fails, the mark is rolled back so Stripe can retry.
+ *   - The database transaction_id unique constraint provides a second line of defense
+ *     against duplicate license creation from concurrent delivery.
  */
 router.post(
   '/stripe',
@@ -136,16 +155,22 @@ router.post(
     const paymentDetails = stripeProvider.extractPaymentDetails(event);
 
     if (!paymentDetails) {
-      // Not a payment completion event (e.g. charge.updated, customer.created)
+      // Not a payment completion event — mark as processed (no side effects) and return
+      markEventProcessed(event.id);
       return res.status(200).json({ received: true, unhandledType: event.type });
     }
 
+    // 4. Mark event as processed BEFORE license creation.
+    //    This prevents race conditions from concurrent duplicate webhook delivery.
+    //    If license creation fails, the mark is rolled back for Stripe retry.
+    markEventProcessed(event.id);
+
     try {
-      const { customerEmail, tier, transactionId, eventId } = paymentDetails;
+      const { customerEmail, tier, transactionId } = paymentDetails;
 
       console.log(`[Webhook:Stripe] Processing payment for ${maskEmail(customerEmail)}: tier = ${tier}`);
 
-      // 4. Generate unique XXXX-XXXX-XXXX-XXXX license and insert into Supabase
+      // 5. Generate unique XXXX-XXXX-XXXX-XXXX license and insert into Supabase
       const licenseResult = await createLicense({
         tier,
         customerEmail,
@@ -153,14 +178,13 @@ router.post(
         paymentProvider: 'stripe',
       });
 
-      // 5. Send confirmation email and persist delivery status/attempts
+      // 6. Send confirmation email and persist delivery status/attempts
+      //    Email failure does NOT create a duplicate license — the license is already created.
+      //    Email can be retried independently via retryLicenseEmail.
       const emailResult = await deliverLicenseEmail(licenseResult.id);
       if (!emailResult.success) {
         console.warn(`[Webhook:Stripe] License email delivery failed for ${maskEmail(customerEmail)}: ${emailResult.error}`);
       }
-
-      // 6. Mark event as processed (durable — survives restarts)
-      markEventProcessed(event.id);
 
       return res.status(200).json({
         received: true,
@@ -168,6 +192,8 @@ router.post(
         emailStatus: emailResult.email_status,
       });
     } catch (err) {
+      // 7. Rollback: unmark event so Stripe can retry the delivery
+      unmarkEventProcessed(event.id);
       console.error(`[Webhook:Stripe] Error fulfilling order: ${err.message}`);
       return res.status(500).json({ error: 'Internal server error processing payment' });
     }

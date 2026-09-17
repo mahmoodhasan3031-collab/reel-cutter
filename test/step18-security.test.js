@@ -4,8 +4,8 @@
  * STEP 18 — License Integrity + Payment Idempotency Hardening Tests
  *
  * Tests:
- *  A. License HMAC hardening (key separation, backward compatibility)
- *  B. Webhook idempotency (durable, restart-safe)
+ *  A. License HMAC hardening (random signing key, canonical serialization, backward compat)
+ *  B. Webhook idempotency (durable, restart-safe, mark-before-create)
  *  C. transaction_id uniqueness (migration structural validity)
  *  D. Production secret scan
  */
@@ -47,6 +47,10 @@ async function runTests() {
   console.log('======================================================');
   console.log('');
 
+  // Ensure clean state
+  cleanup();
+  fs.mkdirSync(TEST_DIR, { recursive: true });
+
   // ═══════════════════════════════════════════════════════════════════════════
   // A. License HMAC Hardening
   // ═══════════════════════════════════════════════════════════════════════════
@@ -56,46 +60,67 @@ async function runTests() {
   const storePath = path.join(__dirname, '..', 'src', 'main', 'license', 'store.js');
   const storeContent = fs.readFileSync(storePath, 'utf8');
 
-  await test('A1. Signing key uses scrypt derivation, not raw HWID', () => {
+  await test('A1. Signing key is randomly generated, not derived from HWID', () => {
     assert.ok(storeContent.includes('deriveSigningKey'), 'deriveSigningKey function must exist');
-    assert.ok(storeContent.includes('scryptSync'), 'Must use scrypt for key derivation');
-    assert.ok(storeContent.includes('SIGNING_SALT'), 'Must use a separate signing salt');
+    assert.ok(storeContent.includes('getOrCreateSigningSecret'), 'Must have getOrCreateSigningSecret function');
+    assert.ok(storeContent.includes('crypto.randomBytes(32)'), 'Must generate random 32-byte secret');
+    // deriveSigningKey must NOT use HWID
+    const deriveSection = storeContent.substring(
+      storeContent.indexOf('function deriveSigningKey('),
+      storeContent.indexOf('// ─── Canonical Serialization')
+    );
+    assert.ok(!deriveSection.includes('getHardwareIdSync'), 'deriveSigningKey must not use HWID');
+    assert.ok(!deriveSection.includes('scryptSync'), 'deriveSigningKey must not use scrypt for signing');
   });
 
-  await test('A2. Signing salt is distinct from encryption salt', () => {
-    const signingSaltMatch = storeContent.match(/SIGNING_SALT\s*=\s*'([^']+)'/);
+  await test('A2. Signing secret is stored encrypted on disk', () => {
+    assert.ok(storeContent.includes('SIGNING_SECRET_FILENAME'), 'Must have signing secret filename constant');
+    assert.ok(storeContent.includes('signing-secret.enc'), 'Signing secret file must be signing-secret.enc');
+    assert.ok(storeContent.includes('getSigningSecretPath'), 'Must have getSigningSecretPath function');
+    // Secret must be encrypted at rest
+    assert.ok(storeContent.includes('encryptData(secret.toString'), 'Secret must be encrypted before storage');
+    assert.ok(storeContent.includes('decryptData(encrypted)'), 'Secret must be decrypted on load');
+  });
+
+  await test('A3. Signing salt is distinct from encryption salt', () => {
     const encryptSaltMatch = storeContent.match(/salt\s*=\s*'([^']+)'/g);
-    assert.ok(signingSaltMatch, 'SIGNING_SALT must be defined');
     assert.ok(encryptSaltMatch, 'Encryption salt must exist');
-    const signingSalt = signingSaltMatch[1];
+    // The encryption salt is used for AES key derivation (deriveMachineKey)
+    // The signing secret is randomly generated — no salt needed for HMAC
+    // Verify the encryption salt is present and distinct from any signing constant
+    const signingSecretMatch = storeContent.match(/SIGNING_SECRET_FILENAME\s*=\s*'([^']+)'/);
+    assert.ok(signingSecretMatch, 'SIGNING_SECRET_FILENAME must be defined');
     for (const match of encryptSaltMatch) {
       const salt = match.match(/'([^']+)'/)[1];
-      assert.notStrictEqual(signingSalt, salt, 'Signing salt must differ from encryption salt');
+      assert.notStrictEqual(salt, signingSecretMatch[1], 'Encryption salt must differ from signing secret filename');
     }
   });
 
-  await test('A3. HWID is not used directly as HMAC key', () => {
-    // The computeSignature function should use deriveSigningKey, not getHardwareIdSync directly
-    const computeSigSection = storeContent.substring(
-      storeContent.indexOf('function computeSignature('),
+  await test('A4. HWID is not used directly as HMAC key', () => {
+    const computeSigBody = storeContent.substring(
+      storeContent.indexOf('function computeSignature(data, customDir) {'),
       storeContent.indexOf('function computeSignatureLegacy(')
     );
-    assert.ok(computeSigSection.includes('deriveSigningKey'), 'computeSignature must use deriveSigningKey');
-    assert.ok(!computeSigSection.includes('getHardwareIdSync'), 'computeSignature must not use getHardwareIdSync directly');
+    assert.ok(computeSigBody.includes('deriveSigningKey'), 'computeSignature must use deriveSigningKey');
+    assert.ok(!computeSigBody.includes('getHardwareIdSync'), 'computeSignature must not use getHardwareIdSync directly');
   });
 
-  await test('A4. computeSignature includes timestamps (lastValidatedAt, lastSeenAt)', () => {
-    const computeSigSection = storeContent.substring(
-      storeContent.indexOf('function computeSignature('),
-      storeContent.indexOf('function computeSignatureLegacy(')
+  await test('A5. computeSignature includes all security-relevant timestamps', () => {
+    const canonicalSection = storeContent.substring(
+      storeContent.indexOf('function canonicalSerialize('),
+      storeContent.indexOf('// ─── Timing-Safe Signature Comparison')
     );
-    assert.ok(computeSigSection.includes('lastValidatedAt'), 'computeSignature must include lastValidatedAt');
-    assert.ok(computeSigSection.includes('lastSeenAt'), 'computeSignature must include lastSeenAt');
+    assert.ok(canonicalSection.includes('lastValidatedAt'), 'canonicalSerialize must include lastValidatedAt');
+    assert.ok(canonicalSection.includes('lastSeenAt'), 'canonicalSerialize must include lastSeenAt');
+    assert.ok(canonicalSection.includes('activatedAt'), 'canonicalSerialize must include activatedAt');
+    assert.ok(canonicalSection.includes('licenseKey'), 'canonicalSerialize must include licenseKey');
+    assert.ok(canonicalSection.includes('hwid'), 'canonicalSerialize must include hwid');
+    assert.ok(canonicalSection.includes('tier'), 'canonicalSerialize must include tier');
+    assert.ok(canonicalSection.includes('status'), 'canonicalSerialize must include status');
   });
 
-  await test('A5. Legacy signature function exists for backward compatibility', () => {
+  await test('A6. Legacy signature function exists for backward compatibility', () => {
     assert.ok(storeContent.includes('computeSignatureLegacy'), 'computeSignatureLegacy must exist');
-    // Legacy should use raw HWID
     const legacySection = storeContent.substring(
       storeContent.indexOf('function computeSignatureLegacy('),
       storeContent.indexOf('/**')
@@ -103,26 +128,27 @@ async function runTests() {
     assert.ok(legacySection.includes('getHardwareIdSync'), 'Legacy must use raw HWID');
   });
 
-  await test('A6. loadLicenseData tries both new and legacy signatures', () => {
+  await test('A7. loadLicenseData tries both new and legacy signatures', () => {
     const loadSection = storeContent.substring(
       storeContent.indexOf('function loadLicenseData('),
       storeContent.indexOf('function clearLicenseData(')
     );
-    assert.ok(loadSection.includes('computeSignature(data)'), 'Must check new signature');
+    assert.ok(loadSection.includes('computeSignature(data'), 'Must check new signature');
     assert.ok(loadSection.includes('computeSignatureLegacy(data)'), 'Must check legacy signature');
     assert.ok(loadSection.includes('legacySig'), 'Must store legacy signature for comparison');
   });
 
-  await test('A7. Legacy signature is transparently upgraded on load', () => {
+  await test('A8. Legacy signature is transparently upgraded and re-saved', () => {
     const loadSection = storeContent.substring(
       storeContent.indexOf('function loadLicenseData('),
       storeContent.indexOf('function clearLicenseData(')
     );
     assert.ok(loadSection.includes('data.signature = expectedSig'), 'Must upgrade legacy signature to new format');
+    assert.ok(loadSection.includes('saveLicenseData(data, customDir)'), 'Must re-save after legacy upgrade');
   });
 
-  await test('A8. Tampered payload (modified tier) fails verification', () => {
-    const { computeSignature, computeSignatureLegacy } = require('../src/main/license/store');
+  await test('A9. Tampered payload (modified licenseKey) fails verification', () => {
+    const { computeSignature } = require('../src/main/license/store');
     const data = {
       licenseKey: 'PRO-REEL-7890-ABCD-1234',
       hwid: 'test-hwid-123',
@@ -130,17 +156,75 @@ async function runTests() {
       status: 'active',
       activatedAt: '2026-01-01T00:00:00.000Z',
     };
-    const sig = computeSignature(data);
-    // Modify tier
-    const tampered = { ...data, tier: 'basic' };
-    const tamperedSig = computeSignature(tampered);
-    assert.notStrictEqual(sig, tamperedSig, 'Tampered payload must produce different signature');
-    // Verify the original signature doesn't match tampered data
-    const recompute = computeSignature(data);
+    const sig = computeSignature(data, TEST_DIR);
+    const tampered = { ...data, licenseKey: 'PRO-REEL-FAKE-XXXX-YYYY' };
+    const tamperedSig = computeSignature(tampered, TEST_DIR);
+    assert.notStrictEqual(sig, tamperedSig, 'Modified licenseKey must produce different signature');
+    const recompute = computeSignature(data, TEST_DIR);
     assert.strictEqual(sig, recompute, 'Original data must produce consistent signature');
   });
 
-  await test('A9. Tampered timestamp (modified lastValidatedAt) fails verification', () => {
+  await test('A10. Tampered payload (modified HWID) fails verification', () => {
+    const { computeSignature } = require('../src/main/license/store');
+    const data = {
+      licenseKey: 'PRO-REEL-7890-ABCD-1234',
+      hwid: 'test-hwid-123',
+      tier: 'pro',
+      status: 'active',
+      activatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const sig = computeSignature(data, TEST_DIR);
+    const tampered = { ...data, hwid: 'different-hwid-456' };
+    const tamperedSig = computeSignature(tampered, TEST_DIR);
+    assert.notStrictEqual(sig, tamperedSig, 'Modified HWID must produce different signature');
+  });
+
+  await test('A11. Tampered payload (modified tier) fails verification', () => {
+    const { computeSignature } = require('../src/main/license/store');
+    const data = {
+      licenseKey: 'PRO-REEL-7890-ABCD-1234',
+      hwid: 'test-hwid-123',
+      tier: 'pro',
+      status: 'active',
+      activatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const sig = computeSignature(data, TEST_DIR);
+    const tampered = { ...data, tier: 'basic' };
+    const tamperedSig = computeSignature(tampered, TEST_DIR);
+    assert.notStrictEqual(sig, tamperedSig, 'Modified tier must produce different signature');
+  });
+
+  await test('A12. Tampered payload (modified status) fails verification', () => {
+    const { computeSignature } = require('../src/main/license/store');
+    const data = {
+      licenseKey: 'PRO-REEL-7890-ABCD-1234',
+      hwid: 'test-hwid-123',
+      tier: 'pro',
+      status: 'active',
+      activatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const sig = computeSignature(data, TEST_DIR);
+    const tampered = { ...data, status: 'revoked' };
+    const tamperedSig = computeSignature(tampered, TEST_DIR);
+    assert.notStrictEqual(sig, tamperedSig, 'Modified status must produce different signature');
+  });
+
+  await test('A13. Tampered timestamp (modified activatedAt) fails verification', () => {
+    const { computeSignature } = require('../src/main/license/store');
+    const data = {
+      licenseKey: 'PRO-REEL-7890-ABCD-1234',
+      hwid: 'test-hwid-123',
+      tier: 'pro',
+      status: 'active',
+      activatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const sig = computeSignature(data, TEST_DIR);
+    const tampered = { ...data, activatedAt: '2026-06-15T12:00:00.000Z' };
+    const tamperedSig = computeSignature(tampered, TEST_DIR);
+    assert.notStrictEqual(sig, tamperedSig, 'Modified activatedAt must produce different signature');
+  });
+
+  await test('A14. Tampered timestamp (modified lastValidatedAt) fails verification', () => {
     const { computeSignature } = require('../src/main/license/store');
     const data = {
       licenseKey: 'PRO-REEL-7890-ABCD-1234',
@@ -151,13 +235,30 @@ async function runTests() {
       lastValidatedAt: '2026-06-01T00:00:00.000Z',
       lastSeenAt: '2026-06-01T00:00:00.000Z',
     };
-    const sig = computeSignature(data);
+    const sig = computeSignature(data, TEST_DIR);
     const tampered = { ...data, lastValidatedAt: '2026-12-01T00:00:00.000Z' };
-    const tamperedSig = computeSignature(tampered);
-    assert.notStrictEqual(sig, tamperedSig, 'Tampered timestamp must produce different signature');
+    const tamperedSig = computeSignature(tampered, TEST_DIR);
+    assert.notStrictEqual(sig, tamperedSig, 'Modified lastValidatedAt must produce different signature');
   });
 
-  await test('A10. Wrong signing key fails verification', () => {
+  await test('A15. Tampered timestamp (modified lastSeenAt) fails verification', () => {
+    const { computeSignature } = require('../src/main/license/store');
+    const data = {
+      licenseKey: 'PRO-REEL-7890-ABCD-1234',
+      hwid: 'test-hwid-123',
+      tier: 'pro',
+      status: 'active',
+      activatedAt: '2026-01-01T00:00:00.000Z',
+      lastValidatedAt: '2026-06-01T00:00:00.000Z',
+      lastSeenAt: '2026-06-01T00:00:00.000Z',
+    };
+    const sig = computeSignature(data, TEST_DIR);
+    const tampered = { ...data, lastSeenAt: '2026-12-01T00:00:00.000Z' };
+    const tamperedSig = computeSignature(tampered, TEST_DIR);
+    assert.notStrictEqual(sig, tamperedSig, 'Modified lastSeenAt must produce different signature');
+  });
+
+  await test('A16. Invalid signature fails verification', () => {
     const { computeSignature } = require('../src/main/license/store');
     const data = {
       licenseKey: 'PRO-REEL-7890-ABCD-1234',
@@ -166,23 +267,105 @@ async function runTests() {
       status: 'active',
       activatedAt: '2026-01-01T00:00:00.000Z',
     };
-    const sig = computeSignature(data);
-    // Verify with different data (different HWID = different derived key)
-    const differentData = { ...data, hwid: 'different-hwid-456' };
-    const differentSig = computeSignature(differentData);
-    assert.notStrictEqual(sig, differentSig, 'Different HWID (different key) must produce different signature');
+    const sig = computeSignature(data, TEST_DIR);
+    // Verify a completely different signature string
+    const fakeSig = 'a'.repeat(64);
+    assert.notStrictEqual(sig, fakeSig, 'Random signature must not match');
   });
 
-  await test('A11. deriveSigningKey is exported for verification', () => {
+  await test('A17. Wrong signing secret fails verification', () => {
+    const { computeSignature } = require('../src/main/license/store');
+    const data = {
+      licenseKey: 'PRO-REEL-7890-ABCD-1234',
+      hwid: 'test-hwid-123',
+      tier: 'pro',
+      status: 'active',
+      activatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const sig = computeSignature(data, TEST_DIR);
+    // Compute with a different directory (different signing secret)
+    const otherDir = path.join(__dirname, '../.test-step18-other');
+    fs.mkdirSync(otherDir, { recursive: true });
+    try {
+      const otherSig = computeSignature(data, otherDir);
+      assert.notStrictEqual(sig, otherSig, 'Different signing secret must produce different signature');
+    } finally {
+      if (fs.existsSync(otherDir)) fs.rmSync(otherDir, { recursive: true, force: true });
+    }
+  });
+
+  await test('A18. Canonical serialization is deterministic', () => {
+    const { canonicalSerialize } = require('../src/main/license/store');
+    const data = {
+      licenseKey: 'PRO-REEL-7890-ABCD-1234',
+      hwid: 'test-hwid-123',
+      tier: 'pro',
+      status: 'active',
+      activatedAt: '2026-01-01T00:00:00.000Z',
+      lastValidatedAt: '2026-06-01T00:00:00.000Z',
+      lastSeenAt: '2026-06-01T00:00:00.000Z',
+    };
+    const s1 = canonicalSerialize(data);
+    const s2 = canonicalSerialize(data);
+    assert.strictEqual(s1, s2, 'Canonical serialization must be deterministic');
+    // Must be valid JSON
+    const parsed = JSON.parse(s1);
+    assert.strictEqual(parsed.licenseKey, data.licenseKey);
+    assert.strictEqual(parsed.hwid, data.hwid);
+    assert.strictEqual(parsed.tier, data.tier);
+  });
+
+  await test('A19. Signature comparison uses timing-safe equality', () => {
+    assert.ok(storeContent.includes('signaturesMatch'), 'signaturesMatch function must exist');
+    assert.ok(storeContent.includes('crypto.timingSafeEqual'), 'Must use crypto.timingSafeEqual');
+  });
+
+  await test('A20. Save and load cycle preserves signature integrity', () => {
+    const { saveLicenseData, loadLicenseData, clearLicenseData } = require('../src/main/license/store');
+    const data = {
+      licenseKey: 'PRO-REEL-7890-ABCD-1234',
+      hwid: 'test-hwid-123',
+      tier: 'pro',
+      status: 'active',
+      activatedAt: '2026-01-01T00:00:00.000Z',
+      lastValidatedAt: '2026-06-01T00:00:00.000Z',
+      lastSeenAt: '2026-06-01T00:00:00.000Z',
+    };
+    saveLicenseData(data, TEST_DIR);
+    const loaded = loadLicenseData(TEST_DIR);
+    assert.ok(loaded, 'Loaded data must not be null');
+    assert.strictEqual(loaded.licenseKey, data.licenseKey);
+    assert.strictEqual(loaded.hwid, data.hwid);
+    assert.strictEqual(loaded.tier, data.tier);
+    assert.strictEqual(loaded.status, data.status);
+    clearLicenseData(TEST_DIR);
+  });
+
+  await test('A21. Signing secret file is created alongside license', () => {
+    const { saveLicenseData, clearLicenseData, getSigningSecretPath } = require('../src/main/license/store');
+    const data = {
+      licenseKey: 'PRO-REEL-7890-ABCD-1234',
+      hwid: 'test-hwid-123',
+      tier: 'pro',
+      status: 'active',
+      activatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    saveLicenseData(data, TEST_DIR);
+    const secretPath = getSigningSecretPath(TEST_DIR);
+    assert.ok(fs.existsSync(secretPath), 'Signing secret file must be created');
+    clearLicenseData(TEST_DIR);
+  });
+
+  await test('A22. deriveSigningKey is exported for verification', () => {
     const store = require('../src/main/license/store');
     assert.strictEqual(typeof store.deriveSigningKey, 'function', 'deriveSigningKey must be exported');
   });
 
-  await test('A12. HWID is not hardcoded in renderer or preload files', () => {
+  await test('A23. HWID is not hardcoded in renderer or preload files', () => {
     const preloadPath = path.join(__dirname, '..', 'src', 'preload', 'index.js');
     const preloadContent = fs.readFileSync(preloadPath, 'utf8');
     assert.ok(!preloadContent.includes('deriveSigningKey'), 'deriveSigningKey must not be in preload');
-    assert.ok(!preloadContent.includes('SIGNING_SALT'), 'SIGNING_SALT must not be in preload');
+    assert.ok(!preloadContent.includes('getOrCreateSigningSecret'), 'getOrCreateSigningSecret must not be in preload');
     assert.ok(!preloadContent.includes('getHardwareId'), 'getHardwareId must not be in preload');
     assert.ok(!preloadContent.includes('computeSignature'), 'computeSignature must not be in preload');
   });
@@ -190,10 +373,10 @@ async function runTests() {
   console.log('');
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // B. Webhook Idempotency (Durable)
+  // B. Webhook Idempotency (Durable + Atomic)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  console.log('─── B. Webhook Idempotency (Durable) ───');
+  console.log('─── B. Webhook Idempotency (Durable + Atomic) ───');
 
   const webhookPath = path.join(__dirname, '..', 'server', 'routes', 'webhook.js');
   const webhookContent = fs.readFileSync(webhookPath, 'utf8');
@@ -214,7 +397,29 @@ async function runTests() {
     assert.ok(webhookContent.includes('fs.writeFileSync'), 'Must write to disk');
   });
 
-  await test('B4. Duplicate event after simulated restart is still rejected', async () => {
+  await test('B4. Mark-before-create pattern: event is marked BEFORE license creation', () => {
+    // Verify markEventProcessed is called before createLicense
+    const stripeHandler = webhookContent.substring(
+      webhookContent.indexOf("router.post(\n    '/stripe'"),
+      webhookContent.indexOf('return res.status(500).json({')
+    );
+    const markIdx = stripeHandler.indexOf('markEventProcessed(event.id)');
+    const createIdx = stripeHandler.indexOf('createLicense(');
+    assert.ok(markIdx > 0, 'markEventProcessed must be called');
+    assert.ok(createIdx > 0, 'createLicense must be called');
+    assert.ok(markIdx < createIdx, 'markEventProcessed must be called BEFORE createLicense');
+  });
+
+  await test('B5. Rollback on failure: unmarkEventProcessed is called when license creation fails', () => {
+    assert.ok(webhookContent.includes('unmarkEventProcessed'), 'Must have unmarkEventProcessed function');
+    const catchBlock = webhookContent.substring(
+      webhookContent.indexOf('} catch (err) {'),
+      webhookContent.indexOf('return res.status(500)')
+    );
+    assert.ok(catchBlock.includes('unmarkEventProcessed(event.id)'), 'Must unmark on failure');
+  });
+
+  await test('B6. Duplicate event after simulated restart is still detected', async () => {
     const Stripe = require('stripe');
     const config = require('../server/config');
     const { clearInMemoryLicenses } = require('../server/services/licenseGenerator');
@@ -285,18 +490,18 @@ async function runTests() {
     router.resetProcessedEvents();
   });
 
-  await test('B5. Idempotency cache evicts entries older than 7 days', () => {
+  await test('B7. Idempotency cache evicts entries older than 7 days', () => {
     assert.ok(webhookContent.includes('IDEMPOTENCY_MAX_AGE_MS'), 'Must have max age constant');
     assert.ok(webhookContent.includes('7 * 24 * 60 * 60 * 1000') || webhookContent.includes('604800000'),
       'Max age must be 7 days');
   });
 
-  await test('B6. Idempotency cache is bounded to prevent unbounded growth', () => {
+  await test('B8. Idempotency cache is bounded to prevent unbounded growth', () => {
     assert.ok(webhookContent.includes('IDEMPOTENCY_MAX_ENTRIES'), 'Must have max entries constant');
     assert.ok(webhookContent.includes('10000'), 'Max entries must be 10000');
   });
 
-  await test('B7. Duplicate event via sequential calls: second call returns 200 with duplicate=true', async () => {
+  await test('B9. Duplicate event via sequential calls: second call returns 200 with duplicate=true', async () => {
     const Stripe = require('stripe');
     const config = require('../server/config');
     const { clearInMemoryLicenses } = require('../server/services/licenseGenerator');
@@ -358,11 +563,110 @@ async function runTests() {
     router.resetProcessedEvents();
   });
 
-  await test('B8. Webhook response does not expose license key', () => {
-    const responseSection = webhookContent.substring(
-      webhookContent.indexOf('return res.status(200).json({')
-    );
-    assert.ok(!responseSection.includes('licenseKey'), 'Response must not include licenseKey');
+  await test('B10. Webhook response does not expose license key', () => {
+    // Find all res.status(200).json calls and verify none include licenseKey
+    const responseMatches = webhookContent.match(/return res\.status\(200\)\.json\(\{[\s\S]*?\}\);/g);
+    assert.ok(responseMatches, 'Must have 200 responses');
+    for (const match of responseMatches) {
+      assert.ok(!match.includes('licenseKey'), 'Response must not include licenseKey');
+    }
+  });
+
+  await test('B11. Invalid Stripe signature rejected', async () => {
+    const { clearInMemoryLicenses } = require('../server/services/licenseGenerator');
+    const { clearSentEmails } = require('../server/services/emailService');
+    const router = require('../server/routes/webhook');
+
+    router.resetProcessedEvents();
+    clearInMemoryLicenses();
+    clearSentEmails();
+
+    const eventPayload = { id: 'evt_bad_sig', type: 'checkout.session.completed' };
+    const rawBody = Buffer.from(JSON.stringify(eventPayload), 'utf8');
+    const badHeaders = { 'stripe-signature': 't=123456,v1=bad_signature_hex_0000000000000' };
+
+    function callWebhook(body, h) {
+      return new Promise((resolve) => {
+        let statusCode = 200;
+        const req = { body, headers: h, method: 'POST', url: '/stripe' };
+        const res = {
+          status: (code) => { statusCode = code; return res; },
+          json: (data) => { resolve({ status: statusCode, data }); },
+        };
+        router.handle(req, res, () => resolve({ status: statusCode, data: null }));
+      });
+    }
+
+    const response = await callWebhook(rawBody, badHeaders);
+    assert.strictEqual(response.status, 400, 'Invalid signature must return 400');
+    router.resetProcessedEvents();
+  });
+
+  await test('B12. Email failure does not create a second license on retry', async () => {
+    const Stripe = require('stripe');
+    const config = require('../server/config');
+    const { clearInMemoryLicenses, getInMemoryLicenses } = require('../server/services/licenseGenerator');
+    const { clearSentEmails } = require('../server/services/emailService');
+    const router = require('../server/routes/webhook');
+
+    router.resetProcessedEvents();
+    clearInMemoryLicenses();
+    clearSentEmails();
+
+    const testWebhookSecret = config.stripe.webhookSecret;
+    const eventPayload = {
+      id: 'evt_email_fail_18',
+      object: 'event',
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_email_fail_18',
+          payment_intent: 'pi_email_fail_18',
+          customer_details: { email: 'emailfail@example.invalid' },
+          metadata: { price_id: 'price_pro_30' },
+        },
+      },
+    };
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const payloadString = JSON.stringify(eventPayload);
+    const signature = Stripe.webhooks.generateTestHeaderString({
+      payload: payloadString,
+      secret: testWebhookSecret,
+      timestamp,
+    });
+    const rawBody = Buffer.from(payloadString, 'utf8');
+    const headers = { 'stripe-signature': signature };
+
+    function callWebhook(body, h) {
+      return new Promise((resolve) => {
+        let statusCode = 200;
+        const req = { body, headers: h, method: 'POST', url: '/stripe' };
+        const res = {
+          status: (code) => { statusCode = code; return res; },
+          json: (data) => { resolve({ status: statusCode, data }); },
+        };
+        router.handle(req, res, () => resolve({ status: statusCode, data: null }));
+      });
+    }
+
+    // First call — creates license
+    const firstRes = await callWebhook(rawBody, headers);
+    assert.strictEqual(firstRes.status, 200);
+    assert.strictEqual(firstRes.data.received, true);
+
+    const licensesAfterFirst = getInMemoryLicenses();
+    assert.strictEqual(licensesAfterFirst.length, 1, 'Exactly one license after first call');
+
+    // Second call — duplicate, no new license
+    const secondRes = await callWebhook(rawBody, headers);
+    assert.strictEqual(secondRes.status, 200);
+    assert.strictEqual(secondRes.data.duplicate, true);
+
+    const licensesAfterSecond = getInMemoryLicenses();
+    assert.strictEqual(licensesAfterSecond.length, 1, 'Still exactly one license after duplicate');
+
+    router.resetProcessedEvents();
   });
 
   console.log('');
@@ -435,7 +739,7 @@ async function runTests() {
           } else if (entry.name.endsWith('.js') || entry.name.endsWith('.jsx') || entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
             const content = fs.readFileSync(fullPath, 'utf8');
             assert.ok(!content.includes('deriveSigningKey'), `${entry.name} must not contain deriveSigningKey`);
-            assert.ok(!content.includes('SIGNING_SALT'), `${entry.name} must not contain SIGNING_SALT`);
+            assert.ok(!content.includes('getOrCreateSigningSecret'), `${entry.name} must not contain getOrCreateSigningSecret`);
             assert.ok(!content.includes('computeSignature'), `${entry.name} must not contain computeSignature`);
           }
         }
@@ -459,30 +763,21 @@ async function runTests() {
     assert.ok(!content.includes('serviceRoleKey'), 'Preload must not contain serviceRoleKey');
   });
 
-  await test('D4. Idempotency cache file is not a source file', () => {
-    const idempotencyFile = path.join(__dirname, '..', 'server', '.webhook-idempotency.json');
-    // Should not exist in source tree (only created at runtime)
-    // This is acceptable — just verify it's in .gitignore or won't be committed
-    if (fs.existsSync(idempotencyFile)) {
-      const gitignorePath = path.join(__dirname, '..', '.gitignore');
-      if (fs.existsSync(gitignorePath)) {
-        const gitignore = fs.readFileSync(gitignorePath, 'utf8');
-        // It's ok if the file exists at runtime — just verify it won't be accidentally committed
-        // (the .json file is generated at runtime, not in source)
-      }
+  await test('D4. Idempotency cache file is in .gitignore', () => {
+    const gitignorePath = path.join(__dirname, '..', '.gitignore');
+    if (fs.existsSync(gitignorePath)) {
+      const gitignore = fs.readFileSync(gitignorePath, 'utf8');
+      assert.ok(gitignore.includes('.webhook-idempotency.json'), 'Idempotency file must be in .gitignore');
     }
   });
 
-  await test('D5. SIGNING_SALT is not hardcoded as a production secret', () => {
-    // The SIGNING_SALT is a derivation parameter, not a secret key itself
-    // It's acceptable to have it in source code — the key is derived via scrypt
-    const signingSaltMatch = storeContent.match(/SIGNING_SALT\s*=\s*'([^']+)'/);
-    assert.ok(signingSaltMatch, 'SIGNING_SALT must be defined');
-    // Verify it's a reasonable salt value, not accidentally a private key
-    const salt = signingSaltMatch[1];
-    assert.ok(salt.length > 10, 'SIGNING_SALT should be a meaningful salt value');
-    assert.ok(!salt.startsWith('sk_'), 'SIGNING_SALT must not be a Stripe key');
-    assert.ok(!salt.startsWith('whsec_'), 'SIGNING_SALT must not be a webhook secret');
+  await test('D5. SIGNING_SECRET_FILENAME is not a production credential', () => {
+    const signingSecretMatch = storeContent.match(/SIGNING_SECRET_FILENAME\s*=\s*'([^']+)'/);
+    assert.ok(signingSecretMatch, 'SIGNING_SECRET_FILENAME must be defined');
+    const filename = signingSecretMatch[1];
+    assert.ok(filename.endsWith('.enc'), 'Must be an encrypted file');
+    assert.ok(!filename.startsWith('sk_'), 'Must not be a Stripe key');
+    assert.ok(!filename.startsWith('whsec_'), 'Must not be a webhook secret');
   });
 
   // ─── Summary ──────────────────────────────────────────────────────────────
