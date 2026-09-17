@@ -7,25 +7,30 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function CheckoutCancelPage() {
+interface CancelPageProps {
+  searchParams: Promise<{ sessionId?: string }>;
+}
+
+export default async function CheckoutCancelPage({ searchParams }: CancelPageProps) {
+  const params = await searchParams;
+  const sessionId = params.sessionId;
+
   return (
     <section className="bg-white px-4 py-20 sm:px-6 lg:px-8 dark:bg-slate-950">
       <div className="mx-auto max-w-2xl text-center">
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-          <svg
-            className="h-8 w-8 text-slate-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1.5}
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </div>
+        <svg
+          className="mx-auto h-12 w-12 text-slate-400 mb-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
         <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
           Checkout Cancelled
         </h1>
@@ -33,8 +38,8 @@ export default function CheckoutCancelPage() {
           Your checkout was cancelled. No payment was processed.
         </p>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          You can return to the pricing page to choose a different plan
-          or continue using the free version of Reel Cutter.
+          You can return to the pricing page to choose a different plan or continue
+          using the free version of Reel Cutter.
         </p>
         <div className="mt-8 flex items-center justify-center gap-4">
           <Link
@@ -50,6 +55,11 @@ export default function CheckoutCancelPage() {
             Download Free
           </Link>
         </div>
+        {sessionId ? (
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+            Session ID: <code className="monospace">{sessionId}</code>
+          </p>
+        ) : null}
       </div>
     </section>
   );

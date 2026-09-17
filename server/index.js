@@ -1,5 +1,6 @@
 const express = require('express');
 const webhookRoutes = require('./routes/webhook');
+const paymentRoutes = require('./routes/payment');
 const licenseRoutes = require('./routes/license');
 const config = require('./config');
 
@@ -45,6 +46,9 @@ app.use(express.json({ limit: '10kb' }));
 
 // License API routes
 app.use('/api/license', licenseRoutes);
+
+// Payment / Checkout API routes
+app.use('/api/payment', paymentRoutes);
 
 // Root status
 app.get('/', (req, res) => {

@@ -1,5 +1,5 @@
 /**
- * Payment Configuration for Future Stripe Integration
+ * Payment Configuration for Stripe Integration
  *
  * This file defines the structure for Stripe Price IDs and payment configuration.
  * All sensitive keys (Stripe secret key, webhook secret, Supabase service-role key)
@@ -17,16 +17,16 @@
 
 const PAYMENT_CONFIG = {
   isLive: false,
-  methods: ["card"],
-  currency: "usd",
-  checkoutEndpoint: "/api/checkout",
-  webhookEndpoint: "/api/webhooks/stripe",
+  methods: ['card'],
+  currency: 'usd',
+  checkoutEndpoint: '/api/payment/create-checkout-session',
+  webhookEndpoint: '/webhook/stripe',
 };
 
 const PLAN_STRIPE_PRICE_MAP = {
-  basic: null,
-  standard: null,
-  pro: null,
+  basic: process.env.STRIPE_PRICE_BASIC || null,
+  standard: process.env.STRIPE_PRICE_STANDARD || null,
+  pro: process.env.STRIPE_PRICE_PRO || null,
 };
 
 function isPaymentConfigured() {

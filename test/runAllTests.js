@@ -60,6 +60,7 @@ const tests = [
   'step23-pricing-purchase.test.js',
   'step24-authentication.test.js',
   'step25-license-api.test.js',
+  'step26-stripe-payment.test.js',
 ];
 
 console.log('======================================================');
