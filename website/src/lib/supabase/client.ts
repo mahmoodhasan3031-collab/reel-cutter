@@ -22,6 +22,7 @@ export function createClient() {
         resetPasswordForEmail: async () => ({ error: null }),
         updateUser: async () => ({ data: { user: null }, error: null }),
         getSession: async () => ({ data: { session: null }, error: null }),
+        exchangeCodeForSession: async () => ({ error: null }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
       },
     } as ReturnType<typeof createBrowserClient>;

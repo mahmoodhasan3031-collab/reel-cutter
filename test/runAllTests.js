@@ -59,6 +59,7 @@ const tests = [
   'step19-reliability.test.js',
   'step23-pricing-purchase.test.js',
   'step24-authentication.test.js',
+  'step25-license-api.test.js',
 ];
 
 console.log('======================================================');

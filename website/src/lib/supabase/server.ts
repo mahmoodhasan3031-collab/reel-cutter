@@ -17,8 +17,9 @@ export async function createClient() {
       auth: {
         getUser: async () => ({ data: { user: null }, error: null }),
         getSession: async () => ({ data: { session: null }, error: null }),
+        exchangeCodeForSession: async () => ({ error: null }),
       },
-    } as { auth: { getUser: () => Promise<{ data: { user: null }; error: null }>; getSession: () => Promise<{ data: { session: null }; error: null }> } };
+    } as { auth: { getUser: () => Promise<{ data: { user: null }; error: null }>; getSession: () => Promise<{ data: { session: null }; error: null }>; exchangeCodeForSession: (code: string) => Promise<{ error: null }> } };
   }
 
   const cookieStore = await cookies();
