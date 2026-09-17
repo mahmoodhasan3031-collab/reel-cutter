@@ -20,3 +20,6 @@ test-videos/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+
+# Runtime idempotency cache (created at server runtime, not source)
+.webhook-idempotency.json

@@ -25,10 +25,15 @@ CREATE TABLE IF NOT EXISTS public.licenses (
 -- 2. Indexes for performance and customer support lookups
 CREATE INDEX IF NOT EXISTS idx_licenses_license_key ON public.licenses (license_key);
 CREATE INDEX IF NOT EXISTS idx_licenses_customer_email ON public.licenses (customer_email);
-CREATE INDEX IF NOT EXISTS idx_licenses_transaction_id ON public.licenses (transaction_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_email_status ON public.licenses (email_status);
 CREATE INDEX IF NOT EXISTS idx_licenses_hwid ON public.licenses (hwid);
 CREATE INDEX IF NOT EXISTS idx_licenses_status ON public.licenses (status);
+
+-- transaction_id: partial unique index (STEP 18 — enforces uniqueness for non-NULL values)
+-- Replaces the previous non-unique idx_licenses_transaction_id
+CREATE UNIQUE INDEX IF NOT EXISTS idx_licenses_transaction_id_unique
+  ON public.licenses (transaction_id)
+  WHERE transaction_id IS NOT NULL;
 
 -- 3. Trigger to auto-update updated_at on record updates
 CREATE OR REPLACE FUNCTION public.handle_updated_at()

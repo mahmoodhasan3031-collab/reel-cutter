@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { getHardwareIdSync } = require('./hwid');
 
 const LICENSE_FILENAME = 'license.enc';
+const SIGNING_SALT = 'reel-cutter-license-signing-v2';
 
 /**
  * Gets the path to the encrypted license file.
@@ -112,11 +113,44 @@ function decryptData(buffer) {
 }
 
 /**
+ * Derives a machine-specific signing key for HMAC signature.
+ * Key separation: HMAC key is derived from HWID + separate salt, not raw HWID.
+ * This ensures HWID is not used directly as a cryptographic key.
+ * @returns {Buffer}
+ */
+function deriveSigningKey() {
+  const hwid = getHardwareIdSync();
+  return crypto.scryptSync(hwid, SIGNING_SALT, 32);
+}
+
+/**
  * Computes an HMAC signature over payload to detect local tampering.
+ * Includes security-relevant fields and timestamps for tamper protection.
  * @param {Object} data
  * @returns {string}
  */
 function computeSignature(data) {
+  const signingKey = deriveSigningKey();
+  const parts = [
+    data.licenseKey,
+    data.hwid,
+    data.tier,
+    data.status,
+    data.activatedAt,
+    data.lastValidatedAt || '',
+    data.lastSeenAt || '',
+  ];
+  const serialized = parts.join(':');
+  return crypto.createHmac('sha256', signingKey).update(serialized).digest('hex');
+}
+
+/**
+ * Computes HMAC using old format for backward compatibility with existing licenses.
+ * Uses raw HWID as key and only includes 5 fields (no timestamps).
+ * @param {Object} data
+ * @returns {string}
+ */
+function computeSignatureLegacy(data) {
   const hwid = getHardwareIdSync();
   const serialized = `${data.licenseKey}:${data.hwid}:${data.tier}:${data.status}:${data.activatedAt}`;
   return crypto.createHmac('sha256', hwid).update(serialized).digest('hex');
@@ -165,11 +199,16 @@ function loadLicenseData(customDir) {
     const jsonString = decryptData(encryptedBuffer);
     const data = JSON.parse(jsonString);
 
-    // Verify signature
+    // Verify signature — try new format first, fall back to legacy for backward compatibility
     const expectedSig = computeSignature(data);
-    if (data.signature !== expectedSig) {
+    const legacySig = computeSignatureLegacy(data);
+    if (data.signature !== expectedSig && data.signature !== legacySig) {
       console.warn('[LicenseStore] Signature verification failed! Storage may have been tampered with.');
       return null;
+    }
+    // Upgrade to new signature format on successful load
+    if (data.signature === legacySig && data.signature !== expectedSig) {
+      data.signature = expectedSig;
     }
 
     return data;
@@ -210,4 +249,7 @@ module.exports = {
   clearLicenseData,
   hasLicenseData,
   getLicenseFilePath,
+  computeSignature,
+  computeSignatureLegacy,
+  deriveSigningKey,
 };

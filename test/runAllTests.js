@@ -54,6 +54,7 @@ const tests = [
   'phase5l-bulk-schedule-gui.test.js',
   'security-audit.test.js',
   'step17-security.test.js',
+  'step18-security.test.js',
   'step16a-security.test.js',
 ];
 

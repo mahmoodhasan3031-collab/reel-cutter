@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const StripeProvider = require('../providers/stripeProvider');
 const { createLicense } = require('../services/licenseGenerator');
 const { sendLicenseEmail, deliverLicenseEmail } = require('../services/emailService');
@@ -7,8 +9,104 @@ const { maskEmail } = require('../services/emailService');
 const router = express.Router();
 const stripeProvider = new StripeProvider();
 
-// Idempotency cache: Set of processed event IDs to prevent duplicate fulfillment
-const processedEventIds = new Set();
+// Durable idempotency: persisted to disk to survive application restarts
+const IDEMPOTENCY_MAX_ENTRIES = 10000;
+const IDEMPOTENCY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const IDEMPOTENCY_FILENAME = '.webhook-idempotency.json';
+
+function getIdempotencyFilePath() {
+  try {
+    return path.join(__dirname, '..', IDEMPOTENCY_FILENAME);
+  } catch {
+    return path.join(process.cwd(), IDEMPOTENCY_FILENAME);
+  }
+}
+
+function loadIdempotencyCache() {
+  try {
+    const filePath = getIdempotencyFilePath();
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const now = Date.now();
+        return parsed.filter((entry) => {
+          if (!entry || !entry.id || !entry.ts) return false;
+          return now - entry.ts < IDEMPOTENCY_MAX_AGE_MS;
+        });
+      }
+    }
+  } catch {
+    // corrupt or missing file — start fresh
+  }
+  return [];
+}
+
+function persistIdempotencyCache(entries) {
+  try {
+    const filePath = getIdempotencyFilePath();
+    const data = JSON.stringify(entries);
+    fs.writeFileSync(filePath, data, 'utf8');
+  } catch {
+    // best-effort persistence — log but don't throw
+    console.warn('[Webhook] Failed to persist idempotency cache');
+  }
+}
+
+// In-memory map for fast lookups: id -> timestamp
+const processedEventMap = new Map();
+
+// Initialize from persisted cache
+(function initializeCache() {
+  const entries = loadIdempotencyCache();
+  for (const entry of entries) {
+    processedEventMap.set(entry.id, entry.ts);
+  }
+})();
+
+/**
+ * Checks if an event has already been processed.
+ * If not found in memory, reloads from persisted disk cache (survives restarts).
+ * @param {string} eventId
+ * @returns {boolean}
+ */
+function isEventProcessed(eventId) {
+  if (processedEventMap.has(eventId)) {
+    return true;
+  }
+  // Cache miss — reload from disk (handles application restart)
+  const entries = loadIdempotencyCache();
+  let found = false;
+  for (const entry of entries) {
+    processedEventMap.set(entry.id, entry.ts);
+    if (entry.id === eventId) {
+      found = true;
+    }
+  }
+  return found;
+}
+
+/**
+ * Marks an event as processed and persists to disk.
+ * @param {string} eventId
+ */
+function markEventProcessed(eventId) {
+  processedEventMap.set(eventId, Date.now());
+
+  // Evict oldest entries if over limit
+  if (processedEventMap.size > IDEMPOTENCY_MAX_ENTRIES) {
+    const entries = Array.from(processedEventMap.entries())
+      .sort((a, b) => a[1] - b[1]);
+    const toRemove = entries.slice(0, entries.length - IDEMPOTENCY_MAX_ENTRIES);
+    for (const [id] of toRemove) {
+      processedEventMap.delete(id);
+    }
+  }
+
+  // Persist current state to disk
+  const entries = Array.from(processedEventMap.entries()).map(([id, ts]) => ({ id, ts }));
+  persistIdempotencyCache(entries);
+}
 
 /**
  * Stripe webhook endpoint.
@@ -28,8 +126,8 @@ router.post(
       return res.status(400).json({ error: err.message });
     }
 
-    // 2. Idempotency check
-    if (processedEventIds.has(event.id)) {
+    // 2. Durable idempotency check (persists across restarts)
+    if (isEventProcessed(event.id)) {
       console.log(`[Webhook:Stripe] Duplicate event ignored: ${event.id}`);
       return res.status(200).json({ received: true, duplicate: true });
     }
@@ -61,14 +159,8 @@ router.post(
         console.warn(`[Webhook:Stripe] License email delivery failed for ${maskEmail(customerEmail)}: ${emailResult.error}`);
       }
 
-      // 6. Mark event as processed
-      processedEventIds.add(event.id);
-
-      // Keep cache bounded
-      if (processedEventIds.size > 10000) {
-        const first = processedEventIds.values().next().value;
-        processedEventIds.delete(first);
-      }
+      // 6. Mark event as processed (durable — survives restarts)
+      markEventProcessed(event.id);
 
       return res.status(200).json({
         received: true,
@@ -89,9 +181,20 @@ router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'reel-cutter-payment-webhook' });
 });
 
-// Helper for tests to reset idempotency cache
+// Helper for tests to reset idempotency cache (both in-memory and persisted)
 router.resetProcessedEvents = () => {
-  processedEventIds.clear();
+  processedEventMap.clear();
+  try {
+    const filePath = getIdempotencyFilePath();
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {
+    // best-effort cleanup
+  }
 };
+
+// Test helper: expose the in-memory map for restart simulation tests
+router.__getProcessedEventMap = () => processedEventMap;
 
 module.exports = router;
