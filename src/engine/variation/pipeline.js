@@ -9,6 +9,9 @@ const { validateSpeedConfig, buildSpeedFilters } = require('./speed');
 const { validateReframeConfig, buildReframeFilter } = require('./reframe');
 const { validateMetadataConfig, buildMetadataOptions } = require('./metadata');
 
+// ─── Timeout Configuration ────────────────────────────────────────────────────
+const VARIATION_TIMEOUT_MS = parseInt(process.env.REEL_CUTTER_TIMEOUT_MS, 10) || 30 * 60 * 1000; // 30 min default
+
 let logger;
 try {
   logger = require('../../main/logger');
@@ -169,6 +172,25 @@ async function runVariationPipeline(options = {}) {
       ? totalDuration / speedResult.factor
       : totalDuration;
 
+    const timeoutMs = options.timeoutMs || VARIATION_TIMEOUT_MS;
+    let finished = false;
+
+    const cleanup = () => {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+    };
+
+    let timeoutHandle = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      try {
+        command.kill('SIGKILL');
+      } catch (_) {}
+      reject(new Error(`Variation pipeline timed out after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
+
     command
       .output(resolvedOutput)
       .on('progress', (progress) => {
@@ -185,6 +207,9 @@ async function runVariationPipeline(options = {}) {
         }
       })
       .on('end', async () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
         try {
           const outMeta = await getVideoMetadata(resolvedOutput);
           resolve({
@@ -205,7 +230,9 @@ async function runVariationPipeline(options = {}) {
         }
       })
       .on('error', (err, _stdout, stderr) => {
-        // Limit stderr to last 500 chars to avoid enormous error strings
+        if (finished) return;
+        finished = true;
+        cleanup();
         const stderrSnippet = stderr ? stderr.slice(-500).trim() : '';
         const safeErrorMsg = `FFmpeg variation error: ${err.message}${stderrSnippet ? '\n' + stderrSnippet : ''}`;
         logger.error('VariationPipeline', safeErrorMsg);
@@ -218,4 +245,5 @@ async function runVariationPipeline(options = {}) {
 module.exports = {
   runVariationPipeline,
   validatePipelinePaths,
+  VARIATION_TIMEOUT_MS,
 };

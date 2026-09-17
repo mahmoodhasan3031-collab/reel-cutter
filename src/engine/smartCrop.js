@@ -51,6 +51,12 @@ const SCORE_THRESHOLD = 0.35;
  */
 const EMA_ALPHA = 0.12;
 
+/**
+ * Timeout for individual FFmpeg frame extraction (ms).
+ * Prevents hangs on corrupt or extremely long videos.
+ */
+const FRAME_EXTRACT_TIMEOUT_MS = parseInt(process.env.REEL_CUTTER_FRAME_TIMEOUT_MS, 10) || 15 * 1000;
+
 // ─── Face detection on a single Sharp frame buffer ───────────────────────────
 
 /**
@@ -172,15 +178,19 @@ function applyEmaSmoothing(positions, alpha = EMA_ALPHA) {
 
 /**
  * Extract a JPEG buffer from a video file at a given timestamp using FFmpeg.
+ * Includes timeout to prevent hangs on corrupt videos.
  *
  * @param {string} videoPath
  * @param {number} timestampSeconds
+ * @param {Object} [opts]
+ * @param {number} [opts.timeoutMs] Override timeout in ms
  * @returns {Promise<Buffer>}
  */
-function extractFrameAt(videoPath, timestampSeconds) {
+function extractFrameAt(videoPath, timestampSeconds, opts = {}) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     const { spawn } = require('child_process');
+    const timeoutMs = opts.timeoutMs || FRAME_EXTRACT_TIMEOUT_MS;
 
     const proc = spawn(getFfmpegPath(), [
       '-ss', String(Math.max(0, timestampSeconds)),
@@ -192,14 +202,39 @@ function extractFrameAt(videoPath, timestampSeconds) {
       'pipe:1',
     ], { stdio: ['ignore', 'pipe', 'ignore'] });
 
+    let finished = false;
+    const timeoutHandle = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      try {
+        proc.kill('SIGKILL');
+      } catch (_) {}
+      reject(new Error(`FFmpeg frame extraction timed out after ${Math.round(timeoutMs / 1000)}s at t=${timestampSeconds}s`));
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timeoutHandle);
+    };
+
     proc.stdout.on('data', (chunk) => chunks.push(chunk));
     proc.stdout.on('end', () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
       const buf = Buffer.concat(chunks);
       if (buf.length < 100) return reject(new Error(`Empty frame at ${timestampSeconds}s`));
       resolve(buf);
     });
-    proc.on('error', reject);
+    proc.on('error', (err) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      reject(err);
+    });
     proc.on('close', (code) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
       if (code !== 0 && chunks.length === 0) reject(new Error(`FFmpeg exited ${code} at ${timestampSeconds}s`));
     });
   });

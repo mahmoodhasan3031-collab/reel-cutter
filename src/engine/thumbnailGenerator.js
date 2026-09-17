@@ -4,27 +4,57 @@ const os = require('os');
 const sharp = require('sharp');
 const { ffmpeg, getVideoMetadata } = require('./probe');
 
+// ─── Timeout Configuration ────────────────────────────────────────────────────
+const THUMB_FRAME_TIMEOUT_MS = parseInt(process.env.REEL_CUTTER_FRAME_TIMEOUT_MS, 10) || 15 * 1000;
+
 /**
  * Extracts a single frame from a video at a specific timestamp in seconds.
+ * Includes timeout to prevent hangs on corrupt videos.
  *
  * @param {string} videoPath
  * @param {number} timestampSeconds
+ * @param {Object} [opts]
+ * @param {number} [opts.timeoutMs] Override timeout in ms
  * @returns {Promise<Buffer>}
  */
-function extractFrameBuffer(videoPath, timestampSeconds) {
+function extractFrameBuffer(videoPath, timestampSeconds, opts = {}) {
+  const timeoutMs = opts.timeoutMs || THUMB_FRAME_TIMEOUT_MS;
+
   return new Promise((resolve, reject) => {
     const chunks = [];
     const safeTime = Math.max(0, timestampSeconds);
+    let finished = false;
 
-    ffmpeg(videoPath)
+    const cmd = ffmpeg(videoPath)
       .seekInput(safeTime)
       .frames(1)
       .format('image2')
-      .outputOptions(['-vframes 1', '-q:v 2'])
-      .pipe()
+      .outputOptions(['-vframes 1', '-q:v 2']);
+
+    const stream = cmd.pipe();
+    const timeoutHandle = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      try {
+        cmd.kill('SIGKILL');
+      } catch (_) {}
+      reject(new Error(`Frame extraction timed out after ${Math.round(timeoutMs / 1000)}s at t=${safeTime}s`));
+    }, timeoutMs);
+
+    stream
       .on('data', (chunk) => chunks.push(chunk))
-      .on('end', () => resolve(Buffer.concat(chunks)))
-      .on('error', (err) => reject(err));
+      .on('end', () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeoutHandle);
+        resolve(Buffer.concat(chunks));
+      })
+      .on('error', (err) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeoutHandle);
+        reject(err);
+      });
   });
 }
 

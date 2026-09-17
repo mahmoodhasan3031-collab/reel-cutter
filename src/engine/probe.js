@@ -3,6 +3,9 @@ const ffmpegStatic = require('ffmpeg-static');
 const ffprobeStatic = require('ffprobe-static');
 const fs = require('fs');
 
+// ─── Timeout Configuration ────────────────────────────────────────────────────
+const FFPROBE_TIMEOUT_MS = parseInt(process.env.REEL_CUTTER_PROBE_TIMEOUT_MS, 10) || 30 * 1000; // 30s
+
 /**
  * Resolves the physical path of the bundled ffmpeg binary.
  * Handles both development and packaged electron (app.asar.unpacked) environments.
@@ -83,57 +86,98 @@ function parseFps(rFrameRate) {
 
 /**
  * Probes a video file and returns structured metadata.
+ * Uses child_process.execFile for timeout control over the ffprobe process.
  * @param {string} filePath
+ * @param {Object} [opts]
+ * @param {number} [opts.timeoutMs] Override timeout in ms
  * @returns {Promise<Object>}
  */
-function getVideoMetadata(filePath) {
+function getVideoMetadata(filePath, opts = {}) {
+  const { execFile } = require('child_process');
+  const ffprobeBin = getFfprobePath();
+  const timeoutMs = opts.timeoutMs || FFPROBE_TIMEOUT_MS;
+
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(filePath)) {
       return reject(new Error(`Input file not found: ${filePath}`));
     }
 
-    ffmpeg.ffprobe(filePath, (err, metadata) => {
+    if (!ffprobeBin) {
+      return reject(new Error('ffprobe binary not found'));
+    }
+
+    const args = [
+      '-v', 'quiet',
+      '-print_format', 'json',
+      '-show_format',
+      '-show_streams',
+      filePath,
+    ];
+
+    const child = execFile(ffprobeBin, args, {
+      timeout: timeoutMs,
+      maxBuffer: 10 * 1024 * 1024,
+      encoding: 'utf8',
+    }, (err, stdout, stderr) => {
       if (err) {
-        // Limit error message length to avoid enormous strings in IPC responses
-        const errMsg = err.message && err.message.length > 500
-          ? err.message.slice(0, 497) + '...'
-          : (err.message || 'FFprobe error');
-        return reject(new Error(errMsg));
+        if (err.killed || err.signal === 'SIGTERM' || err.code === 'ETIMEDOUT') {
+          return reject(new Error(`FFprobe timed out after ${Math.round(timeoutMs / 1000)}s for ${filePath}`));
+        }
+        const rawMsg = err.message || 'FFprobe error';
+        const errMsg = rawMsg.length > 500 ? rawMsg.slice(0, 497) + '...' : rawMsg;
+        // Ensure error message contains 'FFprobe' for downstream error handling
+        const finalMsg = errMsg.includes('FFprobe')
+          ? errMsg
+          : `FFprobe error: ${errMsg}`;
+        return reject(new Error(finalMsg));
       }
 
-      const videoStream = metadata.streams.find((s) => s.codec_type === 'video') || {};
-      const audioStream = metadata.streams.find((s) => s.codec_type === 'audio') || null;
+      try {
+        const metadata = JSON.parse(stdout);
+        const videoStream = metadata.streams.find((s) => s.codec_type === 'video') || {};
+        const audioStream = metadata.streams.find((s) => s.codec_type === 'audio') || null;
 
-      const duration = parseFloat(metadata.format.duration || videoStream.duration || 0);
-      const width = videoStream.width || 0;
-      const height = videoStream.height || 0;
-      const fps = parseFps(videoStream.r_frame_rate || videoStream.avg_frame_rate);
+        const duration = parseFloat(metadata.format.duration || videoStream.duration || 0);
+        const width = videoStream.width || 0;
+        const height = videoStream.height || 0;
+        const fps = parseFps(videoStream.r_frame_rate || videoStream.avg_frame_rate);
 
-      resolve({
-        path: filePath,
-        duration,
-        durationFormatted: formatSeconds(duration),
-        size: metadata.format.size || 0,
-        sizeFormatted: formatBytes(metadata.format.size || 0),
-        bitrate: metadata.format.bit_rate ? Math.round(metadata.format.bit_rate / 1000) + ' kbps' : 'Unknown',
-        video: {
-          codec: videoStream.codec_name || 'unknown',
-          width,
-          height,
-          aspectRatio: width && height ? `${width}:${height}` : 'unknown',
-          isVertical: height > width,
-          fps,
-          pixelFormat: videoStream.pix_fmt || 'unknown',
-        },
-        audio: audioStream
-          ? {
-              codec: audioStream.codec_name || 'unknown',
-              channels: audioStream.channels || 0,
-              sampleRate: audioStream.sample_rate ? audioStream.sample_rate + ' Hz' : 'unknown',
-            }
-          : null,
-        raw: metadata,
-      });
+        resolve({
+          path: filePath,
+          duration,
+          durationFormatted: formatSeconds(duration),
+          size: metadata.format.size || 0,
+          sizeFormatted: formatBytes(metadata.format.size || 0),
+          bitrate: metadata.format.bit_rate ? Math.round(metadata.format.bit_rate / 1000) + ' kbps' : 'Unknown',
+          video: {
+            codec: videoStream.codec_name || 'unknown',
+            width,
+            height,
+            aspectRatio: width && height ? `${width}:${height}` : 'unknown',
+            isVertical: height > width,
+            fps,
+            pixelFormat: videoStream.pix_fmt || 'unknown',
+          },
+          audio: audioStream
+            ? {
+                codec: audioStream.codec_name || 'unknown',
+                channels: audioStream.channels || 0,
+                sampleRate: audioStream.sample_rate ? audioStream.sample_rate + ' Hz' : 'unknown',
+              }
+            : null,
+          raw: metadata,
+        });
+      } catch (parseErr) {
+        reject(new Error(`FFprobe output parse error: ${parseErr.message}`));
+      }
+    });
+
+    child.on('error', (procErr) => {
+      if (procErr.killed || procErr.code === 'ETIMEDOUT') {
+        reject(new Error(`FFprobe timed out after ${Math.round(timeoutMs / 1000)}s for ${filePath}`));
+      } else {
+        reject(procErr);
+      }
     });
   });
 }
@@ -146,4 +190,5 @@ module.exports = {
   ffmpeg,
   getFfmpegPath,
   getFfprobePath,
+  FFPROBE_TIMEOUT_MS,
 };

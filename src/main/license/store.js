@@ -274,6 +274,7 @@ function computeSignatureLegacy(data) {
 
 /**
  * Saves license record to encrypted local storage with integrity signature.
+ * Uses atomic write (temp file + rename) to prevent corruption on crash.
  * @param {Object} licenseData
  * @param {string} [customDir]
  */
@@ -292,7 +293,25 @@ function saveLicenseData(licenseData, customDir) {
 
   const jsonString = JSON.stringify(payload);
   const encryptedBuffer = encryptData(jsonString);
-  fs.writeFileSync(filePath, encryptedBuffer);
+
+  // Atomic write: temp file + rename
+  const tempPath = `${filePath}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    fs.writeFileSync(tempPath, encryptedBuffer);
+    fs.renameSync(tempPath, filePath);
+  } catch (err) {
+    // Windows fallback: rename may fail across volumes; try copy + unlink
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.copyFileSync(tempPath, filePath);
+        fs.unlinkSync(tempPath);
+      }
+    } catch (copyErr) {
+      // Clean up temp file on failure
+      try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch (_) {}
+      throw new Error(`Failed to save license data: ${copyErr.message}`);
+    }
+  }
 }
 
 /**

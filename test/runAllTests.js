@@ -56,6 +56,7 @@ const tests = [
   'step17-security.test.js',
   'step18-security.test.js',
   'step16a-security.test.js',
+  'step19-reliability.test.js',
 ];
 
 console.log('======================================================');

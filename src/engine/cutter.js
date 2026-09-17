@@ -5,6 +5,10 @@ const { parseTimeToSeconds, buildReelFilter, generateOutputFilename } = require(
 const { generateProThumbnail } = require('./thumbnailGenerator');
 const { getSmartCropFilter } = require('./smartCrop');
 
+// ─── Timeout Configuration ────────────────────────────────────────────────────
+const CUT_TIMEOUT_MS = parseInt(process.env.REEL_CUTTER_TIMEOUT_MS, 10) || 30 * 60 * 1000; // 30 min default
+const PROBE_TIMEOUT_MS = parseInt(process.env.REEL_CUTTER_PROBE_TIMEOUT_MS, 10) || 30 * 1000; // 30s default
+
 /**
  * Cuts a single clip from a video file with optional 9:16 vertical reel formatting.
  *
@@ -50,6 +54,35 @@ async function cutClip(inputPath, outputPath, options = {}) {
         if (typeof options.onCommand === 'function') {
           options.onCommand(command);
         }
+
+        const timeoutMs = options.timeoutMs || CUT_TIMEOUT_MS;
+        let timeoutHandle = null;
+        let finished = false;
+
+        const cleanup = () => {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+            timeoutHandle = null;
+          }
+        };
+
+        const onError = (err, _stdout, stderr) => {
+          if (finished) return;
+          finished = true;
+          cleanup();
+          const stderrSnippet = stderr ? stderr.slice(-500).trim() : '';
+          reject(new Error(`FFmpeg error: ${err.message}${stderrSnippet ? '\n' + stderrSnippet : ''}`));
+        };
+
+        timeoutHandle = setTimeout(() => {
+          if (finished) return;
+          finished = true;
+          try {
+            command.kill('SIGKILL');
+          } catch (_) {}
+          reject(new Error(`FFmpeg cut timed out after ${Math.round(timeoutMs / 1000)}s — possible hang or very long video`));
+        }, timeoutMs);
+
         command
           .output(outputPath)
           .on('progress', (progress) => {
@@ -63,6 +96,9 @@ async function cutClip(inputPath, outputPath, options = {}) {
             }
           })
           .on('end', async () => {
+            if (finished) return;
+            finished = true;
+            cleanup();
             let thumbnailPath = null;
             if (options.generateThumbnail) {
               try {
@@ -81,11 +117,7 @@ async function cutClip(inputPath, outputPath, options = {}) {
               resolve({ outputPath, duration: durationSeconds, metadata: null, thumbnailPath });
             }
           })
-          .on('error', (err, _stdout, stderr) => {
-            // Limit stderr to last 500 chars to avoid enormous error strings
-            const stderrSnippet = stderr ? stderr.slice(-500).trim() : '';
-            reject(new Error(`FFmpeg error: ${err.message}${stderrSnippet ? '\n' + stderrSnippet : ''}`));
-          })
+          .on('error', onError)
           .run();
       })
       .catch(reject);
@@ -300,4 +332,6 @@ module.exports = {
   cutClip,
   splitIntoReels,
   _buildCutCommand,
+  CUT_TIMEOUT_MS,
+  PROBE_TIMEOUT_MS,
 };

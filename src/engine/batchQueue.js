@@ -19,10 +19,15 @@
  *     .cancelAll()            → cancel all jobs & clear waiting
  *     .setConcurrency(n)      → configure concurrency (1 or 2, max 2)
  *     .getState()             → full state snapshot
+ *     .recoverPending()       → rebuild queue from persisted state (crash recovery)
  *
  * Job lifecycle:
  *   WAITING → PROCESSING → DONE
  *                        → ERROR
+ *
+ * Crash recovery:
+ *   WAITING items are persisted to disk. On recovery, previously PROCESSING
+ *   items are reset to WAITING (FFmpeg cannot resume mid-encode).
  */
 
 const { EventEmitter } = require('events');
@@ -45,6 +50,7 @@ const STATUS = {
 
 const MAX_CONCURRENCY = 2;
 const DEFAULT_CONCURRENCY = 1; // Sequential by default per requirement
+const QUEUE_PERSIST_FILENAME = 'batch-queue.json';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +64,73 @@ function autoOutputPath(inputPath, operation, mode) {
   const base = path.basename(inputPath, path.extname(inputPath));
   const suffix = operation === 'reel' ? `_${mode || 'reel'}` : `_cut`;
   return path.join(dir, `${base}${suffix}.mp4`);
+}
+
+/**
+ * Resolves path to the batch queue persistence file.
+ * @param {string} [customDir]
+ * @returns {string}
+ */
+function getQueuePersistPath(customDir) {
+  if (customDir) {
+    return path.join(customDir, QUEUE_PERSIST_FILENAME);
+  }
+  try {
+    const { app } = require('electron');
+    const userData = app?.getPath ? app.getPath('userData') : path.join(process.cwd(), '.appdata');
+    return path.join(userData, QUEUE_PERSIST_FILENAME);
+  } catch {
+    return path.join(process.cwd(), QUEUE_PERSIST_FILENAME);
+  }
+}
+
+/**
+ * Atomic write for queue persistence (temp + rename with Windows fallback).
+ * @param {string} filePath
+ * @param {Object} data
+ */
+function atomicWriteJson(filePath, data) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  const tempPath = `${filePath}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tempPath, filePath);
+  } catch (err) {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.copyFileSync(tempPath, filePath);
+        fs.unlinkSync(tempPath);
+      }
+    } catch (copyErr) {
+      try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch (_) {}
+      throw new Error(`Failed to persist queue: ${copyErr.message}`);
+    }
+  }
+}
+
+/**
+ * Loads persisted queue state from disk.
+ * @param {string} [customDir]
+ * @returns {{ items: Array<Object> }}
+ */
+function loadPersistedQueue(customDir) {
+  const filePath = getQueuePersistPath(customDir);
+  if (!fs.existsSync(filePath)) {
+    return { items: [] };
+  }
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    if (!raw.trim()) return { items: [] };
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.items)) return { items: [] };
+    return parsed;
+  } catch {
+    return { items: [] };
+  }
 }
 
 // ─── BatchQueueManager ────────────────────────────────────────────────────────
@@ -79,6 +152,174 @@ class BatchQueueManager extends EventEmitter {
     this._activeCmds = new Map();
     /** Cancellation flags */
     this._cancelFlags = new Set();
+    /** Optional persistence path for crash recovery */
+    this._persistPath = options.persistPath || null;
+  }
+
+  // ── Persistence ────────────────────────────────────────────────────────────
+
+  /**
+   * Persists all items to disk for crash recovery.
+   * Includes WAITING, PROCESSING (reset to WAITING on recovery), DONE, ERROR, CANCELLED.
+   */
+  _persist() {
+    if (!this._persistPath) return;
+    try {
+      const allItems = [];
+      for (const id of this._order) {
+        const item = this._items.get(id);
+        if (item) {
+          allItems.push({
+            id: item.id,
+            inputPath: item.inputPath,
+            outputDir: item.outputDir,
+            outputPath: item.outputPath,
+            operation: item.operation,
+            mode: item.mode,
+            aspectRatio: item.aspectRatio,
+            quality: item.quality,
+            start: item.start,
+            duration: item.duration,
+            interval: item.interval,
+            width: item.width,
+            height: item.height,
+            generateThumbnail: item.generateThumbnail,
+            thumbnailTitle: item.thumbnailTitle,
+            variation: item.variation,
+            textOverlays: item.textOverlays,
+            bulkPlanId: item.bulkPlanId,
+            bulkJobId: item.bulkJobId,
+            profileId: item.profileId,
+            profileName: item.profileName,
+            platform: item.platform,
+            orderIndex: item.orderIndex,
+            addedAt: item.addedAt,
+            status: item.status,
+            error: item.error,
+            result: item.result,
+          });
+        }
+      }
+      atomicWriteJson(this._persistPath, { items: allItems, savedAt: new Date().toISOString() });
+    } catch (err) {
+      console.warn('[BatchQueue] Failed to persist queue state:', err.message);
+    }
+  }
+
+  /**
+   * Recovers items from disk after a crash.
+   * Recovery rules:
+   *   WAITING     → WAITING (re-queued)
+   *   PROCESSING  → WAITING (FFmpeg cannot resume mid-encode)
+   *   DONE        → DONE (display only)
+   *   ERROR       → ERROR (display only)
+   *   CANCELLED   → CANCELLED (display only)
+   * @param {string} [customDir] Override directory for persistence file
+   * @returns {Array<Object>} Recovered items
+   */
+  recoverPending(customDir) {
+    const persistPath = customDir ? getQueuePersistPath(customDir) : this._persistPath;
+    if (!persistPath) return [];
+
+    // Read directly from the resolved persistPath
+    let data;
+    try {
+      if (!fs.existsSync(persistPath)) return [];
+      const raw = fs.readFileSync(persistPath, 'utf8');
+      if (!raw.trim()) return [];
+      data = JSON.parse(raw);
+      if (!data || !Array.isArray(data.items)) return [];
+    } catch {
+      return [];
+    }
+    const recovered = [];
+    for (const raw of data.items) {
+      if (!raw || !raw.inputPath) continue;
+
+      // Crash recovery: PROCESSING → WAITING (FFmpeg cannot resume mid-encode)
+      const recoveredStatus = raw.status === STATUS.PROCESSING ? STATUS.WAITING : raw.status;
+
+      if (recoveredStatus === STATUS.WAITING) {
+        // Re-add via normal flow so it can be processed
+        const added = this.addItems([{
+          inputPath: raw.inputPath,
+          outputDir: raw.outputDir,
+          outputPath: raw.outputPath,
+          operation: raw.operation,
+          mode: raw.mode,
+          aspectRatio: raw.aspectRatio,
+          quality: raw.quality,
+          start: raw.start,
+          duration: raw.duration,
+          interval: raw.interval,
+          width: raw.width,
+          height: raw.height,
+          generateThumbnail: raw.generateThumbnail,
+          thumbnailTitle: raw.thumbnailTitle,
+          variation: raw.variation,
+          textOverlays: raw.textOverlays,
+          bulkPlanId: raw.bulkPlanId,
+          bulkJobId: raw.bulkJobId,
+          profileId: raw.profileId,
+          profileName: raw.profileName,
+          platform: raw.platform,
+          orderIndex: raw.orderIndex,
+        }]);
+        if (added.length > 0) recovered.push(added[0]);
+      } else if (
+        recoveredStatus === STATUS.DONE ||
+        recoveredStatus === STATUS.ERROR ||
+        recoveredStatus === STATUS.CANCELLED
+      ) {
+        // Terminal items: restore directly for display
+        const item = {
+          id: raw.id || generateId(),
+          inputPath: raw.inputPath,
+          outputDir: raw.outputDir,
+          outputPath: raw.outputPath,
+          filename: path.basename(raw.inputPath),
+          operation: raw.operation || 'reel',
+          mode: raw.mode || 'blur',
+          aspectRatio: raw.aspectRatio || '9:16',
+          quality: raw.quality || '1080p',
+          start: raw.start || 0,
+          duration: raw.duration || null,
+          interval: raw.interval || 30,
+          width: raw.width || 1080,
+          height: raw.height || 1920,
+          generateThumbnail: raw.generateThumbnail || false,
+          thumbnailTitle: raw.thumbnailTitle || '',
+          variation: raw.variation || null,
+          textOverlays: raw.textOverlays || null,
+          bulkPlanId: raw.bulkPlanId || null,
+          bulkJobId: raw.bulkJobId || null,
+          profileId: raw.profileId || null,
+          profileName: raw.profileName || null,
+          platform: raw.platform || null,
+          orderIndex: raw.orderIndex || null,
+          status: recoveredStatus,
+          progress: recoveredStatus === STATUS.DONE ? 100 : 0,
+          currentSegment: null,
+          totalSegments: null,
+          error: raw.error || null,
+          result: raw.result || null,
+          addedAt: raw.addedAt || Date.now(),
+          startedAt: raw.startedAt || null,
+          finishedAt: raw.finishedAt || Date.now(),
+        };
+        // Avoid duplicate IDs
+        if (!this._items.has(item.id)) {
+          this._items.set(item.id, item);
+          this._order.push(item.id);
+          recovered.push(item);
+        }
+      }
+    }
+
+    // Persist after recovery to save transformed state
+    this._persist();
+
+    return recovered;
   }
 
   // ── Concurrency Controls ───────────────────────────────────────────────────
@@ -157,6 +398,7 @@ class BatchQueueManager extends EventEmitter {
     }
 
     this._emitQueueUpdate();
+    this._persist();
     return created;
   }
 
@@ -186,6 +428,7 @@ class BatchQueueManager extends EventEmitter {
     Object.assign(item, updates);
     this._emitItemUpdate(item);
     this._emitQueueUpdate();
+    this._persist();
     return true;
   }
 
@@ -201,6 +444,7 @@ class BatchQueueManager extends EventEmitter {
     this._items.delete(id);
     this._order = this._order.filter((i) => i !== id);
     this._emitQueueUpdate();
+    this._persist();
     return true;
   }
 
@@ -219,6 +463,7 @@ class BatchQueueManager extends EventEmitter {
       this._order = this._order.filter((i) => i !== id);
     }
     this._emitQueueUpdate();
+    this._persist();
     return toRemove.length;
   }
 
@@ -239,6 +484,7 @@ class BatchQueueManager extends EventEmitter {
       this._items.delete(id);
       this._order = this._order.filter((i) => i !== id);
       this._emitQueueUpdate();
+      this._persist();
       return true;
     }
 
@@ -284,6 +530,7 @@ class BatchQueueManager extends EventEmitter {
 
     this._running = false;
     this._emitQueueUpdate();
+    this._persist();
   }
 
   /**
@@ -359,6 +606,7 @@ class BatchQueueManager extends EventEmitter {
     this._runningCount++;
     this._emitItemUpdate(item);
     this._emitQueueUpdate();
+    this._persist();
 
     try {
       if (this._cancelFlags.has(id)) {
@@ -484,4 +732,7 @@ module.exports = {
   MAX_CONCURRENCY,
   resolveDimensions,
   autoOutputPath,
+  getQueuePersistPath,
+  loadPersistedQueue,
+  atomicWriteJson,
 };

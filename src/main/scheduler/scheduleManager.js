@@ -89,6 +89,7 @@ function loadSchedules(customDir) {
 
 /**
  * Saves schedules safely to disk with atomic write.
+ * Windows fallback: if rename fails (cross-volume), falls back to copy + unlink.
  * @param {{ schedules: Array<Object> }} data
  * @param {string} [customDir]
  */
@@ -108,7 +109,21 @@ function saveSchedules(data, customDir) {
 
   const tempPath = `${filePath}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), 'utf8');
-  fs.renameSync(tempPath, filePath);
+
+  try {
+    fs.renameSync(tempPath, filePath);
+  } catch (err) {
+    // Windows fallback: rename may fail across volumes; try copy + unlink
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.copyFileSync(tempPath, filePath);
+        fs.unlinkSync(tempPath);
+      }
+    } catch (copyErr) {
+      try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch (_) {}
+      throw new Error(`Failed to save schedules: ${copyErr.message}`);
+    }
+  }
 }
 
 /**
