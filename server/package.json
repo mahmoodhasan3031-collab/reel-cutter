@@ -1,0 +1,16 @@
+{
+  "name": "reel-cutter-api",
+  "version": "1.0.0",
+  "description": "Reel Cutter payment & license backend API",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.115.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "nodemailer": "^10.0.0",
+    "stripe": "^22.6.1"
+  }
+}
