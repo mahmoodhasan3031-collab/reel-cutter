@@ -187,6 +187,12 @@ router.get('/dashboard',
         activated_at: lic.activated_at,
         created_at: lic.created_at,
         hasHwid: !!lic.hwid,
+        subscription_status: lic.subscription_status || null,
+        current_period_start: lic.current_period_start || null,
+        current_period_end: lic.current_period_end || null,
+        cancel_at_period_end: lic.cancel_at_period_end || false,
+        canceled_at: lic.canceled_at || null,
+        plan_interval: lic.plan_interval || null,
       }));
 
       return res.status(200).json({

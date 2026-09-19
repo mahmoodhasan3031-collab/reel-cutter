@@ -75,9 +75,9 @@ async function runTests() {
     assert.ok(content && content.includes("router.get('/status'"), 'Must have GET /status');
   });
 
-  runTest('A5. Session creation uses mode=payment (one-time)', () => {
+  runTest('A5. Session creation uses mode=subscription (monthly)', () => {
     const content = loadFile(path.join(routeDir, 'payment.js'));
-    assert.ok(content && content.includes("mode: 'payment'"), 'Must use mode=payment for one-time purchase');
+    assert.ok(content && content.includes("mode: 'subscription'"), 'Must use mode=subscription for monthly subscription');
   });
 
   runTest('A6. Session creation maps planId to Price ID', () => {
@@ -122,7 +122,7 @@ async function runTests() {
 
   runTest('B2. Price map includes basic, standard, pro', () => {
     const content = loadFile(path.join(serverDir, 'config.js'));
-    assert.ok(content && (content.includes('price_basic_10') || content.includes('priceIds.basic')), 'Must have basic price ID config');
+    assert.ok(content && (content.includes('price_basic_monthly_10') || content.includes('priceIds.basic')), 'Must have basic price ID config');
   });
 
   runTest('B3. Payment config PLAN_STRIPE_PRICE_MAP structure', () => {

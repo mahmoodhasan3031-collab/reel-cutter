@@ -398,16 +398,22 @@ async function runTests() {
   });
 
   await test('B4. Mark-before-create pattern: event is marked BEFORE license creation', () => {
-    // Verify markEventProcessed is called before createLicense
+    // Verify markEventProcessed is called before any handler in the route
     const stripeHandler = webhookContent.substring(
       webhookContent.indexOf("router.post(\n    '/stripe'"),
       webhookContent.indexOf('return res.status(500).json({')
     );
     const markIdx = stripeHandler.indexOf('markEventProcessed(event.id)');
-    const createIdx = stripeHandler.indexOf('createLicense(');
-    assert.ok(markIdx > 0, 'markEventProcessed must be called');
-    assert.ok(createIdx > 0, 'createLicense must be called');
-    assert.ok(markIdx < createIdx, 'markEventProcessed must be called BEFORE createLicense');
+    assert.ok(markIdx > 0, 'markEventProcessed must be called in router handler');
+
+    // In the new architecture, createLicense is inside handler functions (handleCheckoutCompleted etc.)
+    // Verify that the route handler calls a handler function AFTER marking the event
+    const switchIdx = stripeHandler.indexOf('switch (category)');
+    assert.ok(switchIdx > 0, 'Must have category-based switch routing');
+    assert.ok(markIdx < switchIdx, 'markEventProcessed must be called BEFORE switch routing');
+
+    // Verify createLicense exists in the webhook module (inside a handler function)
+    assert.ok(webhookContent.includes('createLicense('), 'createLicense must exist in webhook module');
   });
 
   await test('B5. Rollback on failure: unmarkEventProcessed is called when license creation fails', () => {
@@ -441,7 +447,10 @@ async function runTests() {
           id: 'cs_restart_18',
           payment_intent: 'pi_restart_18',
           customer_details: { email: 'restart-test@example.invalid' },
-          metadata: { price_id: 'price_standard_20' },
+          line_items: {
+            data: [{ price: { id: 'price_your-standard-price-id' } }],
+          },
+          metadata: { tier: 'standard' },
         },
       },
     };
@@ -522,7 +531,10 @@ async function runTests() {
           id: 'cs_sequential_18',
           payment_intent: 'pi_sequential_18',
           customer_details: { email: 'sequential-test@example.invalid' },
-          metadata: { price_id: 'price_basic_10' },
+          line_items: {
+            data: [{ price: { id: 'price_your-basic-price-id' } }],
+          },
+          metadata: { tier: 'basic' },
         },
       },
     };
@@ -623,7 +635,10 @@ async function runTests() {
           id: 'cs_email_fail_18',
           payment_intent: 'pi_email_fail_18',
           customer_details: { email: 'emailfail@example.invalid' },
-          metadata: { price_id: 'price_pro_30' },
+          line_items: {
+            data: [{ price: { id: 'price_your-pro-price-id' } }],
+          },
+          metadata: { tier: 'pro' },
         },
       },
     };

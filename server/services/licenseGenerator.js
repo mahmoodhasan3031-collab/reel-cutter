@@ -48,9 +48,30 @@ function generateKeyFormat() {
  * @param {string|null} [params.customerEmail]
  * @param {string|null} [params.transactionId]
  * @param {string} [params.paymentProvider]
- * @returns {Promise<{ licenseKey: string, tier: string, id: string, customerEmail: string|null, transactionId: string|null, paymentProvider: string, record: Object }>}
+ * @param {string|null} [params.stripeSubscriptionId]
+ * @param {string|null} [params.stripeCustomerId]
+ * @param {string|null} [params.subscriptionStatus]
+ * @param {string|null} [params.currentPeriodStart]
+ * @param {string|null} [params.currentPeriodEnd]
+ * @param {boolean} [params.cancelAtPeriodEnd]
+ * @param {string|null} [params.canceledAt]
+ * @param {string} [params.planInterval]
+ * @returns {Promise<Object>}
  */
-async function createLicense({ tier = 'standard', customerEmail = null, transactionId = null, paymentProvider = 'stripe' }) {
+async function createLicense({
+  tier = 'standard',
+  customerEmail = null,
+  transactionId = null,
+  paymentProvider = 'stripe',
+  stripeSubscriptionId = null,
+  stripeCustomerId = null,
+  subscriptionStatus = null,
+  currentPeriodStart = null,
+  currentPeriodEnd = null,
+  cancelAtPeriodEnd = false,
+  canceledAt = null,
+  planInterval = null,
+}) {
   const validTier = ['basic', 'standard', 'pro'].includes(tier.toLowerCase())
     ? tier.toLowerCase()
     : 'standard';
@@ -72,6 +93,15 @@ async function createLicense({ tier = 'standard', customerEmail = null, transact
     hwid: null,
     tier: validTier,
     status: 'active',
+    // Subscription fields
+    stripe_subscription_id: stripeSubscriptionId || null,
+    stripe_customer_id: stripeCustomerId || null,
+    subscription_status: subscriptionStatus || null,
+    current_period_start: currentPeriodStart || null,
+    current_period_end: currentPeriodEnd || null,
+    cancel_at_period_end: cancelAtPeriodEnd || false,
+    canceled_at: canceledAt || null,
+    plan_interval: planInterval || null,
     created_at: now,
     updated_at: now,
   };
@@ -101,6 +131,14 @@ async function createLicense({ tier = 'standard', customerEmail = null, transact
         emailError: data.email_error,
         emailAttempts: data.email_attempts,
         emailLastAttemptAt: data.email_last_attempt_at,
+        stripeSubscriptionId: data.stripe_subscription_id,
+        stripeCustomerId: data.stripe_customer_id,
+        subscriptionStatus: data.subscription_status,
+        currentPeriodStart: data.current_period_start,
+        currentPeriodEnd: data.current_period_end,
+        cancelAtPeriodEnd: data.cancel_at_period_end,
+        canceledAt: data.canceled_at,
+        planInterval: data.plan_interval,
         record: data,
       };
     } catch (err) {
@@ -135,6 +173,14 @@ async function createLicense({ tier = 'standard', customerEmail = null, transact
     emailError: record.email_error,
     emailAttempts: record.email_attempts,
     emailLastAttemptAt: record.email_last_attempt_at,
+    stripeSubscriptionId: record.stripe_subscription_id,
+    stripeCustomerId: record.stripe_customer_id,
+    subscriptionStatus: record.subscription_status,
+    currentPeriodStart: record.current_period_start,
+    currentPeriodEnd: record.current_period_end,
+    cancelAtPeriodEnd: record.cancel_at_period_end,
+    canceledAt: record.canceled_at,
+    planInterval: record.plan_interval,
     record,
   };
 }
@@ -164,6 +210,89 @@ async function getLicenseById(id) {
 
   for (const record of generatedLicensesRegistry.values()) {
     if (record.id === id || record.license_key === id) {
+      return record;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Finds a license by Stripe subscription ID.
+ * Used by webhook handler to prevent duplicate license creation.
+ * @param {string} subscriptionId
+ * @returns {Promise<Object|null>}
+ */
+async function findLicenseBySubscriptionId(subscriptionId) {
+  if (!subscriptionId) return null;
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('licenses')
+        .select('*')
+        .eq('stripe_subscription_id', subscriptionId)
+        .single();
+      if (!error && data) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[LicenseGenerator] findLicenseBySubscriptionId Supabase failed:', err.message);
+    }
+  }
+
+  // In-memory fallback
+  for (const record of generatedLicensesRegistry.values()) {
+    if (record.stripe_subscription_id === subscriptionId) {
+      return record;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Updates subscription-related fields on an existing license.
+ * Used by webhook handler for subscription lifecycle events.
+ * @param {string} licenseIdOrKey - License ID or license_key
+ * @param {Object} updates - Fields to update
+ * @returns {Promise<Object|null>}
+ */
+async function updateLicenseSubscription(licenseIdOrKey, updates) {
+  if (!licenseIdOrKey) return null;
+
+  const cleanUpdates = {
+    ...updates,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('licenses')
+        .update(cleanUpdates)
+        .or(`id.eq.${licenseIdOrKey},license_key.eq.${licenseIdOrKey}`)
+        .select()
+        .single();
+
+      if (!error && data) {
+        // Also update in-memory registry
+        for (const record of generatedLicensesRegistry.values()) {
+          if (record.id === licenseIdOrKey || record.license_key === licenseIdOrKey) {
+            Object.assign(record, cleanUpdates);
+          }
+        }
+        return data;
+      }
+    } catch (err) {
+      console.warn('[LicenseGenerator] updateLicenseSubscription Supabase failed:', err.message);
+    }
+  }
+
+  // In-memory fallback
+  for (const record of generatedLicensesRegistry.values()) {
+    if (record.id === licenseIdOrKey || record.license_key === licenseIdOrKey) {
+      Object.assign(record, cleanUpdates);
       return record;
     }
   }
@@ -226,6 +355,39 @@ function getInMemoryLicenses() {
 }
 
 /**
+ * For testing: seeds a license record into the in-memory registry
+ * @param {Object} record - Must include at least license_key
+ */
+function seedInMemoryLicense(record) {
+  const key = record.license_key;
+  generatedLicensesRegistry.set(key, {
+    id: record.id || (crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex')),
+    license_key: key,
+    customer_email: record.customer_email || null,
+    transaction_id: record.transaction_id || null,
+    payment_provider: record.payment_provider || 'stripe',
+    email_status: record.email_status || 'pending',
+    email_sent_at: record.email_sent_at || null,
+    email_error: record.email_error || null,
+    email_attempts: record.email_attempts || 0,
+    email_last_attempt_at: record.email_last_attempt_at || null,
+    hwid: record.hwid || null,
+    tier: record.tier || 'standard',
+    status: record.status || 'active',
+    stripe_subscription_id: record.stripe_subscription_id || null,
+    stripe_customer_id: record.stripe_customer_id || null,
+    subscription_status: record.subscription_status || null,
+    current_period_start: record.current_period_start || null,
+    current_period_end: record.current_period_end || null,
+    cancel_at_period_end: record.cancel_at_period_end || false,
+    canceled_at: record.canceled_at || null,
+    plan_interval: record.plan_interval || null,
+    created_at: record.created_at || new Date().toISOString(),
+    updated_at: record.updated_at || new Date().toISOString(),
+  });
+}
+
+/**
  * For testing: resets the in-memory license registry
  */
 function clearInMemoryLicenses() {
@@ -236,7 +398,10 @@ module.exports = {
   createLicense,
   generateKeyFormat,
   getLicenseById,
+  findLicenseBySubscriptionId,
+  updateLicenseSubscription,
   updateLicenseEmailStatus,
   getInMemoryLicenses,
+  seedInMemoryLicense,
   clearInMemoryLicenses,
 };

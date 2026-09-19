@@ -16,6 +16,67 @@ if (config.supabase.url && config.supabase.serviceRoleKey) {
 const inMemoryLicenses = new Map();
 
 /**
+ * Determines if a subscription license is currently valid based on subscription state.
+ * Server-authoritative: never trusts client-supplied status.
+ *
+ * @param {Object} record - License record from database
+ * @returns {{ valid: boolean, reason?: string }}
+ */
+function checkSubscriptionValidity(record) {
+  // One-time licenses (no subscription) use legacy status check
+  if (!record.stripe_subscription_id && !record.subscription_status) {
+    return { valid: record.status === 'active' };
+  }
+
+  // Subscription license: check subscription_status
+  const subStatus = record.subscription_status;
+
+  if (subStatus === 'active') {
+    // Active subscription — check if period has expired (edge case: webhook delay)
+    if (record.current_period_end) {
+      const now = new Date();
+      const periodEnd = new Date(record.current_period_end);
+      if (now > periodEnd) {
+        return { valid: false, reason: 'SUBSCRIPTION_EXPIRED' };
+      }
+    }
+    return { valid: true };
+  }
+
+  if (subStatus === 'past_due') {
+    // Past due — allow access during grace period
+    // Access continues until current_period_end
+    if (record.current_period_end) {
+      const now = new Date();
+      const periodEnd = new Date(record.current_period_end);
+      if (now > periodEnd) {
+        return { valid: false, reason: 'PAST_DUE_PERIOD_ENDED' };
+      }
+    }
+    return { valid: true };
+  }
+
+  if (subStatus === 'canceled') {
+    // Canceled — access continues until current_period_end if cancel_at_period_end
+    if (record.cancel_at_period_end && record.current_period_end) {
+      const now = new Date();
+      const periodEnd = new Date(record.current_period_end);
+      if (now <= periodEnd) {
+        return { valid: true };
+      }
+    }
+    return { valid: false, reason: 'SUBSCRIPTION_CANCELED' };
+  }
+
+  if (subStatus === 'unpaid') {
+    return { valid: false, reason: 'SUBSCRIPTION_UNPAID' };
+  }
+
+  // Unknown subscription status — deny access
+  return { valid: false, reason: 'SUBSCRIPTION_UNKNOWN_STATUS' };
+}
+
+/**
  * Looks up a license by key. Returns only safe public fields.
  * @param {string} licenseKey
  * @returns {Promise<Object|null>}
@@ -50,6 +111,10 @@ async function lookupLicense(licenseKey) {
     hwid: record.hwid,
     activated_at: record.activated_at,
     created_at: record.created_at,
+    stripe_subscription_id: record.stripe_subscription_id || null,
+    subscription_status: record.subscription_status || null,
+    current_period_end: record.current_period_end || null,
+    cancel_at_period_end: record.cancel_at_period_end || false,
   };
 }
 
@@ -111,7 +176,13 @@ async function activateLicense(licenseKey, hwid) {
     return { success: false, error: 'This license has been revoked.', code: 'LICENSE_REVOKED' };
   }
 
-  if (record.status !== 'active') {
+  // Subscription-aware validity check
+  if (record.stripe_subscription_id || record.subscription_status) {
+    const subCheck = checkSubscriptionValidity(record);
+    if (!subCheck.valid) {
+      return { success: false, error: 'This subscription is no longer active.', code: 'SUBSCRIPTION_INACTIVE' };
+    }
+  } else if (record.status !== 'active') {
     return { success: false, error: 'This license is not active.', code: 'LICENSE_INACTIVE' };
   }
 
@@ -165,7 +236,13 @@ async function validateLicense(licenseKey, hwid) {
     return { success: false, error: 'This license has been revoked.', code: 'LICENSE_REVOKED' };
   }
 
-  if (record.status !== 'active') {
+  // Subscription-aware validity check
+  if (record.stripe_subscription_id || record.subscription_status) {
+    const subCheck = checkSubscriptionValidity(record);
+    if (!subCheck.valid) {
+      return { success: false, error: 'This subscription is no longer active.', code: 'SUBSCRIPTION_INACTIVE' };
+    }
+  } else if (record.status !== 'active') {
     return { success: false, error: 'This license is not active.', code: 'LICENSE_INACTIVE' };
   }
 
@@ -211,6 +288,9 @@ async function getLicenseStatus(licenseKey) {
       status: record.status,
       activatedAt: record.activated_at,
       hasHwid: !!record.hwid,
+      subscriptionStatus: record.subscription_status || null,
+      currentPeriodEnd: record.current_period_end || null,
+      cancelAtPeriodEnd: record.cancel_at_period_end || false,
     },
   };
 }
@@ -298,6 +378,12 @@ async function getLicensesByUserId(userId) {
       hwid: record.hwid,
       activated_at: record.activated_at,
       created_at: record.created_at,
+      subscription_status: record.subscription_status || null,
+      current_period_start: record.current_period_start || null,
+      current_period_end: record.current_period_end || null,
+      cancel_at_period_end: record.cancel_at_period_end || false,
+      canceled_at: record.canceled_at || null,
+      plan_interval: record.plan_interval || null,
     }));
 
   // Also check licenseGenerator's in-memory registry (used by createLicense)
@@ -315,6 +401,12 @@ async function getLicensesByUserId(userId) {
             hwid: record.hwid,
             activated_at: record.activated_at,
             created_at: record.created_at,
+            subscription_status: record.subscription_status || null,
+            current_period_start: record.current_period_start || null,
+            current_period_end: record.current_period_end || null,
+            cancel_at_period_end: record.cancel_at_period_end || false,
+            canceled_at: record.canceled_at || null,
+            plan_interval: record.plan_interval || null,
           });
         }
       }
@@ -340,6 +432,14 @@ function seedInMemoryLicense(record) {
     activated_at: record.activated_at || null,
     created_at: record.created_at || new Date().toISOString(),
     user_id: record.user_id || null,
+    stripe_subscription_id: record.stripe_subscription_id || null,
+    stripe_customer_id: record.stripe_customer_id || null,
+    subscription_status: record.subscription_status || null,
+    current_period_start: record.current_period_start || null,
+    current_period_end: record.current_period_end || null,
+    cancel_at_period_end: record.cancel_at_period_end || false,
+    canceled_at: record.canceled_at || null,
+    plan_interval: record.plan_interval || null,
   });
 }
 
@@ -358,4 +458,4 @@ function isSupabaseConfigured() {
   return supabase !== null;
 }
 
-module.exports = { lookupLicense, bindLicense, activateLicense, validateLicense, getLicenseStatus, linkLicenseToUser, getLicensesByUserId, seedInMemoryLicense, clearInMemoryLicenses, isSupabaseConfigured, inMemoryLicenses };
+module.exports = { lookupLicense, bindLicense, activateLicense, validateLicense, getLicenseStatus, linkLicenseToUser, getLicensesByUserId, seedInMemoryLicense, clearInMemoryLicenses, isSupabaseConfigured, inMemoryLicenses, checkSubscriptionValidity };

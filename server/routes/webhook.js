@@ -2,7 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const StripeProvider = require('../providers/stripeProvider');
-const { createLicense } = require('../services/licenseGenerator');
+const { createLicense, findLicenseBySubscriptionId, updateLicenseSubscription } = require('../services/licenseGenerator');
 const { sendLicenseEmail, deliverLicenseEmail, maskEmail } = require('../services/emailService');
 const { linkLicenseToUser } = require('../services/licenseService');
 
@@ -122,14 +122,221 @@ function unmarkEventProcessed(eventId) {
 }
 
 /**
+ * Handle checkout.session.completed — creates a new subscription license.
+ * One subscription = one license record.
+ */
+async function handleCheckoutCompleted(event) {
+  const details = stripeProvider.extractCheckoutDetails(event);
+  if (!details) {
+    return { status: 200, body: { received: true, unhandledType: event.type } };
+  }
+
+  const { customerEmail, tier, transactionId, subscriptionId, customerId } = details;
+
+  // If subscription ID is present, check for existing license (duplicate protection)
+  if (subscriptionId) {
+    const existing = await findLicenseBySubscriptionId(subscriptionId);
+    if (existing) {
+      console.log(`[Webhook:Stripe] Subscription ${subscriptionId} already has license ${existing.license_key}, skipping creation`);
+      return { status: 200, body: { received: true, duplicate: true, licenseKey: existing.license_key } };
+    }
+  }
+
+  // Retrieve userId from checkout session metadata
+  let userIdFromMetadata = null;
+  try {
+    const session = await stripeProvider.stripe.checkout.sessions.retrieve(event.id);
+    userIdFromMetadata = session.metadata?.userId || null;
+  } catch (err) {
+    userIdFromMetadata = event.data?.object?.metadata?.userId || null;
+    if (!userIdFromMetadata) {
+      console.warn('[Webhook:Stripe] Could not retrieve checkout session:', err.message);
+    }
+  }
+
+  console.log(`[Webhook:Stripe] Processing subscription for ${maskEmail(customerEmail)}: tier = ${tier}`);
+
+  // Create license with subscription fields
+  const licenseResult = await createLicense({
+    tier,
+    customerEmail,
+    transactionId,
+    paymentProvider: 'stripe',
+    stripeSubscriptionId: subscriptionId || null,
+    stripeCustomerId: customerId || null,
+    subscriptionStatus: 'active',
+    currentPeriodStart: details.currentPeriodStart || new Date().toISOString(),
+    currentPeriodEnd: details.currentPeriodEnd || null,
+    cancelAtPeriodEnd: false,
+    canceledAt: null,
+    planInterval: 'month',
+  });
+
+  // Link license to authenticated user if userId is available from metadata
+  if (userIdFromMetadata) {
+    const linkResult = await linkLicenseToUser(licenseResult.licenseKey, userIdFromMetadata);
+    if (!linkResult.success) {
+      console.warn('[Webhook:Stripe] Failed to link license to user:', linkResult.error);
+    }
+  }
+
+  // Send confirmation email
+  const emailResult = await deliverLicenseEmail(licenseResult.id);
+  if (!emailResult.success) {
+    console.warn(`[Webhook:Stripe] License email delivery failed for ${maskEmail(customerEmail)}: ${emailResult.error}`);
+  }
+
+  return {
+    status: 200,
+    body: {
+      received: true,
+      tier: licenseResult.tier,
+      emailStatus: emailResult.email_status,
+    },
+  };
+}
+
+/**
+ * Handle customer.subscription.updated — updates existing license subscription fields.
+ * Never creates a second license.
+ */
+async function handleSubscriptionUpdated(event) {
+  const details = stripeProvider.extractSubscriptionUpdateDetails(event);
+  if (!details) {
+    return { status: 200, body: { received: true, unhandledType: event.type } };
+  }
+
+  const { subscriptionId, tier, subscriptionStatus, currentPeriodStart, currentPeriodEnd, cancelAtPeriodEnd, canceledAt, customerId } = details;
+
+  const existing = await findLicenseBySubscriptionId(subscriptionId);
+  if (!existing) {
+    console.warn(`[Webhook:Stripe] Subscription ${subscriptionId} not found for update, ignoring`);
+    return { status: 200, body: { received: true, noLicense: true } };
+  }
+
+  const updates = {
+    subscription_status: subscriptionStatus,
+    current_period_start: currentPeriodStart,
+    current_period_end: currentPeriodEnd,
+    cancel_at_period_end: cancelAtPeriodEnd,
+    canceled_at: canceledAt,
+    stripe_customer_id: customerId,
+  };
+
+  // Update tier only if it changed (plan upgrade/downgrade)
+  if (tier && tier !== existing.tier) {
+    updates.tier = tier;
+    console.log(`[Webhook:Stripe] Subscription ${subscriptionId} tier changed: ${existing.tier} -> ${tier}`);
+  }
+
+  await updateLicenseSubscription(existing.id || existing.license_key, updates);
+
+  console.log(`[Webhook:Stripe] Updated subscription ${subscriptionId}: status=${subscriptionStatus}, cancel_at_period_end=${cancelAtPeriodEnd}`);
+
+  return { status: 200, body: { received: true } };
+}
+
+/**
+ * Handle customer.subscription.deleted — marks license subscription as canceled.
+ * Does not immediately revoke the license; access continues until current_period_end.
+ */
+async function handleSubscriptionDeleted(event) {
+  const details = stripeProvider.extractSubscriptionDeleteDetails(event);
+  if (!details) {
+    return { status: 200, body: { received: true, unhandledType: event.type } };
+  }
+
+  const { subscriptionId } = details;
+
+  const existing = await findLicenseBySubscriptionId(subscriptionId);
+  if (!existing) {
+    console.warn(`[Webhook:Stripe] Subscription ${subscriptionId} not found for deletion, ignoring`);
+    return { status: 200, body: { received: true, noLicense: true } };
+  }
+
+  await updateLicenseSubscription(existing.id || existing.license_key, {
+    subscription_status: 'canceled',
+    cancel_at_period_end: false,
+    canceled_at: new Date().toISOString(),
+  });
+
+  console.log(`[Webhook:Stripe] Subscription ${subscriptionId} marked as canceled`);
+
+  return { status: 200, body: { received: true } };
+}
+
+/**
+ * Handle invoice.payment_succeeded — extends billing period for existing subscription.
+ * Never creates a second license.
+ */
+async function handleInvoicePaymentSucceeded(event) {
+  const details = stripeProvider.extractInvoicePaymentSucceeded(event);
+  if (!details) {
+    return { status: 200, body: { received: true, unhandledType: event.type } };
+  }
+
+  const { subscriptionId, currentPeriodStart, currentPeriodEnd } = details;
+
+  const existing = await findLicenseBySubscriptionId(subscriptionId);
+  if (!existing) {
+    console.warn(`[Webhook:Stripe] Subscription ${subscriptionId} not found for invoice update, ignoring`);
+    return { status: 200, body: { received: true, noLicense: true } };
+  }
+
+  await updateLicenseSubscription(existing.id || existing.license_key, {
+    subscription_status: 'active',
+    current_period_start: currentPeriodStart,
+    current_period_end: currentPeriodEnd,
+  });
+
+  console.log(`[Webhook:Stripe] Invoice payment succeeded for subscription ${subscriptionId}, period extended`);
+
+  return { status: 200, body: { received: true } };
+}
+
+/**
+ * Handle invoice.payment_failed — sets subscription to past_due.
+ * Does NOT immediately revoke access; preserves grace period.
+ */
+async function handleInvoicePaymentFailed(event) {
+  const details = stripeProvider.extractInvoicePaymentFailed(event);
+  if (!details) {
+    return { status: 200, body: { received: true, unhandledType: event.type } };
+  }
+
+  const { subscriptionId } = details;
+
+  const existing = await findLicenseBySubscriptionId(subscriptionId);
+  if (!existing) {
+    console.warn(`[Webhook:Stripe] Subscription ${subscriptionId} not found for failed invoice, ignoring`);
+    return { status: 200, body: { received: true, noLicense: true } };
+  }
+
+  await updateLicenseSubscription(existing.id || existing.license_key, {
+    subscription_status: 'past_due',
+  });
+
+  console.log(`[Webhook:Stripe] Invoice payment failed for subscription ${subscriptionId}, marked as past_due`);
+
+  return { status: 200, body: { received: true } };
+}
+
+/**
  * Stripe webhook endpoint.
  * Note: Must receive raw Buffer body for signature verification!
  *
  * Idempotency strategy:
  *   - Event is marked as processed BEFORE license creation (mark-before-create).
  *   - If license creation fails, the mark is rolled back so Stripe can retry.
- *   - The database transaction_id unique constraint provides a second line of defense
- *     against duplicate license creation from concurrent delivery.
+ *   - The database transaction_id and subscription_id unique constraints provide
+ *     defense against duplicate license creation from concurrent delivery.
+ *
+ * Subscription lifecycle events:
+ *   - checkout.session.completed → create license
+ *   - customer.subscription.updated → update license
+ *   - customer.subscription.deleted → mark canceled
+ *   - invoice.payment_succeeded → extend period
+ *   - invoice.payment_failed → mark past_due
  */
 router.post(
   '/stripe',
@@ -151,73 +358,54 @@ router.post(
       return res.status(200).json({ received: true, duplicate: true });
     }
 
-    // 3. Process payment success events
-    const paymentDetails = stripeProvider.extractPaymentDetails(event);
+    // 3. Determine event category and route to appropriate handler
+    const category = stripeProvider.getEventCategory(event);
 
-    if (!paymentDetails) {
-      // Not a payment completion event — mark as processed (no side effects) and return
+    if (!category) {
+      // Unknown event type — mark as processed (no side effects) and return
       markEventProcessed(event.id);
       return res.status(200).json({ received: true, unhandledType: event.type });
     }
 
-    // 4. Mark event as processed BEFORE license creation.
-    //    This prevents race conditions from concurrent duplicate webhook delivery.
-    //    If license creation fails, the mark is rolled back for Stripe retry.
+    // 4. Mark event as processed BEFORE any state changes.
+    //    If processing fails, the mark is rolled back for Stripe retry.
     markEventProcessed(event.id);
 
     try {
-      const { customerEmail, tier, transactionId } = paymentDetails;
+      let result;
 
-      // 6. Retrieve userId from checkout session metadata
-      //    First try session retrieval (production), then fall back to event metadata (test/fallback)
-      let userIdFromMetadata = null;
-      try {
-        const session = await stripe.checkout.sessions.retrieve(event.id);
-        userIdFromMetadata = session.metadata?.userId || null;
-      } catch (err) {
-        // Session retrieval failed — try reading metadata from the event directly
-        userIdFromMetadata = event.data?.object?.metadata?.userId || null;
-        if (!userIdFromMetadata) {
-          console.warn('[Webhook:Stripe] Could not retrieve checkout session:', err.message);
-        }
+      switch (category) {
+        case 'checkout':
+          result = await handleCheckoutCompleted(event);
+          break;
+        case 'subscription':
+          if (event.type === 'customer.subscription.updated') {
+            result = await handleSubscriptionUpdated(event);
+          } else if (event.type === 'customer.subscription.deleted') {
+            result = await handleSubscriptionDeleted(event);
+          } else {
+            result = { status: 200, body: { received: true, unhandledType: event.type } };
+          }
+          break;
+        case 'invoice':
+          if (event.type === 'invoice.payment_succeeded') {
+            result = await handleInvoicePaymentSucceeded(event);
+          } else if (event.type === 'invoice.payment_failed') {
+            result = await handleInvoicePaymentFailed(event);
+          } else {
+            result = { status: 200, body: { received: true, unhandledType: event.type } };
+          }
+          break;
+        default:
+          result = { status: 200, body: { received: true, unhandledType: event.type } };
       }
 
-      console.log(`[Webhook:Stripe] Processing payment for ${maskEmail(customerEmail)}: tier = ${tier}`);
-
-      // 5. Generate unique XXXX-XXXX-XXXX-XXXX license and insert into Supabase
-      const licenseResult = await createLicense({
-        tier,
-        customerEmail,
-        transactionId,
-        paymentProvider: 'stripe',
-      });
-
-      // 6. Link license to authenticated user if userId is available from metadata
-      if (userIdFromMetadata) {
-        const linkResult = await linkLicenseToUser(licenseResult.licenseKey, userIdFromMetadata);
-        if (!linkResult.success) {
-          console.warn('[Webhook:Stripe] Failed to link license to user:', linkResult.error);
-        }
-      }
-
-      // 7. Send confirmation email and persist delivery status/attempts
-      //    Email failure does NOT create a duplicate license — the license is already created.
-      //    Email can be retried independently via retryLicenseEmail.
-      const emailResult = await deliverLicenseEmail(licenseResult.id);
-      if (!emailResult.success) {
-        console.warn(`[Webhook:Stripe] License email delivery failed for ${maskEmail(customerEmail)}: ${emailResult.error}`);
-      }
-
-      return res.status(200).json({
-        received: true,
-        tier: licenseResult.tier,
-        emailStatus: emailResult.email_status,
-      });
+      return res.status(result.status).json(result.body);
     } catch (err) {
-      // 7. Rollback: unmark event so Stripe can retry the delivery
+      // Rollback: unmark event so Stripe can retry the delivery
       unmarkEventProcessed(event.id);
-      console.error(`[Webhook:Stripe] Error fulfilling order: ${err.message}`);
-      return res.status(500).json({ error: 'Internal server error processing payment' });
+      console.error(`[Webhook:Stripe] Error processing ${event.type}: ${err.message}`);
+      return res.status(500).json({ error: 'Internal server error processing webhook' });
     }
   }
 );

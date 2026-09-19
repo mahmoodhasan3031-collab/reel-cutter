@@ -175,8 +175,9 @@ async function runE2ETests() {
           payment_intent:  'pi_e2e_happy_001',
           payment_status:  'paid',
           line_items: {
-            data: [{ price: { id: 'price_pro_30' } }],
+            data: [{ price: { id: 'price_your-pro-price-id' } }],
           },
+          metadata: { tier: 'pro' },
         },
       },
     });
@@ -434,8 +435,9 @@ async function runE2ETests() {
           payment_intent:  'pi_e2e_idempotent_009',
           payment_status:  'paid',
           line_items: {
-            data: [{ price: { id: 'price_standard_20' } }],
+            data: [{ price: { id: 'price_your-standard-price-id' } }],
           },
+          metadata: { tier: 'standard' },
         },
       },
     });

@@ -326,7 +326,10 @@ async function runPaymentTests() {
           id: 'cs_dup_999',
           payment_intent: 'pi_dup_999',
           customer_details: { email: 'dup@example.com' },
-          metadata: { price_id: 'price_standard_20' },
+          line_items: {
+            data: [{ price: { id: 'price_your-standard-price-id' } }],
+          },
+          metadata: { tier: 'standard' },
         },
       },
     };

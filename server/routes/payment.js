@@ -10,12 +10,13 @@ const stripe = new Stripe(config.stripe.secretKey, {
 });
 
 // Helper: map website planId to server-side Stripe Price ID
+// Server-authoritative: client cannot override Price IDs
 function getStripePriceId(planId) {
   const priceMap = config.stripe.priceIds;
   const mapping = {
-    basic: priceMap.basic || priceMap.price_basic_10 || null,
-    standard: priceMap.standard || priceMap.price_standard_20 || null,
-    pro: priceMap.pro || priceMap.price_pro_30 || null,
+    basic: priceMap.basic || null,
+    standard: priceMap.standard || null,
+    pro: priceMap.pro || null,
   };
   return mapping[planId] || null;
 }
@@ -43,7 +44,7 @@ function buildCancelUrl() {
 
 /**
  * POST /api/checkout/create-checkout-session
- * Creates a Stripe Checkout Session for a one-time purchase.
+ * Creates a Stripe Checkout Session for a monthly subscription.
  *
  * Request: { planId: 'basic'|'standard'|'pro', email?: string, userId?: string }
  * Response: { success: true, sessionId, url }
@@ -63,13 +64,9 @@ router.post('/create-checkout-session',
       });
     }
 
-    // Verify planId is valid (website config)
-    const plan = config.stripe.priceIds
-      ? // Server has price IDs configured
-        { id: planId, priceId: getStripePriceId(planId) }
-      : null;
-
-    if (!plan || !plan.priceId) {
+    // Verify planId is valid (server-authoritative price resolution)
+    const priceId = getStripePriceId(planId);
+    if (!priceId) {
       return res.status(400).json({
         success: false,
         error: { code: 'PLAN_NOT_CONFIGURED', message: 'The requested plan is not configured for payment.' },
@@ -99,28 +96,29 @@ router.post('/create-checkout-session',
     }
 
     try {
-      // Create Stripe Checkout Session
+      // Create Stripe Checkout Session — subscription mode
       const session = await stripe.checkout.sessions.create({
         line_items: [
           {
-            price: plan.priceId,
-            // Quantity is 1 for one-time purchase
+            price: priceId,
             quantity: 1,
           },
         ],
-        mode: 'payment', // ONE-TIME purchase, not recurring
+        mode: 'subscription', // Monthly recurring subscription
         customer_email: email || undefined,
         success_url: buildSuccessUrl(),
         cancel_url: buildCancelUrl(),
         // Metadata for webhook/license creation (safe fields only)
         metadata: {
-          planId: plan.id,
-          // Include userId if provided - webhook will use this to link license
+          planId,
           userId: userId || undefined,
         },
-        // Avoid collecting address etc. — keep it minimal
-        client_details: {
-          // We'll set this on the frontend if needed
+        // Subscription metadata also passed through
+        subscription_data: {
+          metadata: {
+            planId,
+            userId: userId || undefined,
+          },
         },
       });
 
@@ -162,7 +160,7 @@ router.get('/status',
 
       // Safe response — only public, non-sensitive information
       const safeResponse = {
-        success: session.payment_status === 'paid',
+        success: session.payment_status === 'paid' || session.status === 'complete',
         sessionId: session.id,
         amount_total: session.amount_total,
         currency: session.currency,

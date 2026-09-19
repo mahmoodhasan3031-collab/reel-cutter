@@ -61,6 +61,7 @@ const tests = [
   'step24-authentication.test.js',
   'step25-license-api.test.js',
   'step26-stripe-payment.test.js',
+  'step32e-subscription-server.test.js',
 ];
 
 console.log('======================================================');

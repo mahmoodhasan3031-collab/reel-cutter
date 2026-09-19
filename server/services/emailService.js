@@ -5,7 +5,7 @@ const config = require('../config');
 const sentEmailsLog = [];
 
 /**
- * Builds the HTML content for purchase confirmation email
+ * Builds the HTML content for subscription activation email
  */
 function buildLicenseEmailHtml({ licenseKey, tier, downloadUrl }) {
   const tierName = tier.toUpperCase();
@@ -13,12 +13,12 @@ function buildLicenseEmailHtml({ licenseKey, tier, downloadUrl }) {
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #09090b; color: #f4f4f5; padding: 32px; border-radius: 16px; border: 1px solid #27272a;">
       <div style="text-align: center; margin-bottom: 28px;">
         <h1 style="color: #a78bfa; font-size: 24px; margin: 0 0 8px 0;">Reel Cutter</h1>
-        <p style="color: #71717a; font-size: 14px; margin: 0;">Thank you for your purchase!</p>
+        <p style="color: #71717a; font-size: 14px; margin: 0;">Welcome to your ${tierName} subscription!</p>
       </div>
 
       <div style="background-color: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
-        <p style="color: #a1a1aa; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 6px 0;">Purchased License</p>
-        <h2 style="color: #ffffff; font-size: 18px; margin: 0 0 16px 0;">${tierName} Plan</h2>
+        <p style="color: #a1a1aa; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 6px 0;">Your Plan</p>
+        <h2 style="color: #ffffff; font-size: 18px; margin: 0 0 16px 0;">${tierName} — Monthly Subscription</h2>
         
         <p style="color: #a1a1aa; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0;">Your Activation Key</p>
         <div style="background-color: #09090b; border: 1px solid #3f3f46; border-radius: 8px; padding: 12px 16px; font-family: monospace; font-size: 18px; font-weight: bold; color: #c4b5fd; letter-spacing: 2px; text-align: center; margin-bottom: 16px;">
@@ -26,7 +26,7 @@ function buildLicenseEmailHtml({ licenseKey, tier, downloadUrl }) {
         </div>
 
         <p style="color: #71717a; font-size: 12px; margin: 0;">
-          This key can be activated on one computer and binds to your hardware ID.
+          This key activates on one computer and binds to your hardware ID. Your subscription renews automatically each month.
         </p>
       </div>
 
