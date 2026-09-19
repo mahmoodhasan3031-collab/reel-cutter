@@ -3,8 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const StripeProvider = require('../providers/stripeProvider');
 const { createLicense } = require('../services/licenseGenerator');
-const { sendLicenseEmail, deliverLicenseEmail } = require('../services/emailService');
-const { maskEmail } = require('../services/emailService');
+const { sendLicenseEmail, deliverLicenseEmail, maskEmail } = require('../services/emailService');
+const { linkLicenseToUser } = require('../services/licenseService');
 
 const router = express.Router();
 const stripeProvider = new StripeProvider();
@@ -168,6 +168,20 @@ router.post(
     try {
       const { customerEmail, tier, transactionId } = paymentDetails;
 
+      // 6. Retrieve userId from checkout session metadata
+      //    First try session retrieval (production), then fall back to event metadata (test/fallback)
+      let userIdFromMetadata = null;
+      try {
+        const session = await stripe.checkout.sessions.retrieve(event.id);
+        userIdFromMetadata = session.metadata?.userId || null;
+      } catch (err) {
+        // Session retrieval failed — try reading metadata from the event directly
+        userIdFromMetadata = event.data?.object?.metadata?.userId || null;
+        if (!userIdFromMetadata) {
+          console.warn('[Webhook:Stripe] Could not retrieve checkout session:', err.message);
+        }
+      }
+
       console.log(`[Webhook:Stripe] Processing payment for ${maskEmail(customerEmail)}: tier = ${tier}`);
 
       // 5. Generate unique XXXX-XXXX-XXXX-XXXX license and insert into Supabase
@@ -178,7 +192,15 @@ router.post(
         paymentProvider: 'stripe',
       });
 
-      // 6. Send confirmation email and persist delivery status/attempts
+      // 6. Link license to authenticated user if userId is available from metadata
+      if (userIdFromMetadata) {
+        const linkResult = await linkLicenseToUser(licenseResult.licenseKey, userIdFromMetadata);
+        if (!linkResult.success) {
+          console.warn('[Webhook:Stripe] Failed to link license to user:', linkResult.error);
+        }
+      }
+
+      // 7. Send confirmation email and persist delivery status/attempts
       //    Email failure does NOT create a duplicate license — the license is already created.
       //    Email can be retried independently via retryLicenseEmail.
       const emailResult = await deliverLicenseEmail(licenseResult.id);

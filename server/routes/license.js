@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { activateLicense, validateLicense, getLicenseStatus } = require('../services/licenseService');
+const { activateLicense, validateLicense, getLicenseStatus, getLicensesByUserId } = require('../services/licenseService');
 const { validateLicenseKey, validateHwid, allowMethods, stripUnknownFields } = require('../middleware/inputValidator');
 const { activateLimiter, validateLimiter, statusLimiter } = require('../middleware/rateLimiter');
+const config = require('../config');
 
 // Safe error response helper — never leaks internals
 function errorResponse(res, status, code, message) {
@@ -127,6 +128,73 @@ router.get('/status',
       return successResponse(res, { license: result.license });
     } catch (err) {
       console.error('[LicenseAPI] Status error:', err.message);
+      return errorResponse(res, 500, 'INTERNAL_ERROR', 'An unexpected error occurred. Please try again.');
+    }
+  }
+);
+
+/**
+ * GET /api/license/dashboard
+ * Returns licenses for the authenticated user.
+ * Requires Bearer token (Supabase JWT) in Authorization header.
+ * Server determines user from token — never trusts client-supplied userId.
+ *
+ * Headers: Authorization: Bearer <supabase_jwt>
+ * Response: { success: true, licenses: [...safeFields] }
+ */
+router.get('/dashboard',
+  allowMethods(['GET']),
+  async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return errorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required. Please log in.');
+    }
+
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      return errorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required. Please log in.');
+    }
+
+    try {
+      // Verify the JWT using Supabase service-role client
+      let userId = null;
+
+      if (config.supabase.url && config.supabase.serviceRoleKey) {
+        const { createClient } = require('@supabase/supabase-js');
+        const adminClient = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
+          auth: { persistSession: false },
+        });
+        const { data: { user }, error: authError } = await adminClient.auth.getUser(token);
+        if (authError || !user) {
+          return errorResponse(res, 401, 'UNAUTHORIZED', 'Invalid or expired session. Please log in again.');
+        }
+        userId = user.id;
+      } else {
+        // In-memory / test mode: extract userId from a special test header
+        userId = req.headers['x-test-user-id'];
+        if (!userId) {
+          return errorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required. Please log in.');
+        }
+      }
+
+      const licenses = await getLicensesByUserId(userId);
+
+      // Return safe fields only — no customer_email, no transaction_id
+      const safeLicenses = licenses.map((lic) => ({
+        license_key: lic.license_key,
+        tier: lic.tier,
+        status: lic.status,
+        activated_at: lic.activated_at,
+        created_at: lic.created_at,
+        hasHwid: !!lic.hwid,
+      }));
+
+      return res.status(200).json({
+        success: true,
+        licenses: safeLicenses,
+      });
+    } catch (err) {
+      console.error('[LicenseAPI] Dashboard error:', err.message);
       return errorResponse(res, 500, 'INTERNAL_ERROR', 'An unexpected error occurred. Please try again.');
     }
   }

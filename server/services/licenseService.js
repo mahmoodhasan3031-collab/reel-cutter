@@ -216,20 +216,131 @@ async function getLicenseStatus(licenseKey) {
 }
 
 /**
- * Add a license to the in-memory store (for dev/test).
+ * Link a license to an authenticated Supabase user.
+ * Sets the user_id on the license record.
+ * Only the service role can call this.
+ * @param {string} licenseKey
+ * @param {string} userId - Supabase auth user UUID
+ * @returns {Promise<{ success: boolean, error?: string }>}
+ */
+async function linkLicenseToUser(licenseKey, userId) {
+  const key = licenseKey.trim().toUpperCase();
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from('licenses')
+        .update({ user_id: userId })
+        .eq('license_key', key);
+
+      if (error) throw error;
+      return { success: true };
+    } catch (err) {
+      console.warn('[LicenseService] linkLicenseToUser Supabase failed:', err.message);
+    }
+  }
+
+  // Fallback: in-memory update (check both licenseService and licenseGenerator stores)
+  for (const record of inMemoryLicenses.values()) {
+    if (record.license_key === key) {
+      record.user_id = userId;
+      return { success: true };
+    }
+  }
+
+  // Also check licenseGenerator's in-memory registry (used by createLicense)
+  try {
+    const licenseGenerator = require('./licenseGenerator');
+    const licenses = licenseGenerator.getInMemoryLicenses();
+    for (const record of licenses) {
+      if (record.license_key === key) {
+        record.user_id = userId;
+        return { success: true };
+      }
+    }
+  } catch {
+    // licenseGenerator module not available
+  }
+
+  return { success: false, error: 'LICENSE_NOT_FOUND' };
+}
+
+/**
+ * Get all licenses for an authenticated user.
+ * Returns only safe public fields.
+ * @param {string} userId - Supabase auth user UUID
+ * @returns {Promise<Object[]>}
+ */
+async function getLicensesByUserId(userId) {
+  const normalizedId = userId.toLowerCase();
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('licenses')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.warn('[LicenseService] getLicensesByUserId Supabase failed:', err.message);
+    }
+  }
+
+  // Fallback: in-memory lookup
+  const fromService = Array.from(inMemoryLicenses.values())
+    .filter((record) => record.user_id && record.user_id.toLowerCase() === normalizedId)
+    .map((record) => ({
+      license_key: record.license_key,
+      tier: record.tier,
+      status: record.status,
+      hwid: record.hwid,
+      activated_at: record.activated_at,
+      created_at: record.created_at,
+    }));
+
+  // Also check licenseGenerator's in-memory registry (used by createLicense)
+  try {
+    const licenseGenerator = require('./licenseGenerator');
+    const generated = licenseGenerator.getInMemoryLicenses();
+    for (const record of generated) {
+      if (record.user_id && record.user_id.toLowerCase() === normalizedId) {
+        // Avoid duplicates if already in fromService
+        if (!fromService.some((l) => l.license_key === record.license_key)) {
+          fromService.push({
+            license_key: record.license_key,
+            tier: record.tier,
+            status: record.status,
+            hwid: record.hwid,
+            activated_at: record.activated_at,
+            created_at: record.created_at,
+          });
+        }
+      }
+    }
+  } catch {
+    // licenseGenerator module not available
+  }
+
+  return fromService;
+}
+
+/**
+ * Seed a license into the in-memory store (for testing).
+ * @param {Object} record - Must include at least license_key, tier, status.
  */
 function seedInMemoryLicense(record) {
-  const key = record.license_key || record.licenseKey;
-  if (key) {
-    inMemoryLicenses.set(key.toUpperCase(), {
-      license_key: key.toUpperCase(),
-      tier: record.tier || 'standard',
-      status: record.status || 'active',
-      hwid: record.hwid || null,
-      activated_at: record.activated_at || null,
-      created_at: record.created_at || new Date().toISOString(),
-    });
-  }
+  const key = record.license_key.trim().toUpperCase();
+  inMemoryLicenses.set(key, {
+    license_key: key,
+    tier: record.tier || 'pro',
+    status: record.status || 'active',
+    hwid: record.hwid || null,
+    activated_at: record.activated_at || null,
+    created_at: record.created_at || new Date().toISOString(),
+    user_id: record.user_id || null,
+  });
 }
 
 /**
@@ -240,20 +351,11 @@ function clearInMemoryLicenses() {
 }
 
 /**
- * Check if Supabase is configured.
+ * Check whether Supabase is configured and connected.
+ * @returns {boolean}
  */
 function isSupabaseConfigured() {
   return supabase !== null;
 }
 
-module.exports = {
-  lookupLicense,
-  bindLicense,
-  activateLicense,
-  validateLicense,
-  getLicenseStatus,
-  seedInMemoryLicense,
-  clearInMemoryLicenses,
-  isSupabaseConfigured,
-  inMemoryLicenses,
-};
+module.exports = { lookupLicense, bindLicense, activateLicense, validateLicense, getLicenseStatus, linkLicenseToUser, getLicensesByUserId, seedInMemoryLicense, clearInMemoryLicenses, isSupabaseConfigured, inMemoryLicenses };

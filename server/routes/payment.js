@@ -47,15 +47,15 @@ function buildCancelUrl() {
  * POST /api/checkout/create-checkout-session
  * Creates a Stripe Checkout Session for a one-time purchase.
  *
- * Request: { planId: 'basic'|'standard'|'pro', email?: string }
+ * Request: { planId: 'basic'|'standard'|'pro', email?: string, userId?: string }
  * Response: { success: true, sessionId, url }
  *         or: { success: false, error: { code, message } }
  */
 router.post('/create-checkout-session',
   allowMethods(['POST']),
-  stripUnknownFields(['planId', 'email']),
+  stripUnknownFields(['planId', 'email', 'userId']),
   async (req, res) => {
-    const { planId, email } = req.body || {};
+    const { planId, email, userId } = req.body || {};
 
     // Validate planId
     if (!planId || typeof planId !== 'string') {
@@ -68,8 +68,6 @@ router.post('/create-checkout-session',
     // Verify planId is valid (website config)
     const plan = config.stripe.priceIds
       ? // Server has price IDs configured
-        // We validate by checking if the planId maps to a Price ID
-        // In production, we check the mapping exists
         { id: planId, priceId: getStripePriceId(planId) }
       : null;
 
@@ -91,6 +89,17 @@ router.post('/create-checkout-session',
       }
     }
 
+    // Validate userId if provided (should be a valid Supabase auth user UUID format)
+    if (userId && typeof userId === 'string') {
+      const userIdRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+      if (!userIdRegex.test(userId.trim())) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: 'Invalid user ID format.' },
+        });
+      }
+    }
+
     try {
       // Create Stripe Checkout Session
       const session = await stripe.checkout.sessions.create({
@@ -103,13 +112,13 @@ router.post('/create-checkout-session',
         ],
         mode: 'payment', // ONE-TIME purchase, not recurring
         customer_email: email || undefined,
-        // Success URL — must be absolute and match configured origin
         success_url: buildSuccessUrl(),
-        // Cancel URL — must be absolute and match configured origin
         cancel_url: buildCancelUrl(),
         // Metadata for webhook/license creation (safe fields only)
         metadata: {
           planId: plan.id,
+          // Include userId if provided - webhook will use this to link license
+          userId: userId || undefined,
         },
         // Avoid collecting address etc. — keep it minimal
         client_details: {
