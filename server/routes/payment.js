@@ -7,8 +7,6 @@ const { activateLimiter, validateLimiter, statusLimiter } = require('../middlewa
 
 const stripe = new Stripe(config.stripe.secretKey, {
   apiVersion: '2023-10-16',
-  // @ts-ignore
-  runtimeApiVersion: true,
 });
 
 // Helper: map website planId to server-side Stripe Price ID

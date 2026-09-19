@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS public.licenses (
   hwid TEXT,
   tier TEXT NOT NULL DEFAULT 'standard' CHECK (tier IN ('basic', 'standard', 'pro')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
+  user_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
@@ -28,6 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_licenses_customer_email ON public.licenses (custo
 CREATE INDEX IF NOT EXISTS idx_licenses_email_status ON public.licenses (email_status);
 CREATE INDEX IF NOT EXISTS idx_licenses_hwid ON public.licenses (hwid);
 CREATE INDEX IF NOT EXISTS idx_licenses_status ON public.licenses (status);
+CREATE INDEX IF NOT EXISTS idx_licenses_user_id ON public.licenses (user_id);
 
 -- transaction_id: partial unique index (STEP 18 — enforces uniqueness for non-NULL values)
 -- Replaces the previous non-unique idx_licenses_transaction_id
@@ -61,6 +63,12 @@ CREATE POLICY "Allow service role full access" ON public.licenses
   TO service_role
   USING (true)
   WITH CHECK (true);
+
+-- Authenticated users can read their own licenses (STEP 28)
+CREATE POLICY "Authenticated users can read own licenses" ON public.licenses
+  FOR SELECT
+  TO authenticated
+  USING (user_id = auth.uid());
 
 -- 6. Sample Initial Seed Licenses (For Testing & Production Setup)
 INSERT INTO public.licenses (license_key, tier, status)
