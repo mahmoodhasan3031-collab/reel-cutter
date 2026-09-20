@@ -22,13 +22,11 @@ export interface PricingPlan {
   price: number;
   priceDisplay: string;
   billingPeriod: string;
-  billingModel: "one-time";
+  billingModel: "subscription";
   description: string;
   highlight: boolean;
   features: PlanFeature[];
   cta: string;
-  /** Placeholder for future Stripe Price ID — do not expose real IDs in client code */
-  stripePriceId: string | null;
 }
 
 /**
@@ -97,8 +95,8 @@ export const PLANS: PricingPlan[] = [
     name: "Basic",
     price: 10,
     priceDisplay: "$10",
-    billingPeriod: "one-time",
-    billingModel: "one-time",
+    billingPeriod: "per month",
+    billingModel: "subscription",
     description: "Essential video cutting and export for getting started.",
     highlight: false,
     features: [
@@ -111,16 +109,15 @@ export const PLANS: PricingPlan[] = [
       { name: "AI features", included: false },
       { name: "Bulk export & automation", included: false },
     ],
-    cta: "Get Basic",
-    stripePriceId: null,
+    cta: "Subscribe Basic",
   },
   {
     id: "standard",
     name: "Standard",
     price: 20,
     priceDisplay: "$20",
-    billingPeriod: "one-time",
-    billingModel: "one-time",
+    billingPeriod: "per month",
+    billingModel: "subscription",
     description: "Full aspect ratio support and higher quality export.",
     highlight: false,
     features: [
@@ -132,16 +129,15 @@ export const PLANS: PricingPlan[] = [
       { name: "AI features", included: false },
       { name: "Bulk export & automation", included: false },
     ],
-    cta: "Get Standard",
-    stripePriceId: null,
+    cta: "Subscribe Standard",
   },
   {
     id: "pro",
     name: "Pro",
     price: 30,
     priceDisplay: "$30",
-    billingPeriod: "one-time",
-    billingModel: "one-time",
+    billingPeriod: "per month",
+    billingModel: "subscription",
     description: "Complete toolkit with AI features, bulk export, and automation.",
     highlight: true,
     features: [
@@ -157,8 +153,7 @@ export const PLANS: PricingPlan[] = [
       { name: "Export History & Recovery", included: true },
       { name: "Intelligence Dashboard & Command Center", included: true },
     ],
-    cta: "Get Pro",
-    stripePriceId: null,
+    cta: "Subscribe Pro",
   },
 ];
 

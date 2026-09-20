@@ -5,7 +5,7 @@ import { PLANS, FEATURE_CATEGORIES } from "@/config/pricing";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "View pricing plans for Reel Cutter — professional desktop video editing software. Simple one-time pricing with no subscriptions.",
+    "View pricing plans for Reel Cutter — professional desktop video editing software. Simple monthly subscription pricing.",
   openGraph: {
     title: "Pricing | Reel Cutter",
     description: "View pricing plans for Reel Cutter video editing software.",
@@ -22,7 +22,7 @@ export default function PricingPage() {
             Simple, Transparent Pricing
           </h1>
           <p className="mt-6 text-lg text-slate-600 dark:text-slate-400">
-            One-time payment. No subscriptions. No hidden fees.
+            Monthly subscription. Cancel anytime. No hidden fees.
             Choose the plan that fits your workflow.
           </p>
         </div>
@@ -282,8 +282,8 @@ export default function PricingPage() {
                 Are there any recurring fees?
               </h3>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                No. All pricing is one-time. You purchase a license once and own it forever.
-                Software updates are included.
+                Yes. All pricing is monthly subscription. You&apos;re billed each month
+                and can cancel anytime. Software updates are included.
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-800">
@@ -291,8 +291,8 @@ export default function PricingPage() {
                 Can I upgrade my tier later?
               </h3>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                Upgrade options will be available when the online store launches.
-                You&apos;ll only pay the difference between tiers.
+                Yes. You can upgrade or downgrade your subscription at any time from
+                your account page. Changes take effect on your next billing cycle.
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-800">
@@ -309,8 +309,8 @@ export default function PricingPage() {
                 What payment methods are accepted?
               </h3>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                Online payment is coming soon. Currently, licenses are available through
-                direct purchase. Contact us for more information.
+                We accept all major credit cards through Stripe, our secure payment
+                processor. Your payment information is encrypted and never stored on our servers.
               </p>
             </div>
           </div>
