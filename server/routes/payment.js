@@ -11,14 +11,13 @@ const stripe = new Stripe(config.stripe.secretKey, {
 
 // Helper: map website planId to server-side Stripe Price ID
 // Server-authoritative: client cannot override Price IDs
+// config.stripe.priceIds is { priceId → tier }, so we reverse-lookup
 function getStripePriceId(planId) {
   const priceMap = config.stripe.priceIds;
-  const mapping = {
-    basic: priceMap.basic || null,
-    standard: priceMap.standard || null,
-    pro: priceMap.pro || null,
-  };
-  return mapping[planId] || null;
+  for (const [priceId, tier] of Object.entries(priceMap)) {
+    if (tier === planId) return priceId;
+  }
+  return null;
 }
 
 // Helper: build safe success URL (based on configured origin only)
