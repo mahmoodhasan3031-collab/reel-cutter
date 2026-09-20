@@ -31,7 +31,15 @@ export const STRIPE_MODE = "test" as const;
  *
  * Actual Stripe Price IDs are resolved server-side when creating
  * checkout sessions. This config is for display/validation purposes only.
+ *
+ * NOTE: process.env.NEXT_PUBLIC_API_BASE_URL is inlined at build time by Next.js.
+ * It MUST be set in Vercel environment variables BEFORE triggering a deployment.
+ * After changing this env var, a full redeploy is required (not just a preview).
  */
+
+const _apiBaseUrl: string =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001";
+
 export const PAYMENT_CONFIG = {
   /**
    * Whether Stripe payment integration is enabled.
@@ -58,18 +66,14 @@ export const PAYMENT_CONFIG = {
 
   /**
    * Backend API base URL for creating checkout sessions.
-   * Uses NEXT_PUBLIC_API_BASE_URL environment variable.
-   * Falls back to localhost for development.
+   * Uses NEXT_PUBLIC_API_BASE_URL environment variable (inlined at build time).
+   * Falls back to localhost for local development only.
    */
-  get apiBaseUrl(): string {
-    return process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001";
-  },
+  apiBaseUrl: _apiBaseUrl,
 
   /**
    * Full backend endpoint for creating checkout sessions.
    * The backend validates the plan server-side and never trusts client-submitted prices.
    */
-  get checkoutEndpoint(): string {
-    return `${this.apiBaseUrl}/api/payment/create-checkout-session`;
-  },
+  checkoutEndpoint: `${_apiBaseUrl}/api/payment/create-checkout-session`,
 } as const;
