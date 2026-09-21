@@ -8,6 +8,13 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
 export default defineConfig({
   main: {
+    define: {
+      // Inject production Supabase credentials at build time so the packaged
+      // desktop app can reach the Supabase RPC functions directly.
+      // Only the public/anon key is bundled — never the service-role key.
+      __SUPABASE_URL__: JSON.stringify('https://pyrtitvvwxrwhmdfrjsb.supabase.co'),
+      __SUPABASE_ANON_KEY__: JSON.stringify('sb_publishable_14Q9A-4TbR5JL3vqF_Zjkw_TKEhOdlV'),
+    },
     plugins: [
       externalizeDepsPlugin(),
       // Allow Rollup to bundle local CJS engine/shared modules that are imported

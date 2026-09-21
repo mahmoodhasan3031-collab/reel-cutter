@@ -4,8 +4,12 @@ const { createClient } = require('@supabase/supabase-js');
 // ─── Environment Configuration ───────────────────────────────────────────────
 // The Electron client MUST use the anon/public key only.
 // The service-role key is for server-side use and must NEVER be bundled into the client.
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
+//
+// __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ are injected at build time via
+// electron.vite.config.mjs define so the packaged app has credentials.
+// process.env fallback is for dev/test when running outside the Vite build.
+const SUPABASE_URL = typeof __SUPABASE_URL__ !== 'undefined' ? __SUPABASE_URL__ : (process.env.SUPABASE_URL || '');
+const SUPABASE_KEY = typeof __SUPABASE_ANON_KEY__ !== 'undefined' ? __SUPABASE_ANON_KEY__ : (process.env.SUPABASE_ANON_KEY || '');
 
 // Detect packaged production build — mock DB must never be used in production
 let isPackaged = false;
