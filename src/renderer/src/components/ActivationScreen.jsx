@@ -144,12 +144,6 @@ export default function ActivationScreen({ onActivated }) {
           </div>
         </div>
 
-        {/* Demo keys helper note for offline/dev */}
-        <div className="mt-6 text-center">
-          <p className="text-[11px] text-zinc-600">
-            Test key: <code className="text-brand-400 font-mono bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">PRO-REEL-7890-ABCD-1234</code>
-          </p>
-        </div>
       </div>
     </div>
   );
