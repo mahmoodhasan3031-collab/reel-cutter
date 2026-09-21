@@ -83,7 +83,8 @@ class StripeProvider extends PaymentProvider {
       session.metadata?.customer_email ||
       '';
 
-    // Determine tier from server-side price ID mapping (most reliable)
+    // Determine tier from server-side price ID mapping (most reliable).
+    // Note: line_items is NOT in the default webhook payload unless expanded.
     let tier = null;
     if (session.line_items && Array.isArray(session.line_items.data)) {
       for (const item of session.line_items.data) {
@@ -92,6 +93,14 @@ class StripeProvider extends PaymentProvider {
           tier = matched;
           break;
         }
+      }
+    }
+
+    // Fallback: metadata.planId (validated server-side in payment.js create-checkout-session)
+    if (!tier && session.metadata?.planId) {
+      const declared = session.metadata.planId.toLowerCase();
+      if (['basic', 'standard', 'pro'].includes(declared)) {
+        tier = declared;
       }
     }
 

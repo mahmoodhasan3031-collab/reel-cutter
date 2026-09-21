@@ -128,7 +128,9 @@ function unmarkEventProcessed(eventId) {
 async function handleCheckoutCompleted(event) {
   const details = stripeProvider.extractCheckoutDetails(event);
   if (!details) {
-    return { status: 200, body: { received: true, unhandledType: event.type } };
+    // Cannot resolve checkout details — return error so Stripe retries
+    console.warn(`[Webhook:Stripe] Could not resolve checkout details for event ${event.id}`);
+    return { status: 400, body: { error: 'Could not resolve checkout session details' } };
   }
 
   const { customerEmail, tier, transactionId, subscriptionId, customerId } = details;
@@ -142,14 +144,16 @@ async function handleCheckoutCompleted(event) {
     }
   }
 
-  // Retrieve userId from checkout session metadata
-  let userIdFromMetadata = null;
-  try {
-    const session = await stripeProvider.stripe.checkout.sessions.retrieve(event.id);
-    userIdFromMetadata = session.metadata?.userId || null;
-  } catch (err) {
-    userIdFromMetadata = event.data?.object?.metadata?.userId || null;
-    if (!userIdFromMetadata) {
+  // Retrieve userId from checkout session metadata.
+  // First try event.data.object.metadata (already in webhook payload),
+  // then fall back to retrieving the full session via API if needed.
+  let userIdFromMetadata = event.data?.object?.metadata?.userId || null;
+
+  if (!userIdFromMetadata) {
+    try {
+      const session = await stripeProvider.stripe.checkout.sessions.retrieve(event.data.object.id);
+      userIdFromMetadata = session.metadata?.userId || null;
+    } catch (err) {
       console.warn('[Webhook:Stripe] Could not retrieve checkout session:', err.message);
     }
   }

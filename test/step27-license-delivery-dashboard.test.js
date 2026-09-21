@@ -500,7 +500,7 @@ async function runStep27Tests() {
         object: {
           customer_email: SANDBOX_EMAIL_A,
           payment_intent: 'pi_step27_e1',
-          line_items: { data: [{ price: { id: 'price_pro_30' } }] },
+          line_items: { data: [{ price: { id: 'price_pro_monthly_30' } }] },
           metadata: { planId: 'pro' },
         },
       },
@@ -525,7 +525,7 @@ async function runStep27Tests() {
         object: {
           customer_email: SANDBOX_EMAIL_A,
           payment_intent: 'pi_step27_e2',
-          line_items: { data: [{ price: { id: 'price_standard_20' } }] },
+          line_items: { data: [{ price: { id: 'price_standard_monthly_20' } }] },
           metadata: { planId: 'standard', userId },
         },
       },
@@ -547,7 +547,7 @@ async function runStep27Tests() {
         object: {
           customer_email: SANDBOX_EMAIL_A,
           payment_intent: 'pi_step27_e3',
-          line_items: { data: [{ price: { id: 'price_basic_10' } }] },
+          line_items: { data: [{ price: { id: 'price_basic_monthly_10' } }] },
           metadata: {},
         },
       },
@@ -569,7 +569,7 @@ async function runStep27Tests() {
         object: {
           customer_email: SANDBOX_EMAIL_A,
           payment_intent: 'pi_step27_e4',
-          line_items: { data: [{ price: { id: 'price_pro_30' } }] },
+          line_items: { data: [{ price: { id: 'price_pro_monthly_30' } }] },
           metadata: { planId: 'pro' },
         },
       },
@@ -598,7 +598,7 @@ async function runStep27Tests() {
         object: {
           customer_email: SANDBOX_EMAIL_A,
           payment_intent: 'pi_step27_e5',
-          line_items: { data: [{ price: { id: 'price_pro_30' } }] },
+          line_items: { data: [{ price: { id: 'price_pro_monthly_30' } }] },
           metadata: { planId: 'pro', userId },
         },
       },
@@ -687,7 +687,7 @@ async function runStep27Tests() {
         object: {
           customer_email: SANDBOX_EMAIL_A,
           payment_intent: 'pi_step27_h1_txn',
-          line_items: { data: [{ price: { id: 'price_pro_30' } }] },
+          line_items: { data: [{ price: { id: 'price_pro_monthly_30' } }] },
         },
       },
     });
@@ -799,7 +799,7 @@ async function runStep27Tests() {
         object: {
           customer_email: SANDBOX_EMAIL_A,
           payment_intent: 'pi_step27_j4',
-          line_items: { data: [{ price: { id: 'price_pro_30' } }] },
+          line_items: { data: [{ price: { id: 'price_pro_monthly_30' } }] },
         },
       },
     });
@@ -985,9 +985,10 @@ async function runStep27Tests() {
   await test('M2. Payment config has price mapping', async () => {
     assert.ok(config.stripe.priceIds, 'stripe.priceIds must exist');
     const planMap = config.stripe.priceIds;
-    assert.ok(planMap.basic || planMap.price_basic_10, 'Must have basic price mapping');
-    assert.ok(planMap.standard || planMap.price_standard_20, 'Must have standard price mapping');
-    assert.ok(planMap.pro || planMap.price_pro_30, 'Must have pro price mapping');
+    const values = Object.values(planMap);
+    assert.ok(values.includes('basic'), 'Must have basic price mapping');
+    assert.ok(values.includes('standard'), 'Must have standard price mapping');
+    assert.ok(values.includes('pro'), 'Must have pro price mapping');
   });
 
   await test('M3. Payment route has input validation', async () => {
