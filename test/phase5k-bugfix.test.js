@@ -118,15 +118,18 @@ async function runTests() {
     assert.ok(content.includes("isRecipes"), 'has isRecipes variable');
   });
 
-  // ─── 11. ProFeaturePlaceholder does NOT default recipes to Batch Queue ──
-  await test('11. ProFeaturePlaceholder does NOT default recipes to Batch Queue', () => {
+  // ─── 11. ProFeaturePlaceholder typeConfig includes workflow_recipes ──
+  await test('11. ProFeaturePlaceholder typeConfig includes workflow_recipes', () => {
     const filePath = path.join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'ProFeaturePlaceholder.jsx');
     const content = fs.readFileSync(filePath, 'utf-8');
-    // The old code was: const title = isThumbnails ? 'AI Thumbnails' : 'Batch Queue';
-    // The new code should be: const title = isThumbnails ? 'AI Thumbnails' : isRecipes ? 'Workflow Recipes' : 'Batch Queue';
+    // typeConfig object provides a dedicated entry for workflow_recipes
     assert.ok(
-      content.includes("isRecipes ? 'Workflow Recipes' : 'Batch Queue'"),
-      'title has three-way branch'
+      content.includes("workflow_recipes:") || content.includes("'workflow_recipes'"),
+      'typeConfig has workflow_recipes entry'
+    );
+    assert.ok(
+      content.includes("title: 'Workflow Recipes'"),
+      'workflow_recipes has Workflow Recipes title'
     );
   });
 
@@ -138,11 +141,11 @@ async function runTests() {
     assert.ok(content.includes("'AI Thumbnails'"), 'renders AI Thumbnails title');
   });
 
-  // ─── 13. ProFeaturePlaceholder still handles batch_queue (default) ──
-  await test('13. ProFeaturePlaceholder still handles batch_queue (default)', () => {
-    const filePath = path.join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'ProFeaturePlaceholder.jsx');
+  // ─── 13. Batch Queue handling in BatchQueuePanel (not ProFeaturePlaceholder) ──
+  await test('13. BatchQueuePanel still handles batch_queue with correct title and subtitle', () => {
+    const filePath = path.join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'BatchQueuePanel.jsx');
     const content = fs.readFileSync(filePath, 'utf-8');
-    assert.ok(content.includes("'Batch Queue'"), 'Batch Queue title still exists');
+    assert.ok(content.includes('Batch Queue'), 'Batch Queue title still exists');
     assert.ok(content.includes('Automate rendering'), 'Batch Queue subtitle still exists');
   });
 
