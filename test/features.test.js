@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { hasFeature, FEATURE_KEYS, getTierFeatureList } = require('../src/shared/features');
+const { hasFeature, FEATURE_KEYS, getTierFeatureList, TIER_PRICING } = require('../src/shared/features');
 
 async function runFeatureTests() {
   console.log('\n======================================================');
@@ -98,15 +98,60 @@ async function runFeatureTests() {
     assert.strictEqual(hasFeature('pro', FEATURE_KEYS.BATCH_QUEUE), true);
   });
 
-  // ─── 4. Edge Cases & Security ─────────────────────────────────────────────
-  test('15. Invalid / null / empty tier returns false for all features', () => {
+  // ─── 4. Command Center & Dashboard Feature Gating ─────────────────────────
+  test('15. Command Center: Locked on Basic tier', () => {
+    assert.strictEqual(hasFeature('basic', 'export command center'), false);
+    assert.strictEqual(hasFeature('basic', 'export_command_center'), false);
+    assert.strictEqual(hasFeature('basic', FEATURE_KEYS.EXPORT_COMMAND_CENTER), false);
+  });
+
+  test('16. Command Center: Locked on Standard tier', () => {
+    assert.strictEqual(hasFeature('standard', 'export command center'), false);
+    assert.strictEqual(hasFeature('standard', 'export_command_center'), false);
+  });
+
+  test('17. Command Center: Unlocked on Pro tier', () => {
+    assert.strictEqual(hasFeature('pro', 'export command center'), true);
+    assert.strictEqual(hasFeature('pro', 'export_command_center'), true);
+    assert.strictEqual(hasFeature('pro', FEATURE_KEYS.EXPORT_COMMAND_CENTER), true);
+  });
+
+  test('18. Dashboard: Locked on Basic tier', () => {
+    assert.strictEqual(hasFeature('basic', 'export intelligence dashboard'), false);
+    assert.strictEqual(hasFeature('basic', 'export_intelligence_dashboard'), false);
+    assert.strictEqual(hasFeature('basic', FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD), false);
+  });
+
+  test('19. Dashboard: Locked on Standard tier', () => {
+    assert.strictEqual(hasFeature('standard', 'export intelligence dashboard'), false);
+    assert.strictEqual(hasFeature('standard', 'export_intelligence_dashboard'), false);
+  });
+
+  test('20. Dashboard: Unlocked on Pro tier', () => {
+    assert.strictEqual(hasFeature('pro', 'export intelligence dashboard'), true);
+    assert.strictEqual(hasFeature('pro', 'export_intelligence_dashboard'), true);
+    assert.strictEqual(hasFeature('pro', FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD), true);
+  });
+
+  // ─── 5. Pricing Labels (monthly subscription) ──────────────────────────────
+  test('21. TIER_PRICING labels use monthly subscription, not one-time', () => {
+    assert.ok(!TIER_PRICING.basic.label.includes('one-time'), 'Basic label must not say one-time');
+    assert.ok(!TIER_PRICING.standard.label.includes('one-time'), 'Standard label must not say one-time');
+    assert.ok(!TIER_PRICING.pro.label.includes('one-time'), 'Pro label must not say one-time');
+    assert.ok(TIER_PRICING.basic.label.includes('month'), 'Basic label must include month');
+    assert.ok(TIER_PRICING.standard.label.includes('month'), 'Standard label must include month');
+    assert.ok(TIER_PRICING.pro.label.includes('month'), 'Pro label must include month');
+  });
+
+  // ─── 6. Edge Cases & Security ─────────────────────────────────────────────
+  test('22. Invalid / null / empty tier returns false for all features', () => {
     assert.strictEqual(hasFeature(null, 'cutting'), false);
     assert.strictEqual(hasFeature(undefined, 'cutting'), false);
     assert.strictEqual(hasFeature('', 'cutting'), false);
     assert.strictEqual(hasFeature('hacker_tier', 'cutting'), false);
   });
 
-  test('16. Feature list generation accurately marks unlocked flags per tier', () => {
+  test('23. Feature list generation accurately marks unlocked flags per tier', () => {
     const basicList = getTierFeatureList('basic');
     const basicUnlocked = basicList.filter((f) => f.unlocked).map((f) => f.key);
     assert.deepStrictEqual(basicUnlocked.sort(), [FEATURE_KEYS.CUTTING, FEATURE_KEYS.EXPORT_1080P].sort());

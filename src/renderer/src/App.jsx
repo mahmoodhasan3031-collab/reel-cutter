@@ -374,6 +374,8 @@ export default function App() {
   }, [])
 
   const isRecipePro = hasFeature(licenseState.tier, 'workflow_recipes')
+  const isCommandCenterPro = hasFeature(licenseState.tier, 'export_command_center')
+  const isDashboardPro = hasFeature(licenseState.tier, 'export_intelligence_dashboard')
 
   const isPro = hasFeature(licenseState.tier, 'ai_thumbnails')
 
@@ -508,19 +510,35 @@ export default function App() {
           {/* Export Intelligence Dashboard (Phase 5H) */}
           {view === 'dashboard' && (
             <div className="flex-1 overflow-y-auto p-6">
-              <ExportIntelligenceDashboard
-                licenseTier={licenseState.tier}
-                onOpenUpgrade={handleOpenUpgrade}
-              />
+              {isDashboardPro ? (
+                <ExportIntelligenceDashboard
+                  licenseTier={licenseState.tier}
+                  onOpenUpgrade={handleOpenUpgrade}
+                />
+              ) : (
+                <ProFeaturePlaceholder
+                  type="dashboard"
+                  isUnlocked={false}
+                  onOpenUpgrade={handleOpenUpgrade}
+                />
+              )}
             </div>
           )}
 
           {/* Export Command Center (Phase 5I) */}
           {view === 'command_center' && (
             <div className="flex-1 overflow-y-auto p-6">
-              <ExportCommandCenter
-                onNavigate={setView}
-              />
+              {isCommandCenterPro ? (
+                <ExportCommandCenter
+                  onNavigate={setView}
+                />
+              ) : (
+                <ProFeaturePlaceholder
+                  type="command_center"
+                  isUnlocked={false}
+                  onOpenUpgrade={handleOpenUpgrade}
+                />
+              )}
             </div>
           )}
 

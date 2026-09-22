@@ -349,9 +349,9 @@ const FEATURE_METADATA = [
 ];
 
 const TIER_PRICING = {
-  basic: { name: 'Basic', price: 10, label: '$10 one-time' },
-  standard: { name: 'Standard', price: 20, label: '$20 one-time' },
-  pro: { name: 'Pro', price: 30, label: '$30 one-time' },
+  basic: { name: 'Basic', price: 10, label: '$10/month' },
+  standard: { name: 'Standard', price: 20, label: '$20/month' },
+  pro: { name: 'Pro', price: 30, label: '$30/month' },
 };
 
 /**

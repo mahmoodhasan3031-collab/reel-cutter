@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, Layers, Lock, Play, Image, CheckCircle, ArrowRight, Loader2, BookOpen } from 'lucide-react';
+import { Sparkles, Layers, Lock, Play, Image, CheckCircle, ArrowRight, Loader2, BookOpen, LayoutDashboard, BarChart3 } from 'lucide-react';
 
 export default function ProFeaturePlaceholder({ type = 'ai_thumbnails', isUnlocked, onOpenUpgrade, videoPath }) {
   const [loading, setLoading] = useState(false);
@@ -7,12 +7,39 @@ export default function ProFeaturePlaceholder({ type = 'ai_thumbnails', isUnlock
 
   const isThumbnails = type === 'ai_thumbnails';
   const isRecipes = type === 'workflow_recipes';
-  const title = isThumbnails ? 'AI Thumbnails' : isRecipes ? 'Workflow Recipes' : 'Batch Queue';
-  const subtitle = isThumbnails
-    ? 'AI-driven keyframe detector that analyzes motion and contrast to generate viral reel covers.'
-    : isRecipes
-    ? 'Reusable production configurations that combine export settings with profiles, presets, and captions into one-click workflows.'
-    : 'Automate rendering of multiple video files and queued splits in the background.';
+  const isCommandCenter = type === 'command_center';
+  const isDashboard = type === 'dashboard';
+  const typeConfig = {
+    ai_thumbnails: {
+      title: 'AI Thumbnails',
+      subtitle: 'AI-driven keyframe detector that analyzes motion and contrast to generate viral reel covers.',
+      icon: Sparkles,
+      lockIcon: Lock,
+    },
+    workflow_recipes: {
+      title: 'Workflow Recipes',
+      subtitle: 'Reusable production configurations that combine export settings with profiles, presets, and captions into one-click workflows.',
+      icon: BookOpen,
+      lockIcon: BookOpen,
+    },
+    command_center: {
+      title: 'Export Command Center',
+      subtitle: 'Unified operational view of active exports, queue, schedules, attention items, recent activity, recovery, and output health.',
+      icon: LayoutDashboard,
+      lockIcon: LayoutDashboard,
+    },
+    dashboard: {
+      title: 'Export Intelligence Dashboard',
+      subtitle: 'Local analytics dashboard with overview, time, profile, platform, preset, recovery, bulk, scheduled, output health, workflow insights, and attention signals.',
+      icon: BarChart3,
+      lockIcon: BarChart3,
+    },
+  };
+  const config = typeConfig[type] || typeConfig.ai_thumbnails;
+  const IconComp = config.icon;
+  const LockComp = config.lockIcon;
+  const title = config.title;
+  const subtitle = config.subtitle;
 
   const handleRunProAction = async () => {
     if (!videoPath) {
@@ -41,13 +68,7 @@ export default function ProFeaturePlaceholder({ type = 'ai_thumbnails', isUnlock
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-zinc-100 flex items-center gap-2">
-            {isThumbnails ? (
-              <Sparkles size={18} className="text-brand-400" />
-            ) : isRecipes ? (
-              <BookOpen size={18} className="text-brand-400" />
-            ) : (
-              <Layers size={18} className="text-brand-400" />
-            )}
+            <IconComp size={18} className="text-brand-400" />
             {title}
             <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-brand-600/20 text-brand-300 border border-brand-500/30">
               PRO FEATURE
@@ -61,20 +82,14 @@ export default function ProFeaturePlaceholder({ type = 'ai_thumbnails', isUnlock
       {!isUnlocked ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 flex flex-col items-center text-center relative overflow-hidden">
           <div className="w-14 h-14 rounded-2xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 mb-4 shadow-inner">
-            {isThumbnails ? (
-              <Lock size={24} className="text-brand-400" />
-            ) : isRecipes ? (
-              <BookOpen size={24} className="text-brand-400" />
-            ) : (
-              <Lock size={24} className="text-brand-400" />
-            )}
+            <LockComp size={24} className="text-brand-400" />
           </div>
 
           <h3 className="text-sm font-bold text-zinc-100 mb-1">
             {title} is locked on your current plan
           </h3>
           <p className="text-xs text-zinc-400 max-w-md mb-6 leading-relaxed">
-            Upgrade your Reel Cutter license to the Pro tier ($30 one-time) to unlock AI-powered thumbnails, automated subject tracking smart crop, and high-volume batch queues.
+            Upgrade your Reel Cutter license to the Pro tier ($30/month) to unlock {title.toLowerCase()} and other powerful Pro features.
           </p>
 
           <button
@@ -82,7 +97,7 @@ export default function ProFeaturePlaceholder({ type = 'ai_thumbnails', isUnlock
             className="px-5 py-2.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-brand-900/40 transition-colors flex items-center gap-2"
           >
             <Sparkles size={14} />
-            Unlock with Pro ($30)
+            Unlock with Pro ($30/month)
           </button>
         </div>
       ) : (

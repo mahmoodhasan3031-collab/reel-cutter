@@ -263,7 +263,7 @@ export default function BatchQueuePanel({
             Batch Queue is locked on your current plan
           </h3>
           <p className="text-xs text-zinc-400 max-w-md mb-6 leading-relaxed">
-            Upgrade your Reel Cutter license to the Pro tier ($30 one-time) to queue multiple videos, configure independent per-video settings, and process jobs sequentially or with 2x concurrency.
+            Upgrade your Reel Cutter license to the Pro tier ($30/month) to queue multiple videos, configure independent per-video settings, and process jobs sequentially or with 2x concurrency.
           </p>
 
           <button

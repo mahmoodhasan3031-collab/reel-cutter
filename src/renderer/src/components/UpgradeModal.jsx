@@ -8,7 +8,7 @@ export default function UpgradeModal({ isOpen, onClose, requiredTier = 'pro', fe
     {
       id: 'basic',
       name: 'Basic',
-      price: '$10',
+      price: '$10/month',
       description: 'Essential video cutting tools',
       features: [
         'Precision video cutting',
@@ -20,7 +20,7 @@ export default function UpgradeModal({ isOpen, onClose, requiredTier = 'pro', fe
     {
       id: 'standard',
       name: 'Standard',
-      price: '$20',
+      price: '$20/month',
       description: 'Advanced export & custom durations',
       features: [
         'Everything in Basic',
@@ -34,7 +34,7 @@ export default function UpgradeModal({ isOpen, onClose, requiredTier = 'pro', fe
     {
       id: 'pro',
       name: 'Pro',
-      price: '$30',
+      price: '$30/month',
       description: 'Full AI suite & high-volume batch tools',
       features: [
         'Everything in Standard',
@@ -101,7 +101,7 @@ export default function UpgradeModal({ isOpen, onClose, requiredTier = 'pro', fe
                   </div>
                   <div className="flex items-baseline gap-1 mb-2">
                     <span className="text-xl font-extrabold text-zinc-100">{t.price}</span>
-                    <span className="text-[10px] text-zinc-500">one-time</span>
+                    <span className="text-[10px] text-zinc-500">/month</span>
                   </div>
                   <p className="text-[10px] text-zinc-500 mb-3 leading-tight">{t.description}</p>
 

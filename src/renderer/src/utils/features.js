@@ -7,6 +7,8 @@ export const FEATURE_KEYS = {
   AI_THUMBNAILS: 'ai_thumbnails',
   SMART_CROP: 'smart_crop',
   BATCH_QUEUE: 'batch_queue',
+  EXPORT_INTELLIGENCE_DASHBOARD: 'export_intelligence_dashboard',
+  EXPORT_COMMAND_CENTER: 'export_command_center',
   WORKFLOW_RECIPES: 'workflow_recipes',
   RECIPE_AUTOMATION: 'recipe_automation',
 };
@@ -41,6 +43,18 @@ const FEATURE_ALIASES = {
   batchqueue: FEATURE_KEYS.BATCH_QUEUE,
   batchQueue: FEATURE_KEYS.BATCH_QUEUE,
 
+  'export intelligence dashboard': FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+  export_intelligence_dashboard: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+  exportintelligencedashboard: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+  exportIntelligenceDashboard: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+  'intelligence dashboard': FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+
+  'export command center': FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+  export_command_center: FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+  exportcommandcenter: FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+  exportCommandCenter: FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+  'command center': FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+
   'workflow recipes': FEATURE_KEYS.WORKFLOW_RECIPES,
   workflow_recipes: FEATURE_KEYS.WORKFLOW_RECIPES,
   recipes: FEATURE_KEYS.WORKFLOW_RECIPES,
@@ -74,6 +88,8 @@ export const TIER_HIERARCHY = {
     FEATURE_KEYS.AI_THUMBNAILS,
     FEATURE_KEYS.SMART_CROP,
     FEATURE_KEYS.BATCH_QUEUE,
+    FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+    FEATURE_KEYS.EXPORT_COMMAND_CENTER,
     FEATURE_KEYS.WORKFLOW_RECIPES,
     FEATURE_KEYS.RECIPE_AUTOMATION,
   ],
@@ -129,6 +145,18 @@ export const FEATURE_METADATA = [
     minTier: 'pro',
   },
   {
+    key: FEATURE_KEYS.EXPORT_INTELLIGENCE_DASHBOARD,
+    name: 'Export Intelligence Dashboard',
+    description: 'Local analytics dashboard with overview, time, profile, platform, preset, recovery, bulk, scheduled, output health, workflow insights, and attention signals',
+    minTier: 'pro',
+  },
+  {
+    key: FEATURE_KEYS.EXPORT_COMMAND_CENTER,
+    name: 'Export Command Center',
+    description: 'Unified operational view of active exports, queue, schedules, attention items, recent activity, recovery, and output health',
+    minTier: 'pro',
+  },
+  {
     key: FEATURE_KEYS.WORKFLOW_RECIPES,
     name: 'Workflow Recipes',
     description: 'Reusable, immutable production configurations combining export settings with profiles, presets, and captions',
@@ -143,9 +171,9 @@ export const FEATURE_METADATA = [
 ];
 
 export const TIER_PRICING = {
-  basic: { name: 'Basic', price: 10, label: '$10 one-time' },
-  standard: { name: 'Standard', price: 20, label: '$20 one-time' },
-  pro: { name: 'Pro', price: 30, label: '$30 one-time' },
+  basic: { name: 'Basic', price: 10, label: '$10/month' },
+  standard: { name: 'Standard', price: 20, label: '$20/month' },
+  pro: { name: 'Pro', price: 30, label: '$30/month' },
 };
 
 export function hasFeature(tier, featureName) {
