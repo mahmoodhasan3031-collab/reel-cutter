@@ -265,10 +265,10 @@ async function runStep28Tests() {
     assert.ok(!paymentSource.includes('req.body.priceId'), 'Must not accept priceId from request body');
   });
 
-  await test('E2. Checkout session uses mode=payment (one-time)', () => {
+  await test('E2. Checkout session uses mode=subscription (monthly recurring)', () => {
     const paymentSource = fs.readFileSync(path.join(routeDir, 'payment.js'), 'utf8');
-    assert.ok(paymentSource.includes("mode: 'payment'"), 'Must use one-time payment mode');
-    assert.ok(!paymentSource.includes("mode: 'subscription'"), 'Must not use subscription mode');
+    assert.ok(paymentSource.includes("mode: 'subscription'"), 'Must use subscription mode');
+    assert.ok(!paymentSource.includes("mode: 'payment'"), 'Must not use one-time payment mode');
   });
 
   await test('E3. Webhook verifies Stripe signatures cryptographically', () => {
@@ -641,7 +641,7 @@ async function runStep28Tests() {
     assertFileExists(path.join(routeDir, 'payment.js'), 'Payment route');
     const paymentSource = fs.readFileSync(path.join(routeDir, 'payment.js'), 'utf8');
     assert.ok(paymentSource.includes('create-checkout-session'), 'Must have create-checkout-session endpoint');
-    assert.ok(paymentSource.includes('mode: \'payment\''), 'Must use one-time payment mode');
+    assert.ok(paymentSource.includes("mode: 'subscription'"), 'Must use subscription mode');
   });
 
   await test('L4. Step 27 dashboard route exists with auth', () => {

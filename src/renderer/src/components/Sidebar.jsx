@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import {
   Scissors,
   Film,
@@ -34,6 +35,11 @@ const NAV = [
 
 export default function Sidebar({ view, setView, hasVideo, licenseTier = 'standard', isOffline, onOpenUpgrade }) {
   const isPro = (licenseTier || '').toLowerCase() === 'pro'
+  const [appVersion, setAppVersion] = useState('…')
+
+  useEffect(() => {
+    window.api.getAppVersion?.().then((v) => { if (v) setAppVersion(v) }).catch(() => {})
+  }, [])
 
   return (
     <aside className="w-[220px] shrink-0 flex flex-col bg-zinc-900 border-r border-zinc-800 py-4 select-none">
@@ -45,7 +51,7 @@ export default function Sidebar({ view, setView, hasVideo, licenseTier = 'standa
           </div>
           <div>
             <p className="text-sm font-bold text-zinc-100 leading-none">Reel Cutter</p>
-            <p className="text-[10px] text-zinc-500 mt-0.5">v1.0.0</p>
+            <p className="text-[10px] text-zinc-500 mt-0.5">v{appVersion}</p>
           </div>
         </div>
       </div>

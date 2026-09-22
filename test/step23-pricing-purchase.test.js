@@ -64,17 +64,17 @@ test('Pro plan price is $30', () => {
   assert.strictEqual(pro.priceDisplay, '$30');
 });
 
-test('All plans have billingModel one-time', () => {
+test('All plans have billingModel subscription', () => {
   const { PLANS } = require('../website/src/config/pricing');
   PLANS.forEach((p) => {
-    assert.strictEqual(p.billingModel, 'one-time');
+    assert.strictEqual(p.billingModel, 'subscription');
   });
 });
 
-test('All plans have billingPeriod one-time', () => {
+test('All plans have billingPeriod monthly', () => {
   const { PLANS } = require('../website/src/config/pricing');
   PLANS.forEach((p) => {
-    assert.strictEqual(p.billingPeriod, 'one-time');
+    assert.strictEqual(p.billingPeriod, 'monthly');
   });
 });
 
