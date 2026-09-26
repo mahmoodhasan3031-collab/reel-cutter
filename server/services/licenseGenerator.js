@@ -348,6 +348,37 @@ async function updateLicenseEmailStatus(id, updates) {
 }
 
 /**
+ * Deletes a license by ID. Used only for cleanup of an orphan license created
+ * during a lost concurrent-approval race (payment review STEP 19).
+ *
+ * @param {string} licenseId
+ * @returns {Promise<boolean>}
+ */
+async function deleteLicenseById(licenseId) {
+  if (!licenseId) return false;
+
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from('licenses')
+        .delete()
+        .eq('id', licenseId);
+      if (error) throw error;
+    } catch (err) {
+      console.warn('[LicenseGenerator] Remote Supabase deleteLicenseById failed:', err.message);
+    }
+  }
+
+  for (const [key, record] of generatedLicensesRegistry.entries()) {
+    if (record.id === licenseId) {
+      generatedLicensesRegistry.delete(key);
+    }
+  }
+
+  return true;
+}
+
+/**
  * For testing: returns all licenses created in memory
  */
 function getInMemoryLicenses() {
@@ -401,6 +432,7 @@ module.exports = {
   findLicenseBySubscriptionId,
   updateLicenseSubscription,
   updateLicenseEmailStatus,
+  deleteLicenseById,
   getInMemoryLicenses,
   seedInMemoryLicense,
   clearInMemoryLicenses,

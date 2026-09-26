@@ -38,4 +38,15 @@ module.exports = {
     url: process.env.SUPABASE_URL || '',
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   },
+
+  // Admin Authentication (STEP 19) — backend-only payment review admin.
+  // Credentials come exclusively from environment variables. No hardcoded
+  // passwords. ADMIN_PASSWORD_HASH must be a scrypt hash generated with:
+  //   node server/scripts/generateAdminPasswordHash.js "<password>"
+  admin: {
+    username: process.env.ADMIN_USERNAME || '',
+    passwordHash: process.env.ADMIN_PASSWORD_HASH || '',
+    sessionSecret: process.env.ADMIN_SESSION_SECRET || '',
+    sessionTtlSeconds: parseInt(process.env.ADMIN_SESSION_TTL_SECONDS || '1800', 10),
+  },
 };

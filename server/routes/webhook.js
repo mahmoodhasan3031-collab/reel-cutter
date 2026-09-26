@@ -14,6 +14,11 @@ const IDEMPOTENCY_MAX_ENTRIES = 10000;
 const IDEMPOTENCY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const IDEMPOTENCY_FILENAME = '.webhook-idempotency.json';
 
+function maskLicenseKey(key) {
+  if (!key || typeof key !== 'string') return '[unknown]';
+  return key.length <= 8 ? '****' : `${key.slice(0, 4)}****`;
+}
+
 function getIdempotencyFilePath() {
   try {
     return path.join(__dirname, '..', IDEMPOTENCY_FILENAME);
@@ -139,7 +144,7 @@ async function handleCheckoutCompleted(event) {
   if (subscriptionId) {
     const existing = await findLicenseBySubscriptionId(subscriptionId);
     if (existing) {
-      console.log(`[Webhook:Stripe] Subscription ${subscriptionId} already has license ${existing.license_key}, skipping creation`);
+      console.log(`[Webhook:Stripe] Subscription ${subscriptionId} already has license ${maskLicenseKey(existing.license_key)}, skipping creation`);
       return { status: 200, body: { received: true, duplicate: true, licenseKey: existing.license_key } };
     }
   }

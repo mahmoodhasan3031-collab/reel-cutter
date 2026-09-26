@@ -114,6 +114,12 @@ export default function PricingPage() {
                   >
                     {plan.cta}
                   </Link>
+                  <Link
+                    href={`/payment/manual?plan=${plan.id}`}
+                    className="mt-3 inline-flex w-full items-center justify-center text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                  >
+                    Pay manually (bKash, Nagad, Bank&hellip;)
+                  </Link>
                 </div>
               </div>
             ))}
@@ -311,6 +317,15 @@ export default function PricingPage() {
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
                 We accept all major credit cards through Stripe, our secure payment
                 processor. Your payment information is encrypted and never stored on our servers.
+                You can also pay manually with bKash, Nagad, Rocket, bank transfer, or
+                Binance Pay — see{" "}
+                <Link
+                  href="/payment/manual"
+                  className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                >
+                  Manual Payment
+                </Link>
+                .
               </p>
             </div>
           </div>

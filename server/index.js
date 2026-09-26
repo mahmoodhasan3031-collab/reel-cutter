@@ -2,6 +2,9 @@ const express = require('express');
 const webhookRoutes = require('./routes/webhook');
 const paymentRoutes = require('./routes/payment');
 const licenseRoutes = require('./routes/license');
+const manualPaymentRoutes = require('./routes/manualPayment');
+const uploadRoutes = require('./routes/upload');
+const adminRoutes = require('./routes/admin');
 const config = require('./config');
 
 const app = express();
@@ -21,7 +24,7 @@ app.use((req, res, next) => {
     res.set('Access-Control-Allow-Origin', origin);
   }
   res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.set('Access-Control-Max-Age', '86400');
 
   if (req.method === 'OPTIONS') {
@@ -41,6 +44,9 @@ app.use((req, res, next) => {
 // Mount webhook routes (handles its own raw parsing for signatures)
 app.use('/webhook', webhookRoutes);
 
+// Manual payment proof upload routes (raw binary before JSON parser)
+app.use('/api/upload', uploadRoutes);
+
 // JSON parser for standard API routes
 app.use(express.json({ limit: '10kb' }));
 
@@ -49,6 +55,12 @@ app.use('/api/license', licenseRoutes);
 
 // Payment / Checkout API routes
 app.use('/api/payment', paymentRoutes);
+
+// Manual payment submission routes
+app.use('/api/manual-payment', manualPaymentRoutes);
+
+// Admin authentication + payment review routes (STEP 19)
+app.use('/api/admin', adminRoutes);
 
 // Root status
 app.get('/', (req, res) => {

@@ -39,7 +39,7 @@
       }
     ],
     "icon": "build/icon.png",
-    "artifactName": "${productName}-Setup-${version}.${ext}"
+    "artifactName": "Reel-Cutter-Setup-${version}.${ext}"
   },
   "nsis": {
     "oneClick": false,
@@ -49,7 +49,7 @@
     "shortcutName": "Reel Cutter",
     "license": "build/license.txt",
     "deleteAppDataOnUninstall": false,
-    "artifactName": "${productName}-Setup-${version}.${ext}"
+    "artifactName": "Reel-Cutter-Setup-${version}.${ext}"
   },
   "mac": {
     "target": [
@@ -60,7 +60,7 @@
     ],
     "icon": "build/icon.png",
     "category": "public.app-category.video",
-    "artifactName": "${productName}-${version}.${ext}",
+    "artifactName": "Reel-Cutter-${version}.${ext}",
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
     "entitlements": "build/entitlements.mac.plist",
