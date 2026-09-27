@@ -2,17 +2,22 @@ const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 
-// Reusable Supabase client if credentials configured
-let supabase = null;
-if (config.supabase.url && config.supabase.serviceRoleKey) {
+function buildSupabaseClient() {
+  if (!config.supabase.url || !config.supabase.serviceRoleKey) {
+    return null;
+  }
   try {
-    supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
+    return createClient(config.supabase.url, config.supabase.serviceRoleKey, {
       auth: { persistSession: false },
     });
   } catch (err) {
     console.warn('[LicenseGenerator] Failed to initialize Supabase client:', err.message);
+    return null;
   }
 }
+
+// Reusable Supabase client if credentials configured
+let supabase = buildSupabaseClient();
 
 // In-memory registry fallback for tests / local dev
 const generatedLicensesRegistry = new Map();
@@ -55,7 +60,12 @@ function generateKeyFormat() {
  * @param {string|null} [params.currentPeriodEnd]
  * @param {boolean} [params.cancelAtPeriodEnd]
  * @param {string|null} [params.canceledAt]
- * @param {string} [params.planInterval]
+ * @param {string|null} [params.planInterval]
+ * @param {boolean} [params.requireRemote] When true and a Supabase client is
+ *   configured, a failed remote INSERT throws instead of falling back to the
+ *   in-memory registry (an unpersisted license id must never be linked to a
+ *   payment record). Ignored when no Supabase client is configured, so
+ *   offline tests and local development keep the in-memory fallback.
  * @returns {Promise<Object>}
  */
 async function createLicense({
@@ -71,6 +81,7 @@ async function createLicense({
   cancelAtPeriodEnd = false,
   canceledAt = null,
   planInterval = null,
+  requireRemote = false,
 }) {
   const validTier = ['basic', 'standard', 'pro'].includes(tier.toLowerCase())
     ? tier.toLowerCase()
@@ -142,6 +153,9 @@ async function createLicense({
         record: data,
       };
     } catch (err) {
+      if (requireRemote) {
+        throw err;
+      }
       console.warn('[LicenseGenerator] Remote Supabase insert failed, caching locally:', err.message);
     }
   }
@@ -425,6 +439,21 @@ function clearInMemoryLicenses() {
   generatedLicensesRegistry.clear();
 }
 
+/**
+ * For testing: overrides the module-level Supabase client.
+ * Pass null to force the in-memory path.
+ */
+function setSupabaseClientForTests(client) {
+  supabase = client;
+}
+
+/**
+ * For testing: restores the config-based Supabase client.
+ */
+function resetSupabaseClientForTests() {
+  supabase = buildSupabaseClient();
+}
+
 module.exports = {
   createLicense,
   generateKeyFormat,
@@ -436,4 +465,6 @@ module.exports = {
   getInMemoryLicenses,
   seedInMemoryLicense,
   clearInMemoryLicenses,
+  setSupabaseClientForTests,
+  resetSupabaseClientForTests,
 };

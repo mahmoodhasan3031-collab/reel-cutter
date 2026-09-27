@@ -48,7 +48,13 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 // In-memory fallback store (tests / local dev without Supabase)
 const inMemoryPayments = new Map();
 
+// Test-only override; undefined means "resolve from config"
+let injectedSupabaseClient;
+
 function getSupabaseClient() {
+  if (injectedSupabaseClient !== undefined) {
+    return injectedSupabaseClient;
+  }
   if (!config.supabase.url || !config.supabase.serviceRoleKey) {
     return null;
   }
@@ -244,6 +250,8 @@ async function approvePayment(id, { adminId, adminNote = null }) {
       customerEmail: payment.customer_email,
       transactionId: payment.transaction_id || null,
       paymentProvider: 'manual',
+      planInterval: 'month',
+      requireRemote: true,
     });
   } catch (err) {
     console.error('[PaymentReview] License creation failed:', sanitizeErrorMessage(err));
@@ -529,6 +537,21 @@ function getInMemoryPayment(id) {
   return inMemoryPayments.get(id) || null;
 }
 
+/**
+ * For testing: overrides the Supabase client used by list/get/approve/reject.
+ * Pass null to force the in-memory path.
+ */
+function setSupabaseClientForTests(client) {
+  injectedSupabaseClient = client;
+}
+
+/**
+ * For testing: restores config-based Supabase client resolution.
+ */
+function resetSupabaseClientForTests() {
+  injectedSupabaseClient = undefined;
+}
+
 module.exports = {
   listPayments,
   getPayment,
@@ -542,4 +565,6 @@ module.exports = {
   seedInMemoryPayment,
   clearInMemoryPayments,
   getInMemoryPayment,
+  setSupabaseClientForTests,
+  resetSupabaseClientForTests,
 };
