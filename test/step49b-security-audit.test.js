@@ -122,13 +122,20 @@ async function runTests() {
   // ─── C. MIGRATION CHAIN ────────────────────────────────────────────────────
   console.log('─── C. Migration Chain ───');
 
-  await test('C1. Migrations only ever GRANT EXECUTE on functions (no table DML grants)', () => {
+  await test('C1. Migrations only GRANT EXECUTE on functions or table privileges to service_role (never anon/authenticated)', () => {
     const bad = [];
     for (const file of migrationFiles) {
       fs.readFileSync(file, 'utf8')
         .split(/\r?\n/)
         .forEach((line, i) => {
-          if (/^\s*GRANT/i.test(line) && !/^\s*GRANT\s+EXECUTE\s+ON\s+FUNCTION/i.test(line)) {
+          if (!/^\s*GRANT/i.test(line)) return;
+          const isExecuteOnFunction = /^\s*GRANT\s+EXECUTE\s+ON\s+FUNCTION/i.test(line);
+          // STEP 46C: table privileges may be granted to service_role only.
+          const isServiceRoleTableGrant =
+            /^\s*GRANT\s+[A-Z_,\s]+\s+ON\s+TABLE\s+[\w."]+\s+TO\s+service_role\s*;/i.test(line);
+          const targetsOpenRole =
+            /^\s*GRANT\s+[A-Z_,\s]+\s+ON\s+TABLE\b[^;]*\bTO\s+(anon|authenticated|public)\b/i.test(line);
+          if ((!isExecuteOnFunction && !isServiceRoleTableGrant) || targetsOpenRole) {
             bad.push(`${path.basename(file)}:${i + 1}: ${line.trim()}`);
           }
         });
