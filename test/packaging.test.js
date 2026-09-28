@@ -22,11 +22,15 @@
  * 17. Auto-updater unblocked when video processing finishes
  * 18. Auto-updater error handling: captures and notifies errors gracefully
  * 19. Binary execution check: probe and cut using resolved binaries succeeds
+ *     (media fixture is generated on the fly with the bundled ffmpeg, so the suite
+ *      is reproducible from a clean checkout where gitignored test-videos/ is absent)
  */
 
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const assert = require('assert');
+const { execFileSync } = require('child_process');
 const { getFfmpegPath, getFfprobePath, getVideoMetadata } = require('../src/engine/probe');
 const { cutClip } = require('../src/engine/cutter');
 const {
@@ -252,10 +256,35 @@ async function runSuite() {
 
   // ── 19. Binary execution check ────────────────────────────────────────────
   await test('19. Binary execution check: probe and cutClip execute using resolved binaries', async () => {
-    const testVideo = path.join(rootDir, 'test-videos', 'talking_head.mp4');
-    const outPath = path.join(rootDir, 'test-videos', `test_pkg_${Date.now()}.mp4`);
+    const ffmpegBin = getFfmpegPath();
+    assert.ok(ffmpegBin, 'FFmpeg path must not be null/empty');
+    assert.ok(fs.existsSync(ffmpegBin), `FFmpeg binary must exist on disk at: ${ffmpegBin}`);
+
+    // Deterministic fixture generated with the bundled ffmpeg in an OS temp dir:
+    // nothing from gitignored test-videos/ is assumed, and no media is left behind.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reel-cutter-pkg-'));
+    const testVideo = path.join(tmpDir, 'fixture.mp4');
+    const outPath = path.join(tmpDir, 'test_pkg_output.mp4');
 
     try {
+      execFileSync(
+        ffmpegBin,
+        [
+          '-y',
+          '-f', 'lavfi',
+          '-i', 'testsrc2=size=320x240:rate=15:duration=1',
+          '-c:v', 'libx264',
+          '-preset', 'veryfast',
+          '-pix_fmt', 'yuv420p',
+          testVideo,
+        ],
+        { stdio: 'pipe', timeout: 60000 }
+      );
+      assert.ok(
+        fs.existsSync(testVideo) && fs.statSync(testVideo).size > 0,
+        'Generated fixture must exist and be non-empty'
+      );
+
       const meta = await getVideoMetadata(testVideo);
       assert.ok(meta.duration > 0, 'Metadata duration must be > 0');
 
@@ -273,7 +302,7 @@ async function runSuite() {
       assert.strictEqual(outMeta.video.width, 1080);
       assert.strictEqual(outMeta.video.height, 1920);
     } finally {
-      if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
