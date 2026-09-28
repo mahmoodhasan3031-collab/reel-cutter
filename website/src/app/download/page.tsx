@@ -25,7 +25,7 @@ const installationSteps = [
     step: 1,
     title: "Download the Installer",
     description:
-      "Click the download button to get the Reel Cutter installer for Windows. The installer is approximately 150 MB.",
+      "Click the download button to get the Reel Cutter installer for Windows. The installer is approximately 274 MB.",
   },
   {
     step: 2,
@@ -74,14 +74,14 @@ export default function DownloadPage() {
                   Latest Version
                 </div>
                 <div className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">
-                  Reel Cutter v1.0.4
+                  Reel Cutter v1.0.5
                 </div>
                 <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  Windows 10+ (64-bit) &middot; ~150 MB
+                  Windows 10+ (64-bit) &middot; ~274 MB
                 </div>
               </div>
               <a
-                href="https://github.com/mahmoodhasan3031-collab/reel-cutter/releases/download/v1.0.4/Reel-Cutter-Setup-1.0.4.exe"
+                href="https://github.com/mahmoodhasan3031-collab/reel-cutter/releases/download/v1.0.5/Reel-Cutter-Setup-1.0.5.exe"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
