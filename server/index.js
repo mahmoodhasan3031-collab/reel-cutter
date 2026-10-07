@@ -85,7 +85,7 @@ app.use((req, res) => {
 
 // Global error handler — never expose stack traces
 app.use((err, req, res, _next) => {
-  console.error('[Server] Unhandled error:', err.message); console.error(err.stack);
+  console.error('[Server] Unhandled error:', err.message);
   res.status(500).json({
     success: false,
     error: {
