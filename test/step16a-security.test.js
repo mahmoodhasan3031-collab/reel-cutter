@@ -64,10 +64,20 @@ async function runTests() {
     );
   });
 
-  await test('A2. Client key selection uses SUPABASE_ANON_KEY', () => {
+  await test('A2. Client embeds no Supabase credentials — uses backend API URL', () => {
+    // STEP 76: the client never talks to Supabase directly (anon EXECUTE on
+    // the license RPCs is revoked); it only knows the backend API origin.
     assert.ok(
-      supabaseClientSrc.includes("SUPABASE_ANON_KEY || ''"),
-      'Client must select SUPABASE_ANON_KEY'
+      !supabaseClientSrc.includes('SUPABASE_ANON_KEY'),
+      'Client must not embed any Supabase key, not even the anon key'
+    );
+    assert.ok(
+      !supabaseClientSrc.includes('SUPABASE_URL'),
+      'Client must not embed a Supabase project URL'
+    );
+    assert.ok(
+      supabaseClientSrc.includes('__API_BASE_URL__'),
+      'Client must resolve the backend API base URL'
     );
   });
 
@@ -98,27 +108,35 @@ async function runTests() {
   });
 
   // ─── B. RPC FUNCTION USAGE ─────────────────────────────────────────────────
-  console.log('\n─── B. RPC Function Usage ───');
+  console.log('\n─── B. Backend License API Usage (no direct database access) ───');
 
-  await test('B1. fetchLicense uses RPC function instead of direct table query', () => {
+  await test('B1. fetchLicense uses backend HTTP API instead of direct table query', () => {
     assert.ok(
-      supabaseClientSrc.includes(".rpc('fetch_license_by_key'") || supabaseClientSrc.includes('.rpc("fetch_license_by_key"'),
-      'fetchLicense must use .rpc("fetch_license_by_key")'
+      supabaseClientSrc.includes('/api/license/status') || supabaseClientSrc.includes('/api/license/validate'),
+      'fetchLicense must call the backend license API'
     );
     assert.ok(
       !supabaseClientSrc.includes(".from('licenses').select("),
       'fetchLicense must NOT use direct .from("licenses").select()'
     );
+    assert.ok(
+      !supabaseClientSrc.includes('.rpc('),
+      'Client must not call database RPCs directly (anon EXECUTE revoked in STEP 76)'
+    );
   });
 
-  await test('B2. bindLicenseHwid uses RPC function instead of direct table update', () => {
+  await test('B2. bindLicenseHwid uses backend activation endpoint instead of direct table update', () => {
     assert.ok(
-      supabaseClientSrc.includes(".rpc('bind_license_hwid'") || supabaseClientSrc.includes('.rpc("bind_license_hwid"'),
-      'bindLicenseHwid must use .rpc("bind_license_hwid")'
+      supabaseClientSrc.includes("'/api/license/activate'"),
+      'bindLicenseHwid must POST /api/license/activate'
     );
     assert.ok(
       !supabaseClientSrc.includes(".from('licenses').update("),
       'bindLicenseHwid must NOT use direct .from("licenses").update()'
+    );
+    assert.ok(
+      !supabaseClientSrc.includes('.rpc('),
+      'Client must not call database RPCs directly (anon EXECUTE revoked in STEP 76)'
     );
   });
 
@@ -152,10 +170,18 @@ async function runTests() {
     );
   });
 
-  await test('B5. RPC response handling normalizes array to single record', () => {
+  await test('B5. HTTP response handling unwraps the backend { success, license } envelope', () => {
     assert.ok(
-      supabaseClientSrc.includes('Array.isArray(data)'),
-      'Client must handle RPC response which returns array'
+      supabaseClientSrc.includes('body.success'),
+      'Client must check the response success flag'
+    );
+    assert.ok(
+      supabaseClientSrc.includes('body.license'),
+      'Client must read the license object from the API response'
+    );
+    assert.ok(
+      !supabaseClientSrc.includes('Array.isArray(data)'),
+      'RPC-style array normalization no longer applies to the HTTP API'
     );
   });
 

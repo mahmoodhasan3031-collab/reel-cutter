@@ -1,15 +1,20 @@
 require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
 
-// ─── Environment Configuration ───────────────────────────────────────────────
-// The Electron client MUST use the anon/public key only.
-// The service-role key is for server-side use and must NEVER be bundled into the client.
+// ─── Backend API transport (STEP 76 / L-1) ──────────────────────────────────
+// The Electron client talks to the Reel Cutter backend HTTP API
+// (POST /api/license/activate, POST /api/license/validate,
+//  GET /api/license/status). It no longer talks to Supabase directly:
+// the license RPCs are revoked from PUBLIC/anon at the database, so no
+// Supabase credential (not even the anon key) is bundled in the client.
 //
-// __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ are injected at build time via
-// electron.vite.config.mjs define so the packaged app has credentials.
-// process.env fallback is for dev/test when running outside the Vite build.
-const SUPABASE_URL = typeof __SUPABASE_URL__ !== 'undefined' ? __SUPABASE_URL__ : (process.env.SUPABASE_URL || '');
-const SUPABASE_KEY = typeof __SUPABASE_ANON_KEY__ !== 'undefined' ? __SUPABASE_ANON_KEY__ : (process.env.SUPABASE_ANON_KEY || '');
+// __API_BASE_URL__ is injected at build time via electron.vite.config.mjs.
+// REEL_CUTTER_API_URL overrides it for local development.
+// An empty value means "no backend configured" → local mock database
+// (dev/test only) or fail-closed in packaged builds.
+const API_BASE_URL =
+  (typeof process !== 'undefined' && process.env && process.env.REEL_CUTTER_API_URL) ||
+  (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : '') ||
+  '';
 
 // Detect packaged production build — mock DB must never be used in production
 let isPackaged = false;
@@ -20,16 +25,7 @@ try {
   // Not in Electron context (tests, CLI) — mock DB remains available
 }
 
-let remoteClient = null;
-if (SUPABASE_URL && SUPABASE_KEY) {
-  try {
-    remoteClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: { persistSession: false },
-    });
-  } catch (err) {
-    console.warn('[Supabase] Failed to initialize remote client:', err.message);
-  }
-}
+const REQUEST_TIMEOUT_MS = 10_000;
 
 // ─── In-Memory Mock Database (for dev, testing, or standalone mode) ──────────
 const defaultMockLicenses = {
@@ -100,6 +96,16 @@ function setSimulateOffline(val) {
 }
 
 /**
+ * Inserts or replaces a mock license record (useful for tests).
+ * @param {string} licenseKey
+ * @param {Object} record
+ */
+function setMockLicense(licenseKey, record) {
+  if (!licenseKey || !record) return;
+  mockDb[licenseKey.trim().toUpperCase()] = record;
+}
+
+/**
  * Checks whether an error represents a network or offline condition.
  * @param {Error|Object} err
  * @returns {boolean}
@@ -114,45 +120,108 @@ function isNetworkError(err) {
     msg.includes('econnrefused') ||
     msg.includes('ehostunreach') ||
     msg.includes('etimedout') ||
-    msg.includes('fetch failed')
+    msg.includes('fetch failed') ||
+    msg.includes('aborted') ||
+    msg.includes('timeout') ||
+    err.name === 'AbortError'
   );
 }
 
 /**
- * Fetches a license record by license key.
+ * Performs an HTTP request against the backend API with a hard timeout.
+ *
+ * @param {string} path - e.g. '/api/license/status?licenseKey=...'
+ * @param {Object} [options] - fetch options
+ * @returns {Promise<{ status: number, body: Object|null }>}
+ * @throws {Error} on network failure or timeout (see isNetworkError)
+ */
+async function apiRequest(path, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    });
+
+    let body = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    return { status: response.status, body };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Classifies an HTTP error response for license flows.
+ * Transient conditions (network, 5xx, 429) are reported as offline so the
+ * existing grace-period logic applies instead of punishing the user.
+ *
+ * @param {number} status
+ * @param {Object|null} body
+ * @param {string} fallbackMessage
+ * @returns {{ data: null, error: string, isOffline: boolean, code: string|null }}
+ */
+function classifyHttpFailure(status, body, fallbackMessage) {
+  const code = body && body.error && body.error.code ? body.error.code : null;
+  const message = body && body.error && body.error.message ? body.error.message : fallbackMessage;
+
+  if (status >= 500 || status === 429) {
+    return { data: null, error: message, isOffline: true, code: null };
+  }
+  if (status === 404 && !code) {
+    return { data: null, error: message, isOffline: false, code: 'LICENSE_INVALID' };
+  }
+  return { data: null, error: message, isOffline: false, code };
+}
+
+/**
+ * Fetches the authoritative license state for this device.
  *
  * @param {string} licenseKey
- * @returns {Promise<{ data: Object|null, error: string|null, isOffline: boolean }>}
+ * @param {string} [hwid] - When provided, validates through the backend
+ *   (authoritative HWID + subscription check) instead of a read-only lookup.
+ * @returns {Promise<{ data: Object|null, error: string|null, isOffline: boolean, code?: string }>}
  */
-async function fetchLicense(licenseKey) {
+async function fetchLicense(licenseKey, hwid) {
   if (simulateOffline) {
     return { data: null, error: 'Network request failed (offline)', isOffline: true };
   }
 
   const normalizedKey = licenseKey.trim().toUpperCase();
 
-  // If remote Supabase client is configured, query via RPC function
-  // RPC functions run as SECURITY DEFINER and enforce least-privilege access
-  if (remoteClient) {
+  // Remote path: backend HTTP API (the only supported remote transport)
+  if (API_BASE_URL) {
     try {
-      const { data, error } = await remoteClient
-        .rpc('fetch_license_by_key', { p_license_key: normalizedKey });
+      const { status, body } = hwid
+        ? await apiRequest('/api/license/validate', {
+            method: 'POST',
+            body: JSON.stringify({ licenseKey: normalizedKey, hwid }),
+          })
+        : await apiRequest(`/api/license/status?licenseKey=${encodeURIComponent(normalizedKey)}`);
 
-      if (error) {
-        if (isNetworkError(error)) {
-          return { data: null, error: error.message, isOffline: true };
-        }
-        return { data: null, error: error.message, isOffline: false };
+      if (status < 200 || status >= 300 || !body || body.success !== true) {
+        return classifyHttpFailure(
+          status,
+          body,
+          'License could not be verified in database.'
+        );
       }
 
-      // RPC returns an array; we need a single record
-      const record = Array.isArray(data) ? data[0] : data;
-      return { data: record || null, error: null, isOffline: false };
+      const license = body.license || {};
+      // Successful validation implies the server matched this device's hwid.
+      return {
+        data: hwid ? { ...license, hwid } : { ...license },
+        error: null,
+        isOffline: false,
+      };
     } catch (err) {
-      if (isNetworkError(err)) {
-        return { data: null, error: err.message, isOffline: true };
-      }
-      return { data: null, error: err.message, isOffline: false };
+      return { data: null, error: err.message, isOffline: true, code: null };
     }
   }
 
@@ -162,17 +231,25 @@ async function fetchLicense(licenseKey) {
   }
   const record = mockDb[normalizedKey];
   if (!record) {
-    return { data: null, error: null, isOffline: false }; // not found
+    return { data: null, error: 'License could not be verified in database.', isOffline: false, code: 'LICENSE_INVALID' };
+  }
+  // Mirror the backend's authoritative checks so dev/test behavior matches prod.
+  if (record.status === 'revoked') {
+    return { data: null, error: 'This license key has been revoked.', isOffline: false, code: 'LICENSE_REVOKED' };
+  }
+  if (hwid && record.hwid !== hwid) {
+    return { data: null, error: 'This license is bound to a different device.', isOffline: false, code: 'HWID_MISMATCH' };
   }
   return { data: { ...record }, error: null, isOffline: false };
 }
 
 /**
- * Binds a license to a machine HWID.
+ * Binds a license to this machine by calling the backend activation endpoint
+ * (authoritative server-side validation + atomic bind).
  *
  * @param {string} licenseKey
  * @param {string} hwid
- * @returns {Promise<{ success: boolean, data: Object|null, error: string|null, isOffline: boolean }>}
+ * @returns {Promise<{ success: boolean, data: Object|null, error: string|null, isOffline: boolean, code?: string }>}
  */
 async function bindLicenseHwid(licenseKey, hwid) {
   if (simulateOffline) {
@@ -181,29 +258,21 @@ async function bindLicenseHwid(licenseKey, hwid) {
 
   const normalizedKey = licenseKey.trim().toUpperCase();
 
-  if (remoteClient) {
+  if (API_BASE_URL) {
     try {
-      const { data, error } = await remoteClient
-        .rpc('bind_license_hwid', { p_license_key: normalizedKey, p_hwid: hwid });
+      const { status, body } = await apiRequest('/api/license/activate', {
+        method: 'POST',
+        body: JSON.stringify({ licenseKey: normalizedKey, hwid }),
+      });
 
-      if (error) {
-        if (isNetworkError(error)) {
-          return { success: false, data: null, error: error.message, isOffline: true };
-        }
-        return { success: false, data: null, error: error.message, isOffline: false };
+      if (status < 200 || status >= 300 || !body || body.success !== true) {
+        const failure = classifyHttpFailure(status, body, 'Activation failed while registering device.');
+        return { success: false, data: null, error: failure.error, isOffline: failure.isOffline, code: failure.code };
       }
 
-      // RPC returns an array; we need a single record
-      const record = Array.isArray(data) ? data[0] : data;
-      if (!record) {
-        return { success: false, data: null, error: 'License key not found or already bound', isOffline: false };
-      }
-      return { success: true, data: record, error: null, isOffline: false };
+      return { success: true, data: { ...(body.license || {}), hwid }, error: null, isOffline: false };
     } catch (err) {
-      if (isNetworkError(err)) {
-        return { success: false, data: null, error: err.message, isOffline: true };
-      }
-      return { success: false, data: null, error: err.message, isOffline: false };
+      return { success: false, data: null, error: err.message, isOffline: true };
     }
   }
 
@@ -213,7 +282,13 @@ async function bindLicenseHwid(licenseKey, hwid) {
   }
   const record = mockDb[normalizedKey];
   if (!record) {
-    return { success: false, data: null, error: 'License key not found', isOffline: false };
+    return { success: false, data: null, error: 'Invalid license key. Please verify and try again.', isOffline: false, code: 'LICENSE_INVALID' };
+  }
+  if (record.status === 'revoked') {
+    return { success: false, data: null, error: 'This license key has been revoked.', isOffline: false, code: 'LICENSE_REVOKED' };
+  }
+  if (record.hwid && record.hwid !== hwid) {
+    return { success: false, data: null, error: 'License is already bound to another machine. Multi-device activation is not permitted.', isOffline: false, code: 'HWID_MISMATCH' };
   }
 
   record.hwid = hwid;
@@ -227,5 +302,6 @@ module.exports = {
   isNetworkError,
   resetMockDb,
   setSimulateOffline,
-  isRemoteConfigured: () => !!remoteClient,
+  setMockLicense,
+  isRemoteConfigured: () => !!API_BASE_URL,
 };

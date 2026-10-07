@@ -9,11 +9,14 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 export default defineConfig({
   main: {
     define: {
-      // Inject production Supabase credentials at build time so the packaged
-      // desktop app can reach the Supabase RPC functions directly.
-      // Only the public/anon key is bundled — never the service-role key.
-      __SUPABASE_URL__: JSON.stringify('https://pyrtitvvwxrwhmdfrjsb.supabase.co'),
-      __SUPABASE_ANON_KEY__: JSON.stringify('sb_publishable_14Q9A-4TbR5JL3vqF_Zjkw_TKEhOdlV'),
+      // Inject the backend API origin at build time so the packaged desktop
+      // app can reach /api/license/* (STEP 76: the client no longer talks to
+      // Supabase directly — no Supabase credential, not even the anon key, is
+      // bundled into the client anymore).
+      // REEL_CUTTER_API_URL overrides the default for local development.
+      __API_BASE_URL__: JSON.stringify(
+        process.env.REEL_CUTTER_API_URL || 'https://reel-cutter.onrender.com'
+      ),
     },
     plugins: [
       externalizeDepsPlugin(),

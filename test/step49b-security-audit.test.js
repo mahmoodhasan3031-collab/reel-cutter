@@ -93,13 +93,17 @@ async function runTests() {
   });
 
   // ─── B. CLIENT SUPABASE SURFACE ────────────────────────────────────────────
-  console.log('─── B. Client Supabase Surface ───');
+  console.log('─── B. Client License-Data Surface ───');
 
-  await test('B1. supabaseClient.js is RPC-only (no direct table access)', () => {
-    assert.ok(supabaseClientSrc.includes(".rpc('fetch_license_by_key'"), 'fetch must use RPC');
-    assert.ok(supabaseClientSrc.includes(".rpc('bind_license_hwid'"), 'bind must use RPC');
+  await test('B1. supabaseClient.js is backend-API-only (no direct database access)', () => {
+    // STEP 76: client no longer calls Supabase at all — HTTP only, via the
+    // backend's /api/license/* endpoints.
+    assert.ok(!supabaseClientSrc.includes('.rpc('), 'no RPC calls allowed');
     assert.ok(!/\.from\(['"]/.test(supabaseClientSrc), 'no .from() table access allowed');
     assert.ok(!supabaseClientSrc.includes('SUPABASE_SERVICE_ROLE_KEY'), 'no service-role key reference');
+    assert.ok(!supabaseClientSrc.includes('SUPABASE_ANON_KEY'), 'no anon key reference');
+    assert.ok(!supabaseClientSrc.includes('@supabase/supabase-js'), 'no Supabase SDK import');
+    assert.ok(supabaseClientSrc.includes('/api/license/'), 'license traffic must go through the backend API');
   });
 
   await test('B2. Preload exposes IPC only — no Supabase client or service-role key', () => {
@@ -219,8 +223,12 @@ async function runTests() {
   // ─── D. PACKAGING & SECRET MANAGEMENT ──────────────────────────────────────
   console.log('─── D. Packaging & Secret Management ───');
 
-  await test('D1. Vite build injects anon key only — never service-role', () => {
-    assert.ok(viteConfigSrc.includes('__SUPABASE_ANON_KEY__'), 'anon key must be injected');
+  await test('D1. Vite build injects backend API URL only — never any key', () => {
+    // STEP 76: no Supabase credentials (not even the anon key) are bundled
+    // into the client build.
+    assert.ok(viteConfigSrc.includes('__API_BASE_URL__'), 'backend API base URL must be injected');
+    assert.ok(!viteConfigSrc.includes('__SUPABASE_ANON_KEY__'), 'build must not inject any Supabase key');
+    assert.ok(!viteConfigSrc.includes('__SUPABASE_URL__'), 'build must not inject a Supabase project URL');
     assert.ok(!/SERVICE_ROLE/i.test(viteConfigSrc), 'build must not inject service-role key');
   });
 

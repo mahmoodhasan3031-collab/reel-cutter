@@ -1,15 +1,42 @@
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 
-let supabase = null;
-if (config.supabase.url && config.supabase.serviceRoleKey) {
-  try {
-    supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
-      auth: { persistSession: false },
-    });
-  } catch (err) {
-    console.warn('[LicenseService] Failed to initialize Supabase client:', err.message);
+// Service-role client, resolved lazily so tests can inject a fake client.
+let injectedSupabaseClient;
+let defaultSupabaseClient;
+let defaultSupabaseClientResolved = false;
+
+function getSupabaseClient() {
+  if (injectedSupabaseClient !== undefined) {
+    return injectedSupabaseClient;
   }
+  if (!defaultSupabaseClientResolved) {
+    defaultSupabaseClientResolved = true;
+    if (config.supabase.url && config.supabase.serviceRoleKey) {
+      try {
+        defaultSupabaseClient = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
+          auth: { persistSession: false },
+        });
+      } catch (err) {
+        console.warn('[LicenseService] Failed to initialize Supabase client:', err.message);
+      }
+    }
+  }
+  return defaultSupabaseClient || null;
+}
+
+/**
+ * For testing: inject a fake Supabase client (null forces the in-memory path).
+ */
+function setSupabaseClientForTests(client) {
+  injectedSupabaseClient = client;
+}
+
+/**
+ * For testing: restores config-based Supabase client resolution.
+ */
+function resetSupabaseClientForTests() {
+  injectedSupabaseClient = undefined;
 }
 
 // In-memory fallback for dev/test when Supabase is unavailable
@@ -77,16 +104,35 @@ function checkSubscriptionValidity(record) {
 }
 
 /**
- * Looks up a license by key. Returns only safe public fields.
+ * Computes the server-authoritative entitlement flag for a license record.
+ * `status` alone is not authoritative for subscription licenses (the Stripe
+ * webhook updates subscription columns, never `status`), so subscription
+ * records are decided by checkSubscriptionValidity (M-1, STEP 76).
+ *
+ * @param {Object} record
+ * @returns {boolean}
+ */
+function computeIsActive(record) {
+  if (!record || record.status !== 'active') return false;
+  if (record.subscription_status || record.stripe_subscription_id) {
+    return checkSubscriptionValidity(record).valid;
+  }
+  return true;
+}
+
+/**
+ * Looks up a license by key. Returns only safe public fields
+ * (same column set as the fetch_license_by_key RPC — no payment metadata).
  * @param {string} licenseKey
  * @returns {Promise<Object|null>}
  */
 async function lookupLicense(licenseKey) {
   const key = licenseKey.trim().toUpperCase();
 
-  if (supabase) {
+  const client = getSupabaseClient();
+  if (client) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await client
         .rpc('fetch_license_by_key', { p_license_key: key });
 
       if (error) throw error;
@@ -103,7 +149,7 @@ async function lookupLicense(licenseKey) {
   const record = inMemoryLicenses.get(key);
   if (!record) return null;
 
-  // Return same shape as RPC (safe public fields only)
+  // Return same shape as RPC (safe public fields only — no payment metadata)
   return {
     license_key: record.license_key,
     tier: record.tier,
@@ -111,7 +157,6 @@ async function lookupLicense(licenseKey) {
     hwid: record.hwid,
     activated_at: record.activated_at,
     created_at: record.created_at,
-    stripe_subscription_id: record.stripe_subscription_id || null,
     subscription_status: record.subscription_status || null,
     current_period_end: record.current_period_end || null,
     cancel_at_period_end: record.cancel_at_period_end || false,
@@ -128,15 +173,28 @@ async function bindLicense(licenseKey, hwid) {
   const key = licenseKey.trim().toUpperCase();
   const normalizedHwid = hwid.trim().toLowerCase();
 
-  if (supabase) {
+  const client = getSupabaseClient();
+  if (client) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await client
         .rpc('bind_license_hwid', {
           p_license_key: key,
           p_hwid: normalizedHwid,
         });
 
       if (error) throw error;
+
+      // L-2 (STEP 76): the RPC returns a row ONLY when the license is now
+      // bound to the requested hwid. An empty result means the license was
+      // not found, was rejected (inactive/revoked), or the bind race was
+      // lost to another device — never report those as success.
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row) {
+        return { success: false, error: 'LICENSE_BIND_FAILED' };
+      }
+      if (row.hwid !== normalizedHwid) {
+        return { success: false, error: 'HWID_MISMATCH' };
+      }
       return { success: true };
     } catch (err) {
       console.warn('[LicenseService] Supabase bind failed, trying in-memory:', err.message);
@@ -191,6 +249,17 @@ async function activateLicense(licenseKey, hwid) {
     // New license — bind to this HWID
     const bindResult = await bindLicense(key, normalizedHwid);
     if (!bindResult.success) {
+      // L-2 (STEP 76): surface WHY the bind failed instead of a blanket error.
+      if (bindResult.error === 'HWID_MISMATCH') {
+        return {
+          success: false,
+          error: 'This license is already bound to another device.',
+          code: 'HWID_MISMATCH',
+        };
+      }
+      if (bindResult.error === 'LICENSE_NOT_FOUND') {
+        return { success: false, error: 'The license key is invalid.', code: 'LICENSE_INVALID' };
+      }
       return { success: false, error: 'Failed to activate license.', code: 'ACTIVATION_FAILED' };
     }
   } else if (record.hwid === normalizedHwid) {
@@ -288,6 +357,10 @@ async function getLicenseStatus(licenseKey) {
       status: record.status,
       activatedAt: record.activated_at,
       hasHwid: !!record.hwid,
+      // M-1 (STEP 76): authoritative entitlement flag. For subscription
+      // records this is derived from subscription columns (which the
+      // webhook maintains), not from the static `status` column.
+      isActive: computeIsActive(record),
       subscriptionStatus: record.subscription_status || null,
       currentPeriodEnd: record.current_period_end || null,
       cancelAtPeriodEnd: record.cancel_at_period_end || false,
@@ -305,9 +378,10 @@ async function getLicenseStatus(licenseKey) {
  */
 async function linkLicenseToUser(licenseKey, userId) {
   const key = licenseKey.trim().toUpperCase();
-  if (supabase) {
+  const linkClient = getSupabaseClient();
+  if (linkClient) {
     try {
-      const { error } = await supabase
+      const { error } = await linkClient
         .from('licenses')
         .update({ user_id: userId })
         .eq('license_key', key);
@@ -353,9 +427,10 @@ async function linkLicenseToUser(licenseKey, userId) {
 async function getLicensesByUserId(userId) {
   const normalizedId = userId.toLowerCase();
 
-  if (supabase) {
+  const listClient = getSupabaseClient();
+  if (listClient) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await listClient
         .from('licenses')
         .select('*')
         .eq('user_id', userId)
@@ -419,6 +494,139 @@ async function getLicensesByUserId(userId) {
 }
 
 /**
+ * Finds a license in any in-memory store (service fallback or generator
+ * registry). Used by admin mutations so dev/test records are reachable even
+ * when the service fallback store does not hold the key.
+ * @param {string} key - Normalized license key
+ * @returns {Object|null}
+ */
+function findAnyInMemoryLicense(key) {
+  const direct = inMemoryLicenses.get(key);
+  if (direct) return direct;
+
+  try {
+    const licenseGenerator = require('./licenseGenerator');
+    for (const generated of licenseGenerator.getInMemoryLicenses()) {
+      if (generated.license_key === key) return generated;
+    }
+  } catch {
+    // licenseGenerator module not available
+  }
+  return null;
+}
+
+/**
+ * Applies a mutation to every in-memory license store that may hold the key
+ * (licenseService fallback store + licenseGenerator registry).
+ * @param {string} key - Normalized license key
+ * @param {(record: Object) => void} mutate
+ */
+function applyToInMemoryStores(key, mutate) {
+  const record = inMemoryLicenses.get(key);
+  if (record) mutate(record);
+
+  try {
+    const licenseGenerator = require('./licenseGenerator');
+    for (const generated of licenseGenerator.getInMemoryLicenses()) {
+      if (generated.license_key === key) mutate(generated);
+    }
+  } catch {
+    // licenseGenerator module not available
+  }
+}
+
+/**
+ * Revokes a license (admin operation, service-role only — L-3 STEP 76).
+ * Idempotent: an already-revoked license succeeds with alreadyRevoked=true.
+ * Never touches subscription columns or hwid.
+ *
+ * @param {string} licenseKey
+ * @returns {Promise<{ success: boolean, code?: string, alreadyRevoked?: boolean }>}
+ */
+async function revokeLicenseKey(licenseKey) {
+  const key = licenseKey.trim().toUpperCase();
+
+  const record = (await lookupLicense(key)) || findAnyInMemoryLicense(key);
+  if (!record) {
+    return { success: false, code: 'LICENSE_INVALID' };
+  }
+  if (record.status === 'revoked') {
+    return { success: true, alreadyRevoked: true };
+  }
+
+  const client = getSupabaseClient();
+  if (client) {
+    try {
+      const { data, error } = await client
+        .from('licenses')
+        .update({ status: 'revoked' })
+        .eq('license_key', key)
+        .select('license_key');
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        return { success: false, code: 'LICENSE_INVALID' };
+      }
+      return { success: true, alreadyRevoked: false };
+    } catch (err) {
+      console.warn('[LicenseService] revoke failed:', err.message);
+      return { success: false, code: 'OPERATION_FAILED' };
+    }
+  }
+
+  applyToInMemoryStores(key, (rec) => {
+    rec.status = 'revoked';
+    rec.updated_at = new Date().toISOString();
+  });
+  return { success: true, alreadyRevoked: false };
+}
+
+/**
+ * Clears the hwid binding of a license (admin operation — L-3 STEP 76).
+ * Never changes status/tier/subscription columns.
+ * Idempotent: an already-unbound license succeeds with alreadyUnbound=true.
+ *
+ * @param {string} licenseKey
+ * @returns {Promise<{ success: boolean, code?: string, alreadyUnbound?: boolean, hadHwid?: boolean }>}
+ */
+async function resetLicenseHwid(licenseKey) {
+  const key = licenseKey.trim().toUpperCase();
+
+  const record = (await lookupLicense(key)) || findAnyInMemoryLicense(key);
+  if (!record) {
+    return { success: false, code: 'LICENSE_INVALID' };
+  }
+  const hadHwid = !!record.hwid;
+  if (!hadHwid) {
+    return { success: true, alreadyUnbound: true, hadHwid: false };
+  }
+
+  const client = getSupabaseClient();
+  if (client) {
+    try {
+      const { data, error } = await client
+        .from('licenses')
+        .update({ hwid: null })
+        .eq('license_key', key)
+        .select('license_key');
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        return { success: false, code: 'LICENSE_INVALID' };
+      }
+      return { success: true, alreadyUnbound: false, hadHwid: true };
+    } catch (err) {
+      console.warn('[LicenseService] hwid reset failed:', err.message);
+      return { success: false, code: 'OPERATION_FAILED' };
+    }
+  }
+
+  applyToInMemoryStores(key, (rec) => {
+    rec.hwid = null;
+    rec.updated_at = new Date().toISOString();
+  });
+  return { success: true, alreadyUnbound: false, hadHwid: true };
+}
+
+/**
  * Seed a license into the in-memory store (for testing).
  * @param {Object} record - Must include at least license_key, tier, status.
  */
@@ -455,7 +663,25 @@ function clearInMemoryLicenses() {
  * @returns {boolean}
  */
 function isSupabaseConfigured() {
-  return supabase !== null;
+  return getSupabaseClient() !== null;
 }
 
-module.exports = { lookupLicense, bindLicense, activateLicense, validateLicense, getLicenseStatus, linkLicenseToUser, getLicensesByUserId, seedInMemoryLicense, clearInMemoryLicenses, isSupabaseConfigured, inMemoryLicenses, checkSubscriptionValidity };
+module.exports = {
+  lookupLicense,
+  bindLicense,
+  activateLicense,
+  validateLicense,
+  getLicenseStatus,
+  linkLicenseToUser,
+  getLicensesByUserId,
+  revokeLicenseKey,
+  resetLicenseHwid,
+  seedInMemoryLicense,
+  clearInMemoryLicenses,
+  isSupabaseConfigured,
+  inMemoryLicenses,
+  checkSubscriptionValidity,
+  computeIsActive,
+  setSupabaseClientForTests,
+  resetSupabaseClientForTests,
+};

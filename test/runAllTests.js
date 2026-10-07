@@ -70,6 +70,7 @@ const tests = [
   'step26-stripe-payment.test.js',
   'step32e-subscription-server.test.js',
   'step47-manual-payment-approval.test.js',
+  'step76-entitlement-hardening.test.js',
 ];
 
 console.log('======================================================');

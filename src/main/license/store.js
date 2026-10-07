@@ -256,19 +256,12 @@ function computeSignature(data, customDir) {
   const serialized = canonicalSerialize(data);
   return crypto.createHmac('sha256', signingKey).update(serialized).digest('hex');
 }
-
-/**
- * Computes HMAC using legacy format for backward compatibility with existing licenses.
- * Uses raw HWID as key and colon-separated 5-field payload (no timestamps).
- *
- * @param {Object} data
- * @returns {string}
- */
-function computeSignatureLegacy(data) {
-  const hwid = getHardwareIdSync();
-  const serialized = `${data.licenseKey}:${data.hwid}:${data.tier}:${data.status}:${data.activatedAt}`;
-  return crypto.createHmac('sha256', hwid).update(serialized).digest('hex');
-}
+// STEP 76 (M-2): the legacy HMAC-SHA256(hwid, "licenseKey:hwid:tier:status:activatedAt")
+// scheme was removed. Its key was the (publicly derivable) hardware ID, so any
+// process running as this OS user could forge a valid signature for an arbitrary
+// tier/status payload. Only the random per-installation signing secret is
+// accepted now — files signed with the legacy scheme fail verification and the
+// user must re-activate online.
 
 // ─── License Persistence ────────────────────────────────────────────────────
 
@@ -316,8 +309,10 @@ function saveLicenseData(licenseData, customDir) {
 
 /**
  * Loads and decrypts license record from local storage.
- * Verifies integrity signature (new format first, legacy fallback).
- * Transparently upgrades legacy signatures and re-saves.
+ * Verifies the integrity signature (single scheme — random per-installation
+ * signing secret). STEP 76 (M-2): legacy HWID-keyed signatures are rejected
+ * instead of accepted-and-upgraded, so a forged legacy payload can no longer
+ * be migrated into a trusted record.
  *
  * @param {string} [customDir]
  * @returns {Object|null}
@@ -337,20 +332,10 @@ function loadLicenseData(customDir) {
     const jsonString = decryptData(encryptedBuffer);
     const data = JSON.parse(jsonString);
 
-    // Verify signature — try new format first, fall back to legacy for backward compatibility
     const expectedSig = computeSignature(data, customDir);
-    const legacySig = computeSignatureLegacy(data);
-
-    if (!signaturesMatch(data.signature, expectedSig) && !signaturesMatch(data.signature, legacySig)) {
+    if (!signaturesMatch(data.signature, expectedSig)) {
       console.warn('[LicenseStore] Signature verification failed! Storage may have been tampered with.');
       return null;
-    }
-
-    // Transparently upgrade legacy signature to new format
-    if (signaturesMatch(data.signature, legacySig) && !signaturesMatch(data.signature, expectedSig)) {
-      data.signature = expectedSig;
-      // Re-save to persist the migrated format
-      saveLicenseData(data, customDir);
     }
 
     return data;
@@ -393,8 +378,8 @@ module.exports = {
   getLicenseFilePath,
   getSigningSecretPath,
   computeSignature,
-  computeSignatureLegacy,
   deriveSigningKey,
   canonicalSerialize,
   signaturesMatch,
+  encryptData,
 };

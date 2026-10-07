@@ -7,6 +7,8 @@
  *   GET  /api/admin/payments/:id
  *   POST /api/admin/payments/:id/approve
  *   POST /api/admin/payments/:id/reject
+ *   POST /api/admin/licenses/:licenseKey/revoke      (STEP 76)
+ *   POST /api/admin/licenses/:licenseKey/reset-hwid  (STEP 76)
  *
  * Security invariants:
  *   - No anonymous access to any non-login route (requireAdmin).
@@ -22,7 +24,7 @@
 const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
-const { allowMethods, stripUnknownFields } = require('../middleware/inputValidator');
+const { allowMethods, stripUnknownFields, validateLicenseKey } = require('../middleware/inputValidator');
 const { createRateLimiter } = require('../middleware/rateLimiter');
 const {
   authenticateAdmin,
@@ -38,6 +40,8 @@ const {
   isValidUuid,
   VALID_STATUSES,
 } = require('../services/paymentReviewService');
+const { revokeLicenseKey, resetLicenseHwid } = require('../services/licenseService');
+const { writeAuditLog } = require('../services/auditLog');
 const { BUCKET_NAME, SIGNED_URL_EXPIRY_SECONDS } = require('./upload');
 const config = require('../config');
 
@@ -368,6 +372,111 @@ router.post('/payments/:id/reject',
       });
     } catch (err) {
       console.error('[Admin] Payment reject error:', err.message);
+      return errorResponse(res, 500, 'INTERNAL_ERROR', 'An unexpected error occurred. Please try again.');
+    }
+  }
+);
+
+/**
+ * POST /api/admin/licenses/:licenseKey/revoke  (L-3, STEP 76)
+ *
+ * Marks a license status='revoked'. Idempotent. Never touches hwid or
+ * subscription columns. Every call writes an audit record.
+ * License keys are never logged.
+ */
+router.post('/licenses/:licenseKey/revoke',
+  allowMethods(['POST']),
+  stripUnknownFields([]),
+  requireAdmin,
+  adminApiLimiter,
+  async (req, res) => {
+    try {
+      const { licenseKey } = req.params;
+      const keyCheck = validateLicenseKey(licenseKey);
+      if (!keyCheck.valid) {
+        return errorResponse(res, 400, 'INVALID_INPUT', 'A valid license key is required in XXXX-XXXX-XXXX-XXXX format.');
+      }
+      const normalizedKey = licenseKey.trim().toUpperCase();
+
+      const result = await revokeLicenseKey(normalizedKey);
+      if (!result.success) {
+        if (result.code === 'LICENSE_INVALID') {
+          return errorResponse(res, 404, 'LICENSE_INVALID', 'The license key is invalid.');
+        }
+        return errorResponse(res, 500, result.code || 'OPERATION_FAILED', 'Unable to revoke the license. Please try again.');
+      }
+
+      await writeAuditLog({
+        adminId: req.admin.adminId,
+        action: 'license_revoked',
+        targetType: 'license',
+        // target_id is a UUID column; the license key goes into metadata.
+        targetId: null,
+        metadata: {
+          license_key: normalizedKey,
+          already_revoked: !!result.alreadyRevoked,
+        },
+      });
+
+      return successResponse(res, {
+        license: { licenseKey: normalizedKey, status: 'revoked' },
+        already_revoked: !!result.alreadyRevoked,
+      });
+    } catch (err) {
+      console.error('[Admin] License revoke error:', err.message);
+      return errorResponse(res, 500, 'INTERNAL_ERROR', 'An unexpected error occurred. Please try again.');
+    }
+  }
+);
+
+/**
+ * POST /api/admin/licenses/:licenseKey/reset-hwid  (L-3, STEP 76)
+ *
+ * Clears the hwid binding so a license can be activated on a new device.
+ * Idempotent. Never changes status, tier, or subscription columns.
+ * Every call writes an audit record.
+ */
+router.post('/licenses/:licenseKey/reset-hwid',
+  allowMethods(['POST']),
+  stripUnknownFields([]),
+  requireAdmin,
+  adminApiLimiter,
+  async (req, res) => {
+    try {
+      const { licenseKey } = req.params;
+      const keyCheck = validateLicenseKey(licenseKey);
+      if (!keyCheck.valid) {
+        return errorResponse(res, 400, 'INVALID_INPUT', 'A valid license key is required in XXXX-XXXX-XXXX-XXXX format.');
+      }
+      const normalizedKey = licenseKey.trim().toUpperCase();
+
+      const result = await resetLicenseHwid(normalizedKey);
+      if (!result.success) {
+        if (result.code === 'LICENSE_INVALID') {
+          return errorResponse(res, 404, 'LICENSE_INVALID', 'The license key is invalid.');
+        }
+        return errorResponse(res, 500, result.code || 'OPERATION_FAILED', 'Unable to reset the device binding. Please try again.');
+      }
+
+      await writeAuditLog({
+        adminId: req.admin.adminId,
+        action: 'license_hwid_reset',
+        targetType: 'license',
+        targetId: null,
+        metadata: {
+          license_key: normalizedKey,
+          had_hwid: !!result.hadHwid,
+          already_unbound: !!result.alreadyUnbound,
+        },
+      });
+
+      return successResponse(res, {
+        license: { licenseKey: normalizedKey, hwid: null },
+        had_hwid: !!result.hadHwid,
+        already_unbound: !!result.alreadyUnbound,
+      });
+    } catch (err) {
+      console.error('[Admin] License hwid reset error:', err.message);
       return errorResponse(res, 500, 'INTERNAL_ERROR', 'An unexpected error occurred. Please try again.');
     }
   }

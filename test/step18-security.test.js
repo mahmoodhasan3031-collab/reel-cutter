@@ -4,7 +4,8 @@
  * STEP 18 — License Integrity + Payment Idempotency Hardening Tests
  *
  * Tests:
- *  A. License HMAC hardening (random signing key, canonical serialization, backward compat)
+ *  A. License HMAC hardening (random signing key, canonical serialization;
+ *     legacy HWID-keyed scheme removed — STEP 76 / M-2)
  *  B. Webhook idempotency (durable, restart-safe, mark-before-create)
  *  C. transaction_id uniqueness (migration structural validity)
  *  D. Production secret scan
@@ -97,9 +98,12 @@ async function runTests() {
   });
 
   await test('A4. HWID is not used directly as HMAC key', () => {
+    // STEP 76: the legacy computeSignatureLegacy() boundary no longer exists
+    // (scheme removed), so the computeSignature section runs to the
+    // License Persistence marker.
     const computeSigBody = storeContent.substring(
       storeContent.indexOf('function computeSignature(data, customDir) {'),
-      storeContent.indexOf('function computeSignatureLegacy(')
+      storeContent.indexOf('// ─── License Persistence')
     );
     assert.ok(computeSigBody.includes('deriveSigningKey'), 'computeSignature must use deriveSigningKey');
     assert.ok(!computeSigBody.includes('getHardwareIdSync'), 'computeSignature must not use getHardwareIdSync directly');
@@ -119,32 +123,63 @@ async function runTests() {
     assert.ok(canonicalSection.includes('status'), 'canonicalSerialize must include status');
   });
 
-  await test('A6. Legacy signature function exists for backward compatibility', () => {
-    assert.ok(storeContent.includes('computeSignatureLegacy'), 'computeSignatureLegacy must exist');
-    const legacySection = storeContent.substring(
-      storeContent.indexOf('function computeSignatureLegacy('),
-      storeContent.indexOf('/**')
+  await test('A6. Legacy HWID-keyed signature scheme is removed (STEP 76 / M-2)', () => {
+    // The legacy scheme HMAC-SHA256(hwid, "key:hwid:tier:status:activatedAt")
+    // used the (publicly derivable) hardware ID as the HMAC key, letting any
+    // same-user process forge a trusted payload. It must be gone entirely.
+    assert.ok(!storeContent.includes('computeSignatureLegacy'), 'computeSignatureLegacy must be removed');
+    assert.ok(
+      !/createHmac\(\s*'sha256'\s*,\s*hwid\s*\)/.test(storeContent),
+      'No HWID-keyed HMAC may remain in store.js'
     );
-    assert.ok(legacySection.includes('getHardwareIdSync'), 'Legacy must use raw HWID');
+    assert.ok(storeContent.includes('deriveSigningKey'), 'Current scheme must still use deriveSigningKey');
   });
 
-  await test('A7. loadLicenseData tries both new and legacy signatures', () => {
+  await test('A7. loadLicenseData verifies only the current signature scheme', () => {
     const loadSection = storeContent.substring(
       storeContent.indexOf('function loadLicenseData('),
       storeContent.indexOf('function clearLicenseData(')
     );
-    assert.ok(loadSection.includes('computeSignature(data'), 'Must check new signature');
-    assert.ok(loadSection.includes('computeSignatureLegacy(data)'), 'Must check legacy signature');
-    assert.ok(loadSection.includes('legacySig'), 'Must store legacy signature for comparison');
+    assert.ok(loadSection.includes('computeSignature(data'), 'Must check the signing-secret signature');
+    assert.ok(!loadSection.includes('computeSignatureLegacy'), 'Must NOT fall back to a legacy signature');
+    assert.ok(!loadSection.includes('legacySig'), 'Must not accept legacy signatures');
+    assert.ok(!loadSection.includes('data.signature = expectedSig'), 'Must not transparently upgrade signatures');
   });
 
-  await test('A8. Legacy signature is transparently upgraded and re-saved', () => {
-    const loadSection = storeContent.substring(
-      storeContent.indexOf('function loadLicenseData('),
-      storeContent.indexOf('function clearLicenseData(')
-    );
-    assert.ok(loadSection.includes('data.signature = expectedSig'), 'Must upgrade legacy signature to new format');
-    assert.ok(loadSection.includes('saveLicenseData(data, customDir)'), 'Must re-save after legacy upgrade');
+  await test('A8. Legacy-signed payload is rejected (no transparent upgrade)', () => {
+    // Build a file whose signature is exactly what the OLD legacy scheme
+    // would have produced for this machine, and require loadLicenseData()
+    // to reject it instead of migrating it into a trusted record.
+    const { getHardwareIdSync } = require('../src/main/license/hwid');
+    const { encryptData, loadLicenseData } = require('../src/main/license/store');
+
+    const legacyDir = path.join(TEST_DIR, 'legacy-sig');
+    fs.mkdirSync(legacyDir, { recursive: true });
+
+    const payload = {
+      licenseKey: 'PRO-REEL-7890-ABCD-1234',
+      hwid: getHardwareIdSync(),
+      tier: 'pro',
+      status: 'active',
+      activatedAt: new Date().toISOString(),
+      lastValidatedAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+    };
+    payload.signature = crypto
+      .createHmac('sha256', getHardwareIdSync())
+      .update(`${payload.licenseKey}:${payload.hwid}:${payload.tier}:${payload.status}:${payload.activatedAt}`)
+      .digest('hex');
+    payload.savedAt = new Date().toISOString();
+
+    fs.writeFileSync(path.join(legacyDir, 'license.enc'), encryptData(JSON.stringify(payload)));
+
+    const loaded = loadLicenseData(legacyDir);
+    assert.strictEqual(loaded, null, 'Legacy-signed license file must be rejected');
+
+    // No upgraded/re-saved license file may have been written as a side
+    // effect (the signing secret file is created by signature computation).
+    const written = fs.readdirSync(legacyDir).filter((f) => f !== 'signing-secret.enc');
+    assert.deepStrictEqual(written, ['license.enc'], 'Must not re-save/upgrade a rejected legacy file');
   });
 
   await test('A9. Tampered payload (modified licenseKey) fails verification', () => {

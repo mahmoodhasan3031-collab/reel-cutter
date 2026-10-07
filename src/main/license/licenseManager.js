@@ -83,8 +83,9 @@ async function validateStartup(customStorageDir) {
     };
   }
 
-  // 2. Attempt online validation with Supabase
-  const { data, error, isOffline } = await fetchLicense(stored.licenseKey);
+  // 2. Attempt online validation against the backend (authoritative HWID,
+  //    status, and subscription check — M-1/L-1 STEP 76)
+  const { data, error, isOffline, code } = await fetchLicense(stored.licenseKey, currentHwid);
 
   if (isOffline) {
     const now = Date.now();
@@ -131,8 +132,38 @@ async function validateStartup(customStorageDir) {
     }
   }
 
-  // 3. Online validation response
+  // 3. Online validation response — map server-authoritative verdicts
   if (!data) {
+    if (code === 'LICENSE_REVOKED') {
+      clearLicenseData(customStorageDir);
+      return {
+        isValid: false,
+        reason: 'REVOKED',
+        error: 'Your license has been revoked. Access blocked.',
+      };
+    }
+    if (code === 'HWID_MISMATCH') {
+      clearLicenseData(customStorageDir);
+      return {
+        isValid: false,
+        reason: 'HWID_MISMATCH',
+        error: 'This license has been activated on another device.',
+      };
+    }
+    if (code === 'SUBSCRIPTION_INACTIVE') {
+      return {
+        isValid: false,
+        reason: 'SUBSCRIPTION_INACTIVE',
+        error: 'Your subscription is no longer active. Please renew to continue.',
+      };
+    }
+    if (code === 'LICENSE_INACTIVE') {
+      return {
+        isValid: false,
+        reason: 'LICENSE_INACTIVE',
+        error: 'This license is not active.',
+      };
+    }
     return {
       isValid: false,
       reason: 'INVALID_KEY',
@@ -147,6 +178,19 @@ async function validateStartup(customStorageDir) {
       isValid: false,
       reason: 'REVOKED',
       error: 'Your license has been revoked. Access blocked.',
+    };
+  }
+
+  // M-1 (STEP 76): honor the server's authoritative entitlement flag.
+  // For subscription licenses this reflects subscription columns the Stripe
+  // webhook maintains, not the static `status` column.
+  if (data.isActive === false) {
+    return {
+      isValid: false,
+      reason: data.subscriptionStatus ? 'SUBSCRIPTION_INACTIVE' : 'LICENSE_INACTIVE',
+      error: data.subscriptionStatus
+        ? 'Your subscription is no longer active. Please renew to continue.'
+        : 'This license is not active.',
     };
   }
 
@@ -198,47 +242,38 @@ async function activateLicense(rawKey, customStorageDir) {
   const key = rawKey.trim().toUpperCase();
   const currentHwid = await getHardwareId();
 
-  // 1. Fetch license from Supabase
-  const { data, error, isOffline } = await fetchLicense(key);
+  // Single authoritative activation call: the backend validates key status,
+  // subscription entitlement, and HWID conflicts, then binds atomically
+  // (M-1/L-1/L-2 — STEP 76).
+  const bindResult = await bindLicenseHwid(key, currentHwid);
 
-  if (isOffline) {
+  if (bindResult.isOffline) {
     return { success: false, error: 'Internet connection is required to activate a license.' };
   }
 
-  if (!data) {
-    return { success: false, error: 'Invalid license key. Please verify and try again.' };
-  }
-
-  if (data.status === 'revoked') {
-    return { success: false, error: 'This license key has been revoked.' };
-  }
-
-  // 2. Check HWID binding
-  if (data.hwid && data.hwid !== currentHwid) {
+  if (!bindResult.success) {
+    const errorByCode = {
+      LICENSE_INVALID: 'Invalid license key. Please verify and try again.',
+      LICENSE_REVOKED: 'This license key has been revoked.',
+      LICENSE_INACTIVE: 'This license is not active.',
+      SUBSCRIPTION_INACTIVE: 'This subscription is no longer active.',
+      HWID_MISMATCH: 'License is already bound to another machine. Multi-device activation is not permitted.',
+    };
     return {
       success: false,
-      error: 'License is already bound to another machine. Multi-device activation is not permitted.',
+      error: errorByCode[bindResult.code] || bindResult.error || 'Activation failed while registering device.',
     };
   }
 
-  // 3. Bind to current HWID if not already bound
-  if (!data.hwid) {
-    const bindResult = await bindLicenseHwid(key, currentHwid);
-    if (!bindResult.success) {
-      return {
-        success: false,
-        error: `Activation failed while registering device: ${bindResult.error || 'Database error'}`,
-      };
-    }
-  }
+  const data = bindResult.data || {};
 
-  // 4. Save validated license locally
+  // Save validated license locally
   const now = new Date().toISOString();
   const licensePayload = {
     licenseKey: key,
     hwid: currentHwid,
     tier: data.tier || 'standard',
-    status: 'active',
+    status: data.status || 'active',
     activatedAt: now,
     lastValidatedAt: now,
     lastSeenAt: now,

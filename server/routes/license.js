@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { activateLicense, validateLicense, getLicenseStatus, getLicensesByUserId } = require('../services/licenseService');
 const { validateLicenseKey, validateHwid, allowMethods, stripUnknownFields } = require('../middleware/inputValidator');
-const { activateLimiter, validateLimiter, statusLimiter } = require('../middleware/rateLimiter');
+const { activateLimiter, validateLimiter, statusLimiter, invalidKeyGuard } = require('../middleware/rateLimiter');
 const config = require('../config');
 
 // Safe error response helper — never leaks internals
@@ -49,6 +49,11 @@ router.post('/activate',
 
       if (!result.success) {
         const status = result.code === 'LICENSE_INVALID' ? 404 : 403;
+        // L-4 (STEP 76): unknown keys additionally consume the strict
+        // invalid-key budget; when exhausted the guard answers 429 itself.
+        if (status === 404 && invalidKeyGuard(req, res)) {
+          return;
+        }
         return errorResponse(res, status, result.code, result.error);
       }
 
@@ -89,6 +94,10 @@ router.post('/validate',
 
       if (!result.success) {
         const status = result.code === 'LICENSE_INVALID' ? 404 : 403;
+        // L-4 (STEP 76): strict unknown-key budget (see /activate).
+        if (status === 404 && invalidKeyGuard(req, res)) {
+          return;
+        }
         return errorResponse(res, status, result.code, result.error);
       }
 
@@ -122,6 +131,10 @@ router.get('/status',
       const result = await getLicenseStatus(licenseKey);
 
       if (!result.success) {
+        // L-4 (STEP 76): strict unknown-key budget (see /activate).
+        if (result.code === 'LICENSE_INVALID' && invalidKeyGuard(req, res)) {
+          return;
+        }
         return errorResponse(res, 404, result.code, result.error);
       }
 
