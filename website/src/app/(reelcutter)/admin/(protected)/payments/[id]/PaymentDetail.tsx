@@ -21,6 +21,8 @@ interface LicenseInfo {
   licenseKey?: string;
   license_key?: string;
   tier?: string;
+  status?: string;
+  hasHwid?: boolean;
 }
 
 interface PaymentDetailData {
@@ -120,6 +122,12 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
    */
   const [licenseKey, setLicenseKey] = useState<string | null>(null);
 
+  /**
+   * License status / HWID binding come from the detail response's
+   * top-level `license` object (status, hasHwid).
+   */
+  const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
+
   const [licenseAction, setLicenseAction] = useState<
     "reset-hwid" | "revoke" | null
   >(null);
@@ -159,6 +167,10 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
 
         if (detailLicenseKey) {
           setLicenseKey(detailLicenseKey);
+        }
+
+        if (detailLicense) {
+          setLicenseInfo(detailLicense);
         }
 
         setProofBroken(false);
@@ -417,6 +429,10 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
     payment.license?.license_key ||
     null;
 
+  const licenseStatus = licenseInfo?.status ?? null;
+  const isRevoked = licenseStatus === "revoked";
+  const hwidBound = licenseInfo?.hasHwid;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -647,13 +663,53 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
                 <span className="font-mono">{payment.license_id}</span>
               </p>
             ) : null}
+
+            <p className="text-xs text-gray-500 mt-2">
+              License Status:{" "}
+              <span
+                className={
+                  "font-semibold " +
+                  (licenseStatus === "revoked"
+                    ? "text-red-600"
+                    : licenseStatus === "active"
+                      ? "text-green-600"
+                      : "text-gray-500")
+                }
+              >
+                {licenseStatus === "revoked"
+                  ? "Revoked"
+                  : licenseStatus === "active"
+                    ? "Active"
+                    : "Unknown"}
+              </span>
+            </p>
+
+            <p className="text-xs text-gray-500 mt-1">
+              HWID Binding:{" "}
+              <span
+                className={
+                  "font-semibold " +
+                  (hwidBound === undefined
+                    ? "text-gray-500"
+                    : hwidBound
+                      ? "text-green-600"
+                      : "text-amber-700")
+                }
+              >
+                {hwidBound === undefined
+                  ? "Unknown"
+                  : hwidBound
+                    ? "Bound"
+                    : "Not Bound"}
+              </span>
+            </p>
           </div>
 
           <div className="flex gap-3 flex-wrap">
             <button
               type="button"
               onClick={handleResetHwid}
-              disabled={!displayedLicenseKey || !!licenseAction}
+              disabled={!displayedLicenseKey || !!licenseAction || isRevoked}
               className="px-4 py-2 rounded-lg border border-yellow-300 bg-yellow-50 text-yellow-800 text-sm font-semibold hover:bg-yellow-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {licenseAction === "reset-hwid"
@@ -664,14 +720,18 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
             <button
               type="button"
               onClick={handleRevokeLicense}
-              disabled={!displayedLicenseKey || !!licenseAction}
+              disabled={!displayedLicenseKey || !!licenseAction || isRevoked}
               className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {licenseAction === "revoke" ? "Revoking…" : "Revoke License"}
             </button>
           </div>
 
-          {!displayedLicenseKey ? (
+          {isRevoked ? (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              This license has been revoked. License actions are disabled.
+            </p>
+          ) : !displayedLicenseKey ? (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               The license ID is available, but the license key is not present in
               the current API response. Reset HWID and Revoke are disabled until
