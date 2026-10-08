@@ -24,6 +24,7 @@
  */
 
 import { getPlanById, type TierId } from "./pricing";
+import { PUBLIC_ENV } from "./publicEnv";
 
 export type ManualPaymentMethodId =
   | "bkash"
@@ -49,8 +50,7 @@ export interface ManualPaymentMethod {
   instructions: string[];
 }
 
-const _apiBaseUrl: string =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001";
+const _apiBaseUrl: string = PUBLIC_ENV.apiBaseUrl;
 
 function destination(envValue: string | undefined): string {
   const value = (envValue || "").trim();

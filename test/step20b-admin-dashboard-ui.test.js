@@ -42,16 +42,16 @@ const PATHS = {
   adminApiJs: path.join(WEB, 'config', 'adminApi.js'),
   adminSession: path.join(WEB, 'lib', 'adminSession.ts'),
   adminLib: path.join(WEB, 'lib', 'adminApi.ts'),
-  loginPage: path.join(WEB, 'app', 'admin', 'login', 'page.tsx'),
-  loginForm: path.join(WEB, 'app', 'admin', 'login', 'AdminLoginForm.tsx'),
-  protectedLayout: path.join(WEB, 'app', 'admin', '(protected)', 'layout.tsx'),
-  adminGuard: path.join(WEB, 'app', 'admin', '(protected)', 'AdminGuard.tsx'),
-  dashboardPage: path.join(WEB, 'app', 'admin', '(protected)', 'page.tsx'),
-  dashboard: path.join(WEB, 'app', 'admin', '(protected)', 'AdminDashboard.tsx'),
-  paymentsPage: path.join(WEB, 'app', 'admin', '(protected)', 'payments', 'page.tsx'),
-  paymentsList: path.join(WEB, 'app', 'admin', '(protected)', 'payments', 'PaymentsList.tsx'),
-  detailPage: path.join(WEB, 'app', 'admin', '(protected)', 'payments', '[id]', 'page.tsx'),
-  detail: path.join(WEB, 'app', 'admin', '(protected)', 'payments', '[id]', 'PaymentDetail.tsx'),
+  loginPage: path.join(WEB, 'app', '(reelcutter)', 'admin', 'login', 'page.tsx'),
+  loginForm: path.join(WEB, 'app', '(reelcutter)', 'admin', 'login', 'AdminLoginForm.tsx'),
+  protectedLayout: path.join(WEB, 'app', '(reelcutter)', 'admin', '(protected)', 'layout.tsx'),
+  adminGuard: path.join(WEB, 'app', '(reelcutter)', 'admin', '(protected)', 'AdminGuard.tsx'),
+  dashboardPage: path.join(WEB, 'app', '(reelcutter)', 'admin', '(protected)', 'page.tsx'),
+  dashboard: path.join(WEB, 'app', '(reelcutter)', 'admin', '(protected)', 'AdminDashboard.tsx'),
+  paymentsPage: path.join(WEB, 'app', '(reelcutter)', 'admin', '(protected)', 'payments', 'page.tsx'),
+  paymentsList: path.join(WEB, 'app', '(reelcutter)', 'admin', '(protected)', 'payments', 'PaymentsList.tsx'),
+  detailPage: path.join(WEB, 'app', '(reelcutter)', 'admin', '(protected)', 'payments', '[id]', 'page.tsx'),
+  detail: path.join(WEB, 'app', '(reelcutter)', 'admin', '(protected)', 'payments', '[id]', 'PaymentDetail.tsx'),
 };
 
 let passed = 0;
@@ -271,11 +271,11 @@ test('D3. AdminGuard does not render children before session check', () => {
 
 test('D4. Login page is outside the protected route group', () => {
   assert.ok(
-    fs.existsSync(path.join(WEB, 'app', 'admin', 'login', 'page.tsx')),
+    fs.existsSync(path.join(WEB, 'app', '(reelcutter)', 'admin', 'login', 'page.tsx')),
     'login must be at admin/login (outside (protected))'
   );
   assert.ok(
-    !fs.existsSync(path.join(WEB, 'app', 'admin', '(protected)', 'login')),
+    !fs.existsSync(path.join(WEB, 'app', '(reelcutter)', 'admin', '(protected)', 'login')),
     'login must not be inside (protected)'
   );
 });
@@ -705,7 +705,7 @@ test('V1. No service_role / SUPABASE_SERVICE references in website/src', () => {
 section('W. No Client-Side License Creation');
 
 test('W1. Admin UI never calls createLicense or license-creation APIs', () => {
-  const adminFiles = walk(path.join(WEB, 'app', 'admin'), ['.ts', '.tsx']);
+  const adminFiles = walk(path.join(WEB, 'app', '(reelcutter)', 'admin'), ['.ts', '.tsx']);
   assert.ok(adminFiles.length > 0, 'admin app files must exist');
   for (const file of adminFiles) {
     const src = read(file);
@@ -744,7 +744,7 @@ test('X2. adminFetch does not inject privileged headers', () => {
 });
 
 test('X3. No client-side status mutation endpoints called from UI', () => {
-  const adminFiles = walk(path.join(WEB, 'app', 'admin'), ['.ts', '.tsx']);
+  const adminFiles = walk(path.join(WEB, 'app', '(reelcutter)', 'admin'), ['.ts', '.tsx']);
   for (const file of adminFiles) {
     const src = read(file);
     assert.ok(

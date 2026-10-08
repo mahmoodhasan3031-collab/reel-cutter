@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * Admin API Configuration (STEP 20B) — CommonJS twin
  *
@@ -6,8 +7,9 @@
  * material, session HMAC keys, service-role keys, or provider secrets.
  */
 
-const _apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+const { PUBLIC_ENV } = require('./publicEnv');
+
+const _apiBaseUrl = PUBLIC_ENV.apiBaseUrl;
 
 const ADMIN_PAYMENT_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'];
 const ADMIN_LIST_FILTERS = ['pending', 'approved', 'rejected'];

@@ -15,8 +15,28 @@
  * DO NOT commit .env files or expose these values in client-side code.
  */
 
+/**
+ * Stripe mode for the checkout UI. Read from NEXT_PUBLIC_STRIPE_MODE.
+ * Fail closed: a production build must never silently pick a mode.
+ */
+function resolveStripeMode(raw) {
+  const value = (raw || '').trim().toLowerCase();
+  if (value === 'test' || value === 'live') return value;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[payment] NEXT_PUBLIC_STRIPE_MODE must be explicitly set to "test" or ' +
+        '"live" for a production build. Set it in the deployment environment ' +
+        'and rebuild.',
+    );
+  }
+  return 'test';
+}
+
+const STRIPE_MODE = resolveStripeMode(process.env.NEXT_PUBLIC_STRIPE_MODE);
+
 const PAYMENT_CONFIG = {
-  isLive: false,
+  isLive: STRIPE_MODE === 'live',
+  mode: STRIPE_MODE,
   methods: ['card'],
   currency: 'usd',
   checkoutEndpoint: '/api/payment/create-checkout-session',
@@ -34,6 +54,7 @@ function isPaymentConfigured() {
 }
 
 module.exports = {
+  STRIPE_MODE,
   PAYMENT_CONFIG,
   PLAN_STRIPE_PRICE_MAP,
   isPaymentConfigured,

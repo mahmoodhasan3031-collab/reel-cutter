@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,28 +12,17 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Root metadata is intentionally neutral/base only.
+// Route groups own their own branding:
+//   (brand)/layout.tsx      -> DialDazzle metadata
+//   (reelcutter)/layout.tsx -> Reel Cutter metadata
+// metadataBase is set here so root-level relative metadata (the file-based
+// opengraph-image used by error pages) resolves to the production origin.
 export const metadata: Metadata = {
-  title: {
-    default: "Reel Cutter - Professional Video Editing Software",
-    template: "%s | Reel Cutter",
-  },
-  description:
-    "Reel Cutter is a professional desktop video editing application for creating short-form content, reels, and social media videos from longer videos.",
-  keywords: [
-    "video editor",
-    "reel maker",
-    "short form video",
-    "social media",
-    "video cutter",
-    "desktop application",
-  ],
+  metadataBase: new URL("https://dialdazzle.site"),
   openGraph: {
-    title: "Reel Cutter - Professional Video Editing Software",
-    description:
-      "Professional desktop video editing for creating short-form content and social media videos.",
     type: "website",
     locale: "en_US",
-    siteName: "Reel Cutter",
   },
 };
 
@@ -49,11 +36,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <Header />
-        <main className="flex-1">{children}</main>
-        <Footer />
-      </body>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

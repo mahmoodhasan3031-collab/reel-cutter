@@ -84,27 +84,27 @@ test('.gitignore protects environment files', () => {
 console.log('\n── 3. Auth Pages Exist ──');
 
 test('Signup page exists', () => {
-  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/signup/page.tsx')));
+  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/(reelcutter)/signup/page.tsx')));
 });
 
 test('Login page exists', () => {
-  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/login/page.tsx')));
+  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/(reelcutter)/login/page.tsx')));
 });
 
 test('Forgot password page exists', () => {
-  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/forgot-password/page.tsx')));
+  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/(reelcutter)/forgot-password/page.tsx')));
 });
 
 test('Reset password page exists', () => {
-  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/reset-password/page.tsx')));
+  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/(reelcutter)/reset-password/page.tsx')));
 });
 
 test('Account page exists', () => {
-  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/account/page.tsx')));
+  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/(reelcutter)/account/page.tsx')));
 });
 
 test('Auth callback route exists', () => {
-  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/auth/callback/route.ts')));
+  assert.ok(fs.existsSync(path.join(websiteDir, 'src/app/(reelcutter)/auth/callback/route.ts')));
 });
 
 // ─── 4. Auth Components ────────────────────────────────────────────────────
@@ -139,10 +139,10 @@ test('No Stripe secret keys in auth files', () => {
   const authFiles = [
     'src/lib/supabase/client.ts',
     'src/lib/supabase/server.ts',
-    'src/app/signup/page.tsx',
-    'src/app/login/page.tsx',
-    'src/app/forgot-password/page.tsx',
-    'src/app/account/page.tsx',
+    'src/app/(reelcutter)/signup/page.tsx',
+    'src/app/(reelcutter)/login/page.tsx',
+    'src/app/(reelcutter)/forgot-password/page.tsx',
+    'src/app/(reelcutter)/account/page.tsx',
   ];
   authFiles.forEach((file) => {
     const content = fs.readFileSync(path.join(websiteDir, file), 'utf8');
@@ -153,9 +153,9 @@ test('No Stripe secret keys in auth files', () => {
 
 test('No password storage in plain text', () => {
   const authFiles = [
-    'src/app/signup/page.tsx',
-    'src/app/login/page.tsx',
-    'src/app/forgot-password/page.tsx',
+    'src/app/(reelcutter)/signup/page.tsx',
+    'src/app/(reelcutter)/login/page.tsx',
+    'src/app/(reelcutter)/forgot-password/page.tsx',
   ];
   authFiles.forEach((file) => {
     const content = fs.readFileSync(path.join(websiteDir, file), 'utf8');
@@ -165,7 +165,7 @@ test('No password storage in plain text', () => {
 });
 
 test('No arbitrary external redirects allowed', () => {
-  const loginPage = fs.readFileSync(path.join(websiteDir, 'src/app/login/page.tsx'), 'utf8');
+  const loginPage = fs.readFileSync(path.join(websiteDir, 'src/app/(reelcutter)/login/page.tsx'), 'utf8');
   // Should not redirect to external URLs based on user input
   assert.ok(!loginPage.includes('window.location.href ='), 'Should not use direct window.location redirect');
 });
@@ -178,9 +178,9 @@ test('No HWID modification in website auth', () => {
   const authFiles = [
     'src/lib/supabase/client.ts',
     'src/lib/supabase/server.ts',
-    'src/app/signup/page.tsx',
-    'src/app/login/page.tsx',
-    'src/app/account/page.tsx',
+    'src/app/(reelcutter)/signup/page.tsx',
+    'src/app/(reelcutter)/login/page.tsx',
+    'src/app/(reelcutter)/account/page.tsx',
   ];
   authFiles.forEach((file) => {
     const content = fs.readFileSync(path.join(websiteDir, file), 'utf8');
@@ -193,7 +193,7 @@ test('No license crypto in website auth', () => {
   const authFiles = [
     'src/lib/supabase/client.ts',
     'src/lib/supabase/server.ts',
-    'src/app/account/page.tsx',
+    'src/app/(reelcutter)/account/page.tsx',
   ];
   authFiles.forEach((file) => {
     const content = fs.readFileSync(path.join(websiteDir, file), 'utf8');
@@ -222,7 +222,7 @@ test('Middleware handles session refresh', () => {
 console.log('\n── 8. Account Page Protection ──');
 
 test('Account page uses server-side redirect for unauthenticated users', () => {
-  const accountPage = fs.readFileSync(path.join(websiteDir, 'src/app/account/page.tsx'), 'utf8');
+  const accountPage = fs.readFileSync(path.join(websiteDir, 'src/app/(reelcutter)/account/page.tsx'), 'utf8');
   assert.ok(accountPage.includes('redirect'), 'Account page should redirect unauthenticated users');
   assert.ok(accountPage.includes('getUser'), 'Account page should check user authentication');
 });
@@ -232,17 +232,17 @@ test('Account page uses server-side redirect for unauthenticated users', () => {
 console.log('\n── 9. Metadata / SEO ──');
 
 test('Signup page has robots noindex', () => {
-  const layout = fs.readFileSync(path.join(websiteDir, 'src/app/signup/layout.tsx'), 'utf8');
+  const layout = fs.readFileSync(path.join(websiteDir, 'src/app/(reelcutter)/signup/layout.tsx'), 'utf8');
   assert.ok(layout.includes('noindex'), 'Signup should have noindex');
 });
 
 test('Login page has robots noindex', () => {
-  const layout = fs.readFileSync(path.join(websiteDir, 'src/app/login/layout.tsx'), 'utf8');
+  const layout = fs.readFileSync(path.join(websiteDir, 'src/app/(reelcutter)/login/layout.tsx'), 'utf8');
   assert.ok(layout.includes('noindex'), 'Login should have noindex');
 });
 
 test('Account page has robots noindex', () => {
-  const accountPage = fs.readFileSync(path.join(websiteDir, 'src/app/account/page.tsx'), 'utf8');
+  const accountPage = fs.readFileSync(path.join(websiteDir, 'src/app/(reelcutter)/account/page.tsx'), 'utf8');
   assert.ok(accountPage.includes('noindex'), 'Account should have noindex');
 });
 
@@ -251,12 +251,12 @@ test('Account page has robots noindex', () => {
 console.log('\n── 10. Auth Callback ──');
 
 test('Auth callback route handles code exchange', () => {
-  const callback = fs.readFileSync(path.join(websiteDir, 'src/app/auth/callback/route.ts'), 'utf8');
+  const callback = fs.readFileSync(path.join(websiteDir, 'src/app/(reelcutter)/auth/callback/route.ts'), 'utf8');
   assert.ok(callback.includes('exchangeCodeForSession'), 'Callback should exchange code for session');
 });
 
 test('Auth callback validates parameters', () => {
-  const callback = fs.readFileSync(path.join(websiteDir, 'src/app/auth/callback/route.ts'), 'utf8');
+  const callback = fs.readFileSync(path.join(websiteDir, 'src/app/(reelcutter)/auth/callback/route.ts'), 'utf8');
   assert.ok(callback.includes('searchParams'), 'Callback should read search params');
 });
 

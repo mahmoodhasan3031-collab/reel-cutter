@@ -22,11 +22,11 @@ const assert = require('assert');
 const ROOT = path.join(__dirname, '..');
 const CONFIG_TS = path.join(ROOT, 'website', 'src', 'config', 'manualPayment.ts');
 const CONFIG_JS = path.join(ROOT, 'website', 'src', 'config', 'manualPayment.js');
-const MANUAL_PAGE = path.join(ROOT, 'website', 'src', 'app', 'payment', 'manual', 'page.tsx');
-const MANUAL_FORM = path.join(ROOT, 'website', 'src', 'app', 'payment', 'manual', 'ManualPaymentForm.tsx');
-const STATUS_PAGE = path.join(ROOT, 'website', 'src', 'app', 'payment', 'status', '[id]', 'page.tsx');
-const STATUS_CLIENT = path.join(ROOT, 'website', 'src', 'app', 'payment', 'status', '[id]', 'PaymentStatusClient.tsx');
-const PRICING_PAGE = path.join(ROOT, 'website', 'src', 'app', 'pricing', 'page.tsx');
+const MANUAL_PAGE = path.join(ROOT, 'website', 'src', 'app', '(reelcutter)', 'payment', 'manual', 'page.tsx');
+const MANUAL_FORM = path.join(ROOT, 'website', 'src', 'app', '(reelcutter)', 'payment', 'manual', 'ManualPaymentForm.tsx');
+const STATUS_PAGE = path.join(ROOT, 'website', 'src', 'app', '(reelcutter)', 'payment', 'status', '[id]', 'page.tsx');
+const STATUS_CLIENT = path.join(ROOT, 'website', 'src', 'app', '(reelcutter)', 'payment', 'status', '[id]', 'PaymentStatusClient.tsx');
+const PRICING_PAGE = path.join(ROOT, 'website', 'src', 'app', '(brand)', 'pricing', 'page.tsx');
 const ENV_EXAMPLE = path.join(ROOT, 'website', '.env.example');
 
 let passed = 0;
@@ -517,9 +517,9 @@ test('I2. STEP 18 upload backend untouched', () => {
 });
 
 test('I3. No changes to Stripe checkout flow files (still exist and intact)', () => {
-  const checkoutPage = read(path.join(ROOT, 'website', 'src', 'app', 'checkout', 'page.tsx'));
+  const checkoutPage = read(path.join(ROOT, 'website', 'src', 'app', '(reelcutter)', 'checkout', 'page.tsx'));
   assert.ok(checkoutPage.includes('CheckoutForm'), 'Stripe checkout intact');
-  const checkoutForm = read(path.join(ROOT, 'website', 'src', 'app', 'checkout', 'CheckoutForm.tsx'));
+  const checkoutForm = read(path.join(ROOT, 'website', 'src', 'app', '(reelcutter)', 'checkout', 'CheckoutForm.tsx'));
   assert.ok(checkoutForm.includes('checkoutEndpoint'),
     'Stripe form intact');
   const paymentConfig = read(path.join(ROOT, 'website', 'src', 'config', 'payment.ts'));
@@ -529,7 +529,7 @@ test('I3. No changes to Stripe checkout flow files (still exist and intact)', ()
 
 test('I4. STEP 20A payment pages are independent of admin dashboard (STEP 20B owns /admin)', () => {
   const appDir = path.join(ROOT, 'website', 'src', 'app');
-  const adminDir = path.join(appDir, 'admin');
+  const adminDir = path.join(appDir, '(reelcutter)', 'admin');
   // /admin now exists (STEP 20B) but STEP 20A files must not depend on it.
   [MANUAL_PAGE, MANUAL_FORM, STATUS_CLIENT].forEach((f) => {
     const src = read(f);
@@ -537,7 +537,7 @@ test('I4. STEP 20A payment pages are independent of admin dashboard (STEP 20B ow
       `${path.basename(f)} must not reference admin routes`);
   });
   assert.ok(fs.existsSync(path.join(adminDir, 'login', 'page.tsx')),
-    'STEP 20B admin login exists under website/src/app/admin');
+    'STEP 20B admin login exists under website/src/app/(reelcutter)/admin');
 });
 
 test('I5. No HWID/license activation logic in STEP 20A files', () => {
@@ -549,8 +549,8 @@ test('I5. No HWID/license activation logic in STEP 20A files', () => {
   });
 });
 
-test('I6. New files are the only additions under website/src/app/payment', () => {
-  const paymentDir = path.join(ROOT, 'website', 'src', 'app', 'payment');
+test('I6. New files are the only additions under website/src/app/(reelcutter)/payment', () => {
+  const paymentDir = path.join(ROOT, 'website', 'src', 'app', '(reelcutter)', 'payment');
   assert.ok(fs.existsSync(paymentDir), 'payment route dir must exist');
   const entries = fs.readdirSync(paymentDir).sort();
   assert.deepStrictEqual(entries, ['manual', 'status'],

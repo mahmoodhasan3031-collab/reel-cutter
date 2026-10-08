@@ -11,9 +11,9 @@
  */
 
 const { getPlanById } = require('./pricing');
+const { PUBLIC_ENV } = require('./publicEnv');
 
-const _apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+const _apiBaseUrl = PUBLIC_ENV.apiBaseUrl;
 
 function destination(envValue) {
   const value = (envValue || '').trim();

@@ -711,7 +711,7 @@ async function runStep27Tests() {
   console.log('── I. Success Page Security ──');
 
   await test('I1. Checkout success page does not treat redirect alone as payment proof', async () => {
-    const successPagePath = path.join(websiteDir, 'src', 'app', 'checkout', 'success', 'page.tsx');
+    const successPagePath = path.join(websiteDir, 'src', 'app', '(reelcutter)', 'checkout', 'success', 'page.tsx');
     assertFileExists(successPagePath, 'Checkout success page');
     const content = fs.readFileSync(successPagePath, 'utf8');
     assert.ok(!content.includes('payment_status'), 'Success page must not check payment_status client-side');
@@ -720,14 +720,14 @@ async function runStep27Tests() {
   });
 
   await test('I2. Checkout cancel page does not grant any license or access', async () => {
-    const cancelPagePath = path.join(websiteDir, 'src', 'app', 'checkout', 'cancel', 'page.tsx');
+    const cancelPagePath = path.join(websiteDir, 'src', 'app', '(reelcutter)', 'checkout', 'cancel', 'page.tsx');
     assertFileExists(cancelPagePath, 'Checkout cancel page');
     const content = fs.readFileSync(cancelPagePath, 'utf8');
     assert.ok(!content.includes('license'), 'Cancel page must not reference license creation');
   });
 
   await test('I3. Success page shows "payment processed" messaging only after Stripe webhook completes', async () => {
-    const successPagePath = path.join(websiteDir, 'src', 'app', 'checkout', 'success', 'page.tsx');
+    const successPagePath = path.join(websiteDir, 'src', 'app', '(reelcutter)', 'checkout', 'success', 'page.tsx');
     const content = fs.readFileSync(successPagePath, 'utf8');
     assert.ok(content.includes('license key is being generated') || content.includes('will be sent'),
       'Success page must indicate license delivery is async, not instant');
@@ -1010,7 +1010,7 @@ async function runStep27Tests() {
   console.log('── N. Regression: Step 24 Authentication ──');
 
   await test('N1. Account page exists and uses server-side auth check', async () => {
-    const accountPagePath = path.join(websiteDir, 'src', 'app', 'account', 'page.tsx');
+    const accountPagePath = path.join(websiteDir, 'src', 'app', '(reelcutter)', 'account', 'page.tsx');
     assertFileExists(accountPagePath, 'Account page');
     const content = fs.readFileSync(accountPagePath, 'utf8');
     assert.ok(content.includes('getUser'), 'Account page must call getUser()');
@@ -1041,7 +1041,7 @@ async function runStep27Tests() {
   });
 
   await test('N5. Login page has robots noindex', async () => {
-    const loginLayoutPath = path.join(websiteDir, 'src', 'app', 'login', 'layout.tsx');
+    const loginLayoutPath = path.join(websiteDir, 'src', 'app', '(reelcutter)', 'login', 'layout.tsx');
     if (fs.existsSync(loginLayoutPath)) {
       const content = fs.readFileSync(loginLayoutPath, 'utf8');
       assert.ok(content.includes('noindex'), 'Login page must have noindex');

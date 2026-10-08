@@ -14,16 +14,44 @@
  *
  * Environment Variables Required (client-side, on Vercel):
  *   NEXT_PUBLIC_API_BASE_URL   - Backend API origin (e.g. https://reel-cutter.onrender.com)
+ *   NEXT_PUBLIC_STRIPE_MODE    - "test" or "live" (REQUIRED and explicit in production)
  *
  * DO NOT commit .env files or expose these values in client-side code.
  */
 
+import { PUBLIC_ENV } from "./publicEnv";
+
+export type StripeMode = "test" | "live";
+
 /**
- * Stripe test mode indicator.
- * This is a TEST/Sandbox integration — not live payments.
- * Do not change to live mode without full payment flow verification.
+ * Resolve the Stripe mode from NEXT_PUBLIC_STRIPE_MODE.
+ *
+ * Fail closed: a production build must never silently fall back to test mode
+ * (or claim to be live while running in test mode), so an unset or invalid
+ * value throws during a production build.
  */
-export const STRIPE_MODE = "test" as const;
+function resolveStripeMode(raw: string | undefined): StripeMode {
+  const value = (raw || "").trim().toLowerCase();
+  if (value === "test" || value === "live") return value;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      `[payment] NEXT_PUBLIC_STRIPE_MODE must be explicitly set to "test" or ` +
+        `"live" for a production build (received ${
+          value ? `"${value}"` : "an empty value"
+        }). Set it in the deployment environment and rebuild.`,
+    );
+  }
+  return "test";
+}
+
+/**
+ * Stripe mode: "test" or "live".
+ * Read from NEXT_PUBLIC_STRIPE_MODE and inlined at build time.
+ * Must match the backend Stripe key mode.
+ */
+export const STRIPE_MODE: StripeMode = resolveStripeMode(
+  process.env.NEXT_PUBLIC_STRIPE_MODE,
+);
 
 /**
  * Client-safe payment configuration.
@@ -37,16 +65,15 @@ export const STRIPE_MODE = "test" as const;
  * After changing this env var, a full redeploy is required (not just a preview).
  */
 
-const _apiBaseUrl: string =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001";
+const _apiBaseUrl: string = PUBLIC_ENV.apiBaseUrl;
 
 export const PAYMENT_CONFIG = {
   /**
-   * Whether Stripe payment integration is enabled.
-   * True = checkout flow is active (TEST mode).
-   * False = "Coming Soon" placeholder shown.
+   * Whether the configured Stripe mode is the real (live) mode.
+   * Derived from STRIPE_MODE so the flag can never disagree with the mode.
+   * False = Stripe test/sandbox mode; true = Stripe live mode.
    */
-  isLive: true,
+  isLive: STRIPE_MODE === "live",
 
   /**
    * Stripe mode: "test" or "live".
@@ -67,7 +94,7 @@ export const PAYMENT_CONFIG = {
   /**
    * Backend API base URL for creating checkout sessions.
    * Uses NEXT_PUBLIC_API_BASE_URL environment variable (inlined at build time).
-   * Falls back to localhost for local development only.
+   * Falls back to localhost for local development only; production builds fail.
    */
   apiBaseUrl: _apiBaseUrl,
 

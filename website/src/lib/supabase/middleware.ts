@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { PUBLIC_ENV } from "@/config/publicEnv";
 
 /**
  * Update Supabase session for Next.js middleware.
@@ -9,8 +10,8 @@ export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    PUBLIC_ENV.supabaseUrl,
+    PUBLIC_ENV.supabaseAnonKey,
     {
       cookies: {
         getAll() {

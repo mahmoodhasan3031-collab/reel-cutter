@@ -11,6 +11,32 @@
   --color-muted: #64748b;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* DialDazzle brand tokens (STEP61) */
+  --color-accent: var(--dd-accent);
+  --color-accent-hover: var(--dd-accent-hover);
+  --color-accent-press: var(--dd-accent-press);
+  --color-accent-soft: var(--dd-accent-soft);
+  --color-accent-text: var(--dd-accent-text);
+  --color-surface-elevated: var(--dd-surface-elevated);
+  --color-surface-inset: var(--dd-surface-inset);
+  --color-border-subtle: var(--dd-border-subtle);
+  --color-muted-foreground: var(--dd-muted-foreground);
+  --color-success: var(--dd-success);
+  --color-warning: var(--dd-warning);
+  --color-danger: var(--dd-danger);
+
+  --radius-dd-sm: 6px;
+  --radius-dd-md: 10px;
+  --radius-dd-lg: 16px;
+  --radius-dd-xl: 24px;
+  --radius-dd-pill: 999px;
+
+  --shadow-subtle: var(--dd-shadow-subtle);
+  --shadow-elevated: var(--dd-shadow-elevated);
+  --shadow-hover: var(--dd-shadow-hover);
+
+  --ease-dd-soft: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 :root {
@@ -38,4 +64,259 @@ html {
 ::selection {
   background-color: #6366f1;
   color: white;
+}
+
+/* ==========================================================================
+   DialDazzle foundation - light theme token values
+   ========================================================================== */
+
+:root {
+  --dd-accent: #6366f1;
+  --dd-accent-hover: #4f46e5;
+  --dd-accent-press: #4338ca;
+  --dd-accent-soft: rgba(99, 102, 241, 0.1);
+  --dd-accent-text: #4f46e5;
+  --dd-surface-elevated: #ffffff;
+  --dd-surface-inset: #f8fafc;
+  --dd-border-subtle: #e8edf5;
+  --dd-muted-foreground: #64748b;
+  --dd-success: #15803d;
+  --dd-warning: #b45309;
+  --dd-danger: #b91c1c;
+  --dd-focus: #6366f1;
+  --dd-shadow-subtle: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --dd-shadow-elevated: 0 8px 24px -12px rgba(15, 23, 42, 0.18);
+  --dd-shadow-hover: 0 16px 40px -20px rgba(15, 23, 42, 0.28);
+  --dd-section-y: clamp(3rem, 1.5rem + 5vw, 6rem);
+  --dd-section-y-compact: clamp(2rem, 1rem + 3vw, 4rem);
+  --dd-section-y-large: clamp(4rem, 2rem + 7vw, 8rem);
+  --duration-dd-fast: 140ms;
+  --duration-dd-base: 200ms;
+  --duration-dd-slow: 240ms;
+}
+
+/* ==========================================================================
+   DialDazzle foundation - dark theme token values (system preference)
+   ========================================================================== */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --dd-accent: #6366f1;
+    --dd-accent-hover: #4f46e5;
+    --dd-accent-press: #3730a3;
+    --dd-accent-soft: rgba(129, 140, 248, 0.16);
+    --dd-accent-text: #a5b4fc;
+    --dd-surface-elevated: #111827;
+    --dd-surface-inset: #0f172a;
+    --dd-border-subtle: rgba(255, 255, 255, 0.08);
+    --dd-muted-foreground: #94a3b8;
+    --dd-success: #4ade80;
+    --dd-warning: #fbbf24;
+    --dd-danger: #f87171;
+    --dd-focus: #818cf8;
+    --dd-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --dd-shadow-elevated: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    --dd-shadow-hover: 0 16px 40px -20px rgba(0, 0, 0, 0.7);
+  }
+}
+
+/* ==========================================================================
+   DialDazzle foundation - dark theme token values (explicit attribute)
+   ========================================================================== */
+
+:root[data-theme="dark"] {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --dd-accent: #6366f1;
+  --dd-accent-hover: #4f46e5;
+  --dd-accent-press: #3730a3;
+  --dd-accent-soft: rgba(129, 140, 248, 0.16);
+  --dd-accent-text: #a5b4fc;
+  --dd-surface-elevated: #111827;
+  --dd-surface-inset: #0f172a;
+  --dd-border-subtle: rgba(255, 255, 255, 0.08);
+  --dd-muted-foreground: #94a3b8;
+  --dd-success: #4ade80;
+  --dd-warning: #fbbf24;
+  --dd-danger: #f87171;
+  --dd-focus: #818cf8;
+  --dd-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --dd-shadow-elevated: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --dd-shadow-hover: 0 16px 40px -20px rgba(0, 0, 0, 0.7);
+}
+
+/* ==========================================================================
+   DialDazzle foundation - light theme override (explicit attribute)
+   ========================================================================== */
+
+:root[data-theme="light"] {
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --dd-accent: #6366f1;
+  --dd-accent-hover: #4f46e5;
+  --dd-accent-press: #4338ca;
+  --dd-accent-soft: rgba(99, 102, 241, 0.1);
+  --dd-accent-text: #4f46e5;
+  --dd-surface-elevated: #ffffff;
+  --dd-surface-inset: #f8fafc;
+  --dd-border-subtle: #e8edf5;
+  --dd-muted-foreground: #64748b;
+  --dd-success: #15803d;
+  --dd-warning: #b45309;
+  --dd-danger: #b91c1c;
+  --dd-focus: #6366f1;
+  --dd-shadow-subtle: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --dd-shadow-elevated: 0 8px 24px -12px rgba(15, 23, 42, 0.18);
+  --dd-shadow-hover: 0 16px 40px -20px rgba(15, 23, 42, 0.28);
+}
+
+/* ==========================================================================
+   Typography scale
+   ========================================================================== */
+
+.dd-display {
+  font-size: clamp(2.25rem, 1.4rem + 3.4vw, 3.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+}
+
+.dd-h1 {
+  font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.dd-h2 {
+  font-size: clamp(1.625rem, 1.2rem + 1.6vw, 2.25rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.dd-h3 {
+  font-size: clamp(1.375rem, 1.2rem + 0.6vw, 1.5rem);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.dd-body {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+.dd-small {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.dd-caption {
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.dd-eyebrow {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+/* ==========================================================================
+   Section spacing
+   ========================================================================== */
+
+.dd-section {
+  padding-block: var(--dd-section-y);
+}
+
+.dd-section--compact {
+  padding-block: var(--dd-section-y-compact);
+}
+
+.dd-section--large {
+  padding-block: var(--dd-section-y-large);
+}
+
+/* ==========================================================================
+   Focus
+   ========================================================================== */
+
+.dd-focus:focus-visible,
+.dd-focus:focus-within:focus-visible {
+  outline: 2px solid var(--dd-focus);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   Divider
+   ========================================================================== */
+
+.dd-divider {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--dd-border-subtle);
+}
+
+/* ==========================================================================
+   Motion duration utilities (CSS-first, <= 240ms)
+   ========================================================================== */
+
+@utility duration-dd-fast {
+  transition-duration: var(--duration-dd-fast);
+}
+
+@utility duration-dd-base {
+  transition-duration: var(--duration-dd-base);
+}
+
+@utility duration-dd-slow {
+  transition-duration: var(--duration-dd-slow);
+}
+
+/* ==========================================================================
+   Motion - reveal / entrance (transform + opacity only)
+   ========================================================================== */
+
+.dd-reveal {
+  transition:
+    opacity var(--duration-dd-base) var(--ease-dd-soft),
+    transform var(--duration-dd-base) var(--ease-dd-soft);
+}
+
+.dd-reveal[data-reveal="hidden"] {
+  opacity: 0;
+  transform: translateY(1rem);
+  transition: none;
+}
+
+/* ==========================================================================
+   Reduced motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .dd-reveal,
+  .dd-reveal[data-reveal="hidden"] {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .dd-motion,
+  .duration-dd-fast,
+  .duration-dd-base,
+  .duration-dd-slow {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }

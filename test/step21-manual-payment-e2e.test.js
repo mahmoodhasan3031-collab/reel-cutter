@@ -89,6 +89,21 @@ process.env.SMTP_USER = '';
 process.env.SMTP_PASS = '';
 if (!process.env.NODE_ENV) process.env.NODE_ENV = 'test';
 
+// STEP 53: the Phase 1 probe imports NODE_ENV from server/.env (which sets
+// NODE_ENV=production for the deployed Render service). The website config
+// modules under test (website/src/config/*) now fail closed when
+// NODE_ENV=production and no NEXT_PUBLIC_* origin is configured. Section J
+// only asserts endpoint *paths*, so supply the client-safe public origins
+// here. Production builds are still gated by
+// website/scripts/verify-public-env.mjs — this does not weaken that gate.
+process.env.NEXT_PUBLIC_API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+process.env.NEXT_PUBLIC_SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://pyrtitvvwxrwhmdfrjsb.supabase.co';
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_14Q9A-4TbR5JL3vqF_Zjkw_TKEhOdlV';
+process.env.NEXT_PUBLIC_STRIPE_MODE = process.env.NEXT_PUBLIC_STRIPE_MODE || 'test';
+
 const assert = require('assert');
 const http = require('http');
 
