@@ -147,9 +147,11 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
          * If the backend detail response includes the license key,
          * use it. Otherwise keep the key obtained from approval.
          */
+        const detailLicense = data.license as LicenseInfo | null | undefined;
+
         const detailLicenseKey =
-          data.license?.licenseKey ||
-          data.license?.license_key ||
+          detailLicense?.licenseKey ||
+          detailLicense?.license_key ||
           paymentData.license_key ||
           paymentData.license?.licenseKey ||
           paymentData.license?.license_key ||
