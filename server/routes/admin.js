@@ -41,6 +41,7 @@ const {
   VALID_STATUSES,
 } = require('../services/paymentReviewService');
 const { revokeLicenseKey, resetLicenseHwid } = require('../services/licenseService');
+const { getLicenseById } = require('../services/licenseGenerator');
 const { writeAuditLog } = require('../services/auditLog');
 const { BUCKET_NAME, SIGNED_URL_EXPIRY_SECONDS } = require('./upload');
 const config = require('../config');
@@ -249,12 +250,20 @@ router.get('/payments/:id',
       }
 
       const proof = await createProofSignedUrl(result.payment.proof_url);
+      const license = result.payment.license_id ? await getLicenseById(result.payment.license_id) : null;
 
       return successResponse(res, {
         payment: {
           ...result.payment,
           proof,
         },
+        license: license ? {
+          id: license.id,
+          licenseKey: license.license_key,
+          tier: license.tier,
+          status: license.status,
+          hasHwid: Boolean(license.hwid),
+        } : null,
       });
     } catch (err) {
       console.error('[Admin] Payment detail error:', err.message);

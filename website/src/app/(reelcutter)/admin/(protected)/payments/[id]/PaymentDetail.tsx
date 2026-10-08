@@ -220,7 +220,7 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
       setActionSuccess(
         data.already_approved
           ? "Payment was already approved. Details refreshed."
-          : "Payment approved successfully.",
+          : returnedLicenseKey ? "Payment approved successfully." : "Payment approved successfully. No license was created.",
       );
 
       setConfirmAction(null);
