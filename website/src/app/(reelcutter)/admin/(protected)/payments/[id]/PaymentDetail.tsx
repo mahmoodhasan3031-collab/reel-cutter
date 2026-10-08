@@ -148,6 +148,8 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
          * use it. Otherwise keep the key obtained from approval.
          */
         const detailLicenseKey =
+          data.license?.licenseKey ||
+          data.license?.license_key ||
           paymentData.license_key ||
           paymentData.license?.licenseKey ||
           paymentData.license?.license_key ||
@@ -220,7 +222,9 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
       setActionSuccess(
         data.already_approved
           ? "Payment was already approved. Details refreshed."
-          : returnedLicenseKey ? "Payment approved successfully." : "Payment approved successfully. No license was created.",
+          : returnedLicenseKey
+            ? "Payment approved successfully."
+            : "Payment approved successfully. No license was created.",
       );
 
       setConfirmAction(null);
