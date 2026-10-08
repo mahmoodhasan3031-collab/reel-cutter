@@ -325,7 +325,7 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
     if (!licenseKey || licenseAction) return;
 
     const confirmed = window.confirm(
-      "Reset this license HWID?\n\nThe current device binding will be cleared. The customer can activate the license on another device.",
+      "Reset the HWID for this license? The customer will need to activate again on their device.",
     );
 
     if (!confirmed) return;
@@ -353,7 +353,7 @@ export default function PaymentDetail({ paymentId }: { paymentId: string }) {
     if (!licenseKey || licenseAction) return;
 
     const confirmed = window.confirm(
-      "Revoke this license?\n\nThis action disables the license and should only be used when you are certain.",
+      "Revoke this license? The license will no longer activate.",
     );
 
     if (!confirmed) return;
