@@ -87,7 +87,14 @@ process.env.RESEND_API_KEY = '';
 process.env.SMTP_HOST = '';
 process.env.SMTP_USER = '';
 process.env.SMTP_PASS = '';
-if (!process.env.NODE_ENV) process.env.NODE_ENV = 'test';
+// Phase 2 imports NODE_ENV=production from server/.env (the deployed Render
+// service). This harness is the offline in-memory QA path, which is a
+// dev/test-only feature: licenseGenerator/licenseService now fail closed in
+// production when Supabase is unavailable (see
+// license-generator-fail-closed.test.js), so force test mode here to keep the
+// offline approve flow exercised. Production fail-closed behavior is covered
+// by the dedicated fail-closed suites, not this offline harness.
+process.env.NODE_ENV = 'test';
 
 // STEP 53: the Phase 1 probe imports NODE_ENV from server/.env (which sets
 // NODE_ENV=production for the deployed Render service). The website config

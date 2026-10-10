@@ -23,3 +23,6 @@ Thumbs.db
 
 # Runtime idempotency cache (created at server runtime, not source)
 .webhook-idempotency.json
+
+# Generated test report
+test-report.txt

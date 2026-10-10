@@ -575,7 +575,10 @@ async function runSuite() {
   await test('G1. Approval passes plan_interval + requireRemote', () => {
     assert.ok(paymentReviewSrc.includes("planInterval: 'month'"), 'manual approval sets plan_interval');
     assert.ok(paymentReviewSrc.includes('requireRemote: true'), 'manual approval cannot use in-memory fallback');
-    assert.ok(licenseGeneratorSrc.includes('if (requireRemote)'), 'requireRemote guard exists');
+    assert.ok(
+      licenseGeneratorSrc.includes('if (requireRemote || isProduction())'),
+      'requireRemote guard exists (also fails closed in production)'
+    );
     assert.ok(paymentReviewSrc.includes('sanitizeErrorMessage(err)'), 'errors still sanitized');
   });
 

@@ -3,6 +3,8 @@ const path = require('path');
 
 const tests = [
   'license.test.js',
+  'license-fail-closed.test.js',
+  'license-generator-fail-closed.test.js',
   'features.test.js',
   'payment.test.js',
   'thumbnail.test.js',

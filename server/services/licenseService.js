@@ -39,8 +39,33 @@ function resetSupabaseClientForTests() {
   injectedSupabaseClient = undefined;
 }
 
-// In-memory fallback for dev/test when Supabase is unavailable
+// In-memory fallback for dev/test when Supabase is unavailable.
+// Never authoritative in production — see isProduction()/LicenseServiceUnavailableError.
 const inMemoryLicenses = new Map();
+
+/**
+ * Production guard (same convention as server/config.js). In-memory license
+ * records exist only for development and tests, so they must never authorize
+ * a production license operation.
+ * @returns {boolean}
+ */
+function isProduction() {
+  return process.env.NODE_ENV === 'production';
+}
+
+/**
+ * Raised when a production license operation cannot be answered by Supabase
+ * (unconfigured or RPC/DB failure). The message is intentionally generic:
+ * routes log it server-side and return a safe 500 — never SQL errors, keys,
+ * or license metadata.
+ */
+class LicenseServiceUnavailableError extends Error {
+  constructor(operation) {
+    super(`License ${operation} unavailable: Supabase could not be reached.`);
+    this.name = 'LicenseServiceUnavailableError';
+    this.code = 'SERVICE_UNAVAILABLE';
+  }
+}
 
 /**
  * Determines if a subscription license is currently valid based on subscription state.
@@ -123,6 +148,9 @@ function computeIsActive(record) {
 /**
  * Looks up a license by key. Returns only safe public fields
  * (same column set as the fetch_license_by_key RPC — no payment metadata).
+ * In production this fails closed: a Supabase RPC failure or missing Supabase
+ * configuration throws LicenseServiceUnavailableError instead of falling back
+ * to in-memory records.
  * @param {string} licenseKey
  * @returns {Promise<Object|null>}
  */
@@ -141,11 +169,18 @@ async function lookupLicense(licenseKey) {
       }
       return null;
     } catch (err) {
+      if (isProduction()) {
+        console.warn('[LicenseService] Supabase lookup failed (failing closed):', err.message);
+        throw new LicenseServiceUnavailableError('lookup');
+      }
       console.warn('[LicenseService] Supabase lookup failed, trying in-memory:', err.message);
     }
+  } else if (isProduction()) {
+    console.warn('[LicenseService] License lookup failed closed: Supabase is not configured.');
+    throw new LicenseServiceUnavailableError('lookup');
   }
 
-  // Fallback: in-memory lookup
+  // Dev/test fallback: in-memory lookup
   const record = inMemoryLicenses.get(key);
   if (!record) return null;
 
@@ -165,6 +200,8 @@ async function lookupLicense(licenseKey) {
 
 /**
  * Binds a license to an HWID.
+ * In production this fails closed: a Supabase RPC failure or missing Supabase
+ * configuration reports failure instead of binding via in-memory records.
  * @param {string} licenseKey
  * @param {string} hwid
  * @returns {Promise<{ success: boolean, error?: string }>}
@@ -197,11 +234,18 @@ async function bindLicense(licenseKey, hwid) {
       }
       return { success: true };
     } catch (err) {
+      if (isProduction()) {
+        console.warn('[LicenseService] Supabase bind failed (failing closed):', err.message);
+        return { success: false, error: 'LICENSE_BIND_FAILED' };
+      }
       console.warn('[LicenseService] Supabase bind failed, trying in-memory:', err.message);
     }
+  } else if (isProduction()) {
+    console.warn('[LicenseService] License bind failed closed: Supabase is not configured.');
+    return { success: false, error: 'LICENSE_BIND_FAILED' };
   }
 
-  // Fallback: in-memory bind
+  // Dev/test fallback: in-memory bind
   const record = inMemoryLicenses.get(key);
   if (!record) return { success: false, error: 'LICENSE_NOT_FOUND' };
   if (record.status === 'revoked') return { success: false, error: 'LICENSE_REVOKED' };
@@ -389,11 +433,18 @@ async function linkLicenseToUser(licenseKey, userId) {
       if (error) throw error;
       return { success: true };
     } catch (err) {
+      if (isProduction()) {
+        console.warn('[LicenseService] linkLicenseToUser failed (failing closed):', err.message);
+        return { success: false, error: 'SUPABASE_UNAVAILABLE' };
+      }
       console.warn('[LicenseService] linkLicenseToUser Supabase failed:', err.message);
     }
+  } else if (isProduction()) {
+    console.warn('[LicenseService] linkLicenseToUser failed closed: Supabase is not configured.');
+    return { success: false, error: 'SUPABASE_UNAVAILABLE' };
   }
 
-  // Fallback: in-memory update (check both licenseService and licenseGenerator stores)
+  // Dev/test fallback: in-memory update (check both licenseService and licenseGenerator stores)
   for (const record of inMemoryLicenses.values()) {
     if (record.license_key === key) {
       record.user_id = userId;
@@ -439,11 +490,18 @@ async function getLicensesByUserId(userId) {
       if (error) throw error;
       return data || [];
     } catch (err) {
+      if (isProduction()) {
+        console.warn('[LicenseService] getLicensesByUserId failed (failing closed):', err.message);
+        throw new LicenseServiceUnavailableError('listing');
+      }
       console.warn('[LicenseService] getLicensesByUserId Supabase failed:', err.message);
     }
+  } else if (isProduction()) {
+    console.warn('[LicenseService] getLicensesByUserId failed closed: Supabase is not configured.');
+    throw new LicenseServiceUnavailableError('listing');
   }
 
-  // Fallback: in-memory lookup
+  // Dev/test fallback: in-memory lookup
   const fromService = Array.from(inMemoryLicenses.values())
     .filter((record) => record.user_id && record.user_id.toLowerCase() === normalizedId)
     .map((record) => ({
@@ -516,6 +574,20 @@ function findAnyInMemoryLicense(key) {
 }
 
 /**
+ * Resolves the record an admin mutation should act on. In production only the
+ * Supabase lookup is authoritative — the in-memory stores are dev/test aids
+ * and can hold records that were never persisted (or are stale), so they must
+ * never drive a production revoke/reset decision.
+ * @param {string} key - Normalized license key
+ * @returns {Promise<Object|null>}
+ */
+async function resolveLicenseRecord(key) {
+  const record = await lookupLicense(key);
+  if (record || isProduction()) return record;
+  return findAnyInMemoryLicense(key);
+}
+
+/**
  * Applies a mutation to every in-memory license store that may hold the key
  * (licenseService fallback store + licenseGenerator registry).
  * @param {string} key - Normalized license key
@@ -546,7 +618,14 @@ function applyToInMemoryStores(key, mutate) {
 async function revokeLicenseKey(licenseKey) {
   const key = licenseKey.trim().toUpperCase();
 
-  const record = (await lookupLicense(key)) || findAnyInMemoryLicense(key);
+  // Production: the service-role client is mandatory — never answer an admin
+  // mutation from the in-memory stores.
+  if (isProduction() && !getSupabaseClient()) {
+    console.warn('[LicenseService] Revoke failed closed: Supabase is not configured.');
+    return { success: false, code: 'OPERATION_FAILED' };
+  }
+
+  const record = await resolveLicenseRecord(key);
   if (!record) {
     return { success: false, code: 'LICENSE_INVALID' };
   }
@@ -573,6 +652,7 @@ async function revokeLicenseKey(licenseKey) {
     }
   }
 
+  // Dev/test only — production returned via the Supabase branch above.
   applyToInMemoryStores(key, (rec) => {
     rec.status = 'revoked';
     rec.updated_at = new Date().toISOString();
@@ -591,7 +671,14 @@ async function revokeLicenseKey(licenseKey) {
 async function resetLicenseHwid(licenseKey) {
   const key = licenseKey.trim().toUpperCase();
 
-  const record = (await lookupLicense(key)) || findAnyInMemoryLicense(key);
+  // Production: the service-role client is mandatory — never answer an admin
+  // mutation from the in-memory stores.
+  if (isProduction() && !getSupabaseClient()) {
+    console.warn('[LicenseService] Hwid reset failed closed: Supabase is not configured.');
+    return { success: false, code: 'OPERATION_FAILED' };
+  }
+
+  const record = await resolveLicenseRecord(key);
   if (!record) {
     return { success: false, code: 'LICENSE_INVALID' };
   }
@@ -619,6 +706,7 @@ async function resetLicenseHwid(licenseKey) {
     }
   }
 
+  // Dev/test only — production returned via the Supabase branch above.
   applyToInMemoryStores(key, (rec) => {
     rec.hwid = null;
     rec.updated_at = new Date().toISOString();
@@ -682,6 +770,7 @@ module.exports = {
   inMemoryLicenses,
   checkSubscriptionValidity,
   computeIsActive,
+  LicenseServiceUnavailableError,
   setSupabaseClientForTests,
   resetSupabaseClientForTests,
 };

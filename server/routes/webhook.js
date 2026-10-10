@@ -165,7 +165,10 @@ async function handleCheckoutCompleted(event) {
 
   console.log(`[Webhook:Stripe] Processing subscription for ${maskEmail(customerEmail)}: tier = ${tier}`);
 
-  // Create license with subscription fields
+  // Create license with subscription fields.
+  // requireRemote: a Stripe checkout must produce a persisted Supabase license;
+  // on failure the thrown error rolls back the idempotency mark (HTTP 500) so
+  // Stripe retries instead of a local-only license masking the outage.
   const licenseResult = await createLicense({
     tier,
     customerEmail,
@@ -179,6 +182,7 @@ async function handleCheckoutCompleted(event) {
     cancelAtPeriodEnd: false,
     canceledAt: null,
     planInterval: 'month',
+    requireRemote: true,
   });
 
   // Link license to authenticated user if userId is available from metadata
