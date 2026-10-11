@@ -238,6 +238,134 @@ async function findExistingCheckoutLicense(details) {
   return null;
 }
 
+// ─── Event ordering guards ────────────────────────────────────────────────────
+//
+// Stripe does not guarantee webhook delivery order, and a retried event can
+// arrive long after a newer event was applied. These helpers decide whether an
+// event may still write subscription state. They live in the HANDLERS (not in
+// classifyDuplicateEvent) so they run on every execution of a handler,
+// including a reprocess whose idempotency mark was rolled back.
+//
+// Ordering signals the schema actually provides:
+//   * current_period_end — carried by the event's own snapshot AND stored on
+//     the license row, so two snapshots can be ordered with no assumptions.
+//   * subscription_status === 'canceled' — written only by
+//     handleSubscriptionDeleted(); Stripe never resurrects a subscription id,
+//     so the cancellation is terminal.
+//   * event.created (Stripe) versus updated_at (set by the
+//     set_licenses_updated_at trigger on every write to the row) — orders an
+//     event against the last write of ANY kind on the row.
+//
+// Ordering the schema does NOT provide:
+//   * "last applied Stripe event time". No column stores it, so event.created
+//     can only be compared against a timestamp that unrelated writers (email
+//     status, HWID bind) also bump. It is therefore used only when the billing
+//     period cannot decide, and it fails closed when either timestamp is
+//     missing rather than guessing.
+const CANCELED_SUBSCRIPTION_STATUS = 'canceled';
+
+// Slack tolerated between Stripe's clock (event.created) and the database
+// clock (updated_at) before an event counts as older than the last write.
+const EVENT_TIME_SKEW_TOLERANCE_MS = 5 * 60 * 1000;
+
+/**
+ * @param {*} value ISO-8601 timestamp (as returned by the Stripe extractors)
+ * @returns {number|null} epoch milliseconds, or null when unusable
+ */
+function parseIsoMs(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * Stripe emits event.created as unix SECONDS on every event object.
+ * @param {Object} event
+ * @returns {number|null} epoch milliseconds, or null when unusable
+ */
+function parseEventCreatedMs(event) {
+  const created = event && event.created;
+  if (typeof created !== 'number' || !Number.isFinite(created)) return null;
+  return created * 1000;
+}
+
+/**
+ * Orders an invoice's billing period against the stored one. The period is the
+ * natural ordering key for invoices: a later invoice always carries a later
+ * period end, so no clock comparison is needed.
+ *
+ * @param {string|null} eventPeriodEnd
+ * @param {string|null} storedPeriodEnd
+ * @returns {'apply'|'skip'|'unknown'}
+ *   'apply'   — the event period equals or leads the stored one (equal is an
+ *               idempotent re-application of the same period).
+ *   'skip'    — the event period is strictly behind: the event is older.
+ *   'unknown' — the event carries no usable period while one is stored, so
+ *               applying it would erase a newer expiry.
+ */
+function classifyPeriodOrder(eventPeriodEnd, storedPeriodEnd) {
+  const eventEnd = parseIsoMs(eventPeriodEnd);
+  const storedEnd = parseIsoMs(storedPeriodEnd);
+
+  if (eventEnd === null) return storedEnd === null ? 'apply' : 'unknown';
+  if (storedEnd === null) return 'apply';
+  if (eventEnd < storedEnd) return 'skip';
+  return 'apply';
+}
+
+/**
+ * Decides whether a customer.subscription.updated event may write to the row.
+ *
+ * Rule:
+ *   1. A strictly NEWER billing period proves the event is the fresher of the
+ *      two snapshots — apply, whatever the clocks say.
+ *   2. A strictly OLDER billing period proves the event is stale — skip.
+ *   3. The event carries no usable period while one is stored — skip: writing
+ *      it would null out current_period_end, and checkSubscriptionValidity
+ *      treats an 'active' license with no period end as never-expiring.
+ *   4. Otherwise (same period, or neither side has one) the billing period
+ *      cannot order the snapshots, so fall back to event.created against the
+ *      row's updated_at, tolerating EVENT_TIME_SKEW_TOLERANCE_MS of clock
+ *      skew. If either timestamp is missing the ordering is unknown and the
+ *      update fails closed — silently overwriting is the one outcome that can
+ *      destroy newer state.
+ *
+ * @param {Object} event
+ * @param {Object} existing stored license row
+ * @param {string|null} eventPeriodEnd
+ * @returns {{allowed: boolean, reason: string}}
+ */
+function classifySubscriptionUpdateOrder(event, existing, eventPeriodEnd) {
+  const eventEnd = parseIsoMs(eventPeriodEnd);
+  const storedEnd = parseIsoMs(existing && existing.current_period_end);
+
+  if (eventEnd !== null && storedEnd !== null) {
+    if (eventEnd > storedEnd) return { allowed: true, reason: 'newer_period' };
+    if (eventEnd < storedEnd) return { allowed: false, reason: 'stale_period' };
+  }
+
+  // Fail closed: an event with no usable period must never null out a stored
+  // expiry. This deliberately does NOT fall through to the clock comparison —
+  // a fresh event would otherwise be allowed to erase the period. Mirrors the
+  // 'unknown' rule in classifyPeriodOrder.
+  if (eventEnd === null && storedEnd !== null) {
+    return { allowed: false, reason: 'unknown_period' };
+  }
+
+  const eventCreatedMs = parseEventCreatedMs(event);
+  const lastWriteMs = parseIsoMs(existing && existing.updated_at);
+
+  if (eventCreatedMs === null || lastWriteMs === null) {
+    return { allowed: false, reason: 'unknown_ordering' };
+  }
+
+  if (eventCreatedMs + EVENT_TIME_SKEW_TOLERANCE_MS < lastWriteMs) {
+    return { allowed: false, reason: 'stale_event' };
+  }
+
+  return { allowed: true, reason: 'fresh_event' };
+}
+
 /**
  * Decides how to treat an event whose id is already in the processed cache:
  *
@@ -260,6 +388,12 @@ async function findExistingCheckoutLicense(details) {
  * customer.subscription.updated and invoice.payment_failed are acknowledged
  * from the mark alone: their fields are not monotonic, so re-applying a stale
  * event could overwrite newer state; the next lifecycle event re-syncs them.
+ *
+ * NOTE: this function only runs when an idempotency mark EXISTS. The ordering
+ * guards themselves live inside handleSubscriptionUpdated /
+ * handleInvoicePaymentSucceeded / handleInvoicePaymentFailed (see
+ * classifySubscriptionUpdateOrder and classifyPeriodOrder above), so they also
+ * protect the no-mark path — a reprocess after a rolled-back mark.
  * @param {string|null} category
  * @param {Object} event
  * @returns {Promise<'ack'|'reprocess'|'retry'>}
@@ -418,6 +552,26 @@ async function handleSubscriptionUpdated(event) {
     return { status: 200, body: { received: true, noLicense: true } };
   }
 
+  // Terminal state: Stripe never resurrects a subscription id, so an update
+  // that would move the row OFF 'canceled' is stale by definition and must not
+  // undo a customer.subscription.deleted that was already recorded.
+  if (
+    existing.subscription_status === CANCELED_SUBSCRIPTION_STATUS &&
+    subscriptionStatus !== CANCELED_SUBSCRIPTION_STATUS
+  ) {
+    console.warn(`[Webhook:Stripe] Ignoring subscription update ${event.id}: subscription ${subscriptionId} is already canceled`);
+    return { status: 200, body: { received: true, duplicate: true, skipped: 'canceled_subscription' } };
+  }
+
+  // Ordering guard. Runs on EVERY execution of this handler — including a
+  // reprocess whose idempotency mark was rolled back — so a retried older
+  // event can never overwrite newer subscription state.
+  const order = classifySubscriptionUpdateOrder(event, existing, currentPeriodEnd);
+  if (!order.allowed) {
+    console.warn(`[Webhook:Stripe] Ignoring subscription update ${event.id} for ${subscriptionId}: ${order.reason}`);
+    return { status: 200, body: { received: true, duplicate: true, skipped: order.reason } };
+  }
+
   const updates = {
     subscription_status: subscriptionStatus,
     current_period_start: currentPeriodStart,
@@ -487,6 +641,31 @@ async function handleInvoicePaymentSucceeded(event) {
     return { status: 200, body: { received: true, noLicense: true } };
   }
 
+  // Terminal state: a canceled subscription id is never resurrected, so a late
+  // or retried invoice must never flip the license back to 'active' and
+  // extend the period of a subscription that was already deleted.
+  if (existing.subscription_status === CANCELED_SUBSCRIPTION_STATUS) {
+    console.warn(`[Webhook:Stripe] Ignoring invoice ${event.id}: subscription ${subscriptionId} is already canceled`);
+    return { status: 200, body: { received: true, duplicate: true, skipped: 'canceled_subscription' } };
+  }
+
+  // Forward-only billing period. Runs on EVERY execution of this handler —
+  // including a reprocess whose idempotency mark was rolled back — so an older
+  // invoice can never move current_period_end backwards.
+  const periodOrder = classifyPeriodOrder(currentPeriodEnd, existing.current_period_end);
+  if (periodOrder === 'skip') {
+    console.warn(`[Webhook:Stripe] Ignoring stale invoice ${event.id}: period end ${currentPeriodEnd} is behind stored ${existing.current_period_end}`);
+    return { status: 200, body: { received: true, duplicate: true, skipped: 'stale_period' } };
+  }
+  if (periodOrder === 'unknown') {
+    // Fail closed: the event carries no usable period end while one is stored,
+    // so applying it would erase the expiry. Keep the newer stored state. A
+    // retry of the same payload can never become usable, so 503 would retry
+    // forever — acknowledging without writing is the safe direction here.
+    console.warn(`[Webhook:Stripe] Ignoring invoice ${event.id}: no usable period end; keeping stored ${existing.current_period_end}`);
+    return { status: 200, body: { received: true, duplicate: true, skipped: 'unknown_period' } };
+  }
+
   await updateLicenseSubscription(existing.id || existing.license_key, {
     subscription_status: 'active',
     current_period_start: currentPeriodStart,
@@ -514,6 +693,14 @@ async function handleInvoicePaymentFailed(event) {
   if (!existing) {
     console.warn(`[Webhook:Stripe] Subscription ${subscriptionId} not found for failed invoice, ignoring`);
     return { status: 200, body: { received: true, noLicense: true } };
+  }
+
+  // Terminal state only: a canceled subscription must not be moved back to
+  // past_due by a late or retried invoice failure. The past_due product policy
+  // itself is deliberately unchanged.
+  if (existing.subscription_status === CANCELED_SUBSCRIPTION_STATUS) {
+    console.warn(`[Webhook:Stripe] Ignoring failed invoice ${event.id}: subscription ${subscriptionId} is already canceled`);
+    return { status: 200, body: { received: true, duplicate: true, skipped: 'canceled_subscription' } };
   }
 
   await updateLicenseSubscription(existing.id || existing.license_key, {
@@ -545,6 +732,15 @@ async function handleInvoicePaymentFailed(event) {
  *     IN_FLIGHT_TTL_MS so a hung delivery can never block retries forever.
  *   - The transaction_id partial unique index in the database is the final
  *     defense against duplicate license creation from concurrent delivery.
+ *
+ * Event ordering (independent of the mark):
+ *   - classifyPeriodOrder / classifySubscriptionUpdateOrder run inside the
+ *     subscription and invoice handlers, so they also protect a reprocess
+ *     whose mark was rolled back. They make the billing period forward-only,
+ *     keep a canceled subscription canceled, and (for
+ *     customer.subscription.updated) refuse a snapshot that is provably older
+ *     than the last write recorded on the row. When ordering cannot be
+ *     established the update fails closed rather than overwriting newer state.
  *
  * Subscription lifecycle events:
  *   - checkout.session.completed → create license

@@ -335,6 +335,9 @@ function buildSignedSubscriptionUpdatedEvent(eventId, subscriptionId) {
   const eventPayload = {
     id: eventId,
     object: 'event',
+    // Real Stripe events always carry created (unix seconds); the ordering
+    // guard in handleSubscriptionUpdated fails closed without it.
+    created: Math.floor(Date.now() / 1000),
     type: 'customer.subscription.updated',
     data: {
       object: {
@@ -1094,6 +1097,8 @@ async function runTests() {
         status: 'active',
         stripe_subscription_id: 'sub_prod_lifecycle_001',
         subscription_status: 'past_due',
+        // NOT NULL in the licenses table; the ordering guard reads it.
+        updated_at: new Date().toISOString(),
       }];
       const { rawBody, headers, eventId } = buildSignedSubscriptionUpdatedEvent(
         'evt_gen_prod_lifecycle_1',
@@ -1191,6 +1196,8 @@ async function runTests() {
         status: 'active',
         stripe_subscription_id: 'sub_prod_lifecycle_003',
         subscription_status: 'past_due',
+        // NOT NULL in the licenses table; the ordering guard reads it.
+        updated_at: new Date().toISOString(),
       }];
       const { rawBody, headers, eventId } = buildSignedSubscriptionUpdatedEvent(
         'evt_gen_prod_lifecycle_empty_1',

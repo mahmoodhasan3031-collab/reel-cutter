@@ -8,6 +8,7 @@ const tests = [
   'webhook-idempotency-failure.test.js',
   'webhook-inflight-ttl.test.js',
   'webhook-subscription-retry-consistency.test.js',
+  'webhook-event-ordering.test.js',
   'features.test.js',
   'payment.test.js',
   'thumbnail.test.js',
