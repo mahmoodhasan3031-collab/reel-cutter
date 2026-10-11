@@ -381,6 +381,73 @@ async function findLicenseBySubscriptionId(subscriptionId) {
 }
 
 /**
+ * Finds a license by Stripe transaction ID (payment_intent, falling back to the
+ * checkout session id). Used by the webhook handler so a re-delivered checkout
+ * event is recognized as a duplicate even when the idempotency cache was lost
+ * (crash window, expired/evicted entry, or a non-persistent Render filesystem).
+ *
+ * Production fail-closed: identical contract to findLicenseBySubscriptionId —
+ * a lookup failure throws instead of returning null, so a transient database
+ * error can never be mistaken for "no existing license" (which would create a
+ * duplicate or falsely acknowledge an event).
+ * @param {string} transactionId
+ * @returns {Promise<Object|null>}
+ */
+async function findLicenseByTransactionId(transactionId) {
+  if (!transactionId) return null;
+
+  if (isProduction()) {
+    if (!supabase) {
+      console.warn('[LicenseGenerator] findLicenseByTransactionId failed (failing closed): Supabase is not configured.');
+      throw new LicenseServiceUnavailableError('transaction lookup');
+    }
+    try {
+      const { data, error } = await supabase
+        .from('licenses')
+        .select('*')
+        .eq('transaction_id', transactionId)
+        .single();
+      if (data) {
+        return data;
+      }
+      if (error && isNoRowsError(error)) {
+        return null; // legitimate not-found
+      }
+      logDbFailure('findLicenseByTransactionId', error || { code: 'EMPTY_RESPONSE' });
+      throw new LicenseServiceUnavailableError('transaction lookup');
+    } catch (err) {
+      if (err instanceof LicenseServiceUnavailableError) throw err;
+      logDbFailure('findLicenseByTransactionId', err);
+      throw new LicenseServiceUnavailableError('transaction lookup');
+    }
+  }
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('licenses')
+        .select('*')
+        .eq('transaction_id', transactionId)
+        .single();
+      if (!error && data) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[LicenseGenerator] findLicenseByTransactionId Supabase failed:', err.message);
+    }
+  }
+
+  // In-memory fallback
+  for (const record of generatedLicensesRegistry.values()) {
+    if (record.transaction_id === transactionId) {
+      return record;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Updates subscription-related fields on an existing license.
  * Used by webhook handler for subscription lifecycle events.
  *
@@ -662,6 +729,7 @@ module.exports = {
   generateKeyFormat,
   getLicenseById,
   findLicenseBySubscriptionId,
+  findLicenseByTransactionId,
   updateLicenseSubscription,
   updateLicenseEmailStatus,
   deleteLicenseById,
