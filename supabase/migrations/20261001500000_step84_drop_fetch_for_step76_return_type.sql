@@ -31,7 +31,12 @@
 --       dropped function and are NOT re-granted).
 --
 -- FAIL-CLOSED GUARD:
---   If an environment has already recorded Step 76 (version 20261002000000)
+--   (1) If the migration ledger (supabase_migrations.schema_migrations) does
+--       not exist in the target database — e.g. a manually-managed production
+--       database where the CLI has never recorded history — the guard RAISES
+--       explicitly instead of failing with an obscure undefined-table error,
+--       so the DROP is refused without migration history to validate against.
+--   (2) If an environment has already recorded Step 76 (version 20261002000000)
 --   as applied, dropping the function here would remove it without Step 76
 --   ever re-running to recreate it. The guard RAISES before the DROP, so the
 --   migration fails, nothing is changed, and manual repair is required.
@@ -49,6 +54,10 @@
 
 DO $$
 BEGIN
+  IF to_regclass('supabase_migrations.schema_migrations') IS NULL THEN
+    RAISE EXCEPTION 'STEP 84 GUARD FAILED: migration ledger supabase_migrations.schema_migrations does not exist in this database; refusing to drop fetch_license_by_key without migration history to validate against. Manual review required.';
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM supabase_migrations.schema_migrations
