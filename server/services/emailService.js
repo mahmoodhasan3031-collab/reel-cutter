@@ -67,6 +67,23 @@ async function sendLicenseEmail({ to, licenseKey, tier, downloadUrl }) {
     sentAt: new Date().toISOString(),
   };
 
+  // ─── Production fail-closed ────────────────────────────────────────────────
+  // With no configured provider the message never leaves this process. In
+  // development and tests the mock capture below is intentional, but in
+  // production it must be reported as a genuine failure: deliverLicenseEmail
+  // would otherwise record email_status='sent' for an email that was never
+  // sent. (Matches the fail-closed convention of server/services/license*
+  // and licenseGenerator: production never answers from dev-only paths.)
+  const hasResendProvider = Boolean(config.email.resendApiKey);
+  const hasSmtpProvider = Boolean(config.email.smtp.host && config.email.smtp.user);
+  if (!hasResendProvider && !hasSmtpProvider && process.env.NODE_ENV === 'production') {
+    return {
+      success: false,
+      error:
+        'No email provider configured: set RESEND_API_KEY or SMTP_HOST and SMTP_USER in the server environment.',
+    };
+  }
+
   sentEmailsLog.push(emailRecord);
 
   // If Resend API Key configured, use Resend API

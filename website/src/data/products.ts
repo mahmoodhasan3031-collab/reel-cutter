@@ -1,5 +1,10 @@
-export const REEL_CUTTER_V106_URL =
-  "https://github.com/mahmoodhasan3031-collab/reel-cutter/releases/download/v1.0.6/Reel-Cutter-Setup-1.0.6.exe";
+// Verified to exist on GitHub Releases (asset published 2026-10-07):
+// Reel-Cutter-Setup-1.0.7.exe — 274 MB, sha256 58768101…f0af0.
+// v1.0.7 is the first release containing the backend HTTP license transport
+// (commit 5120e89); older installers (<= v1.0.6) call Supabase RPCs directly
+// and can no longer activate against production.
+export const REEL_CUTTER_DOWNLOAD_URL =
+  "https://github.com/mahmoodhasan3031-collab/reel-cutter/releases/download/v1.0.7/Reel-Cutter-Setup-1.0.7.exe";
 
 export type ProductStatus = "available" | "coming-soon" | "in-development";
 
@@ -193,8 +198,8 @@ const reelCutter: Product = {
     url: "/pricing",
   },
   download: {
-    url: REEL_CUTTER_V106_URL,
-    version: "1.0.6",
+    url: REEL_CUTTER_DOWNLOAD_URL,
+    version: "1.0.7",
     platform: "windows",
     label: "Download for Windows",
   },

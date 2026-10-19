@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Container, Eyebrow, Section, SectionHeader, Surface } from "@/components/ui";
-import { REEL_CUTTER_V106_URL, getProduct } from "@/lib/products";
+import { REEL_CUTTER_DOWNLOAD_URL, getProduct } from "@/lib/products";
 
 export const metadata: Metadata = {
   title: "Download",
   description:
-    "Download DialDazzle software for Windows. Reel Cutter v1.0.6 is the current download, with system requirements and installation steps.",
+    "Download DialDazzle software for Windows. Reel Cutter v1.0.7 is the current download, with system requirements and installation steps.",
   alternates: {
     canonical: "/download",
   },
@@ -102,7 +102,7 @@ export default function DownloadPage() {
                 </div>
               </div>
               <a
-                href={REEL_CUTTER_V106_URL}
+                href={REEL_CUTTER_DOWNLOAD_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-dd-md bg-accent-hover px-6 text-sm font-semibold text-white shadow-subtle transition-[background-color,box-shadow,transform] duration-dd-base ease-dd-soft hover:bg-accent-press dd-focus"

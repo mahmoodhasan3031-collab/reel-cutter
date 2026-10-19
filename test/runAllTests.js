@@ -77,6 +77,7 @@ const tests = [
   'step32e-subscription-server.test.js',
   'step47-manual-payment-approval.test.js',
   'step76-entitlement-hardening.test.js',
+  'step97-download-email-failclosed.test.js',
 ];
 
 console.log('======================================================');

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getProduct, REEL_CUTTER_V106_URL } from "@/lib/products";
+import { getProduct, REEL_CUTTER_DOWNLOAD_URL } from "@/lib/products";
 
 export const metadata: Metadata = {
   title: "Changelog",
@@ -91,7 +91,7 @@ export default function ChangelogPage() {
           </p>
           <div className="mt-4 flex flex-wrap gap-4">
             <a
-              href={REEL_CUTTER_V106_URL}
+              href={REEL_CUTTER_DOWNLOAD_URL}
               className="inline-flex items-center rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
             >
               Download the installer

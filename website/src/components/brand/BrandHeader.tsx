@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button, Container, Icon, cx } from "@/components/ui";
-import { REEL_CUTTER_V106_URL } from "@/data/products";
+import { REEL_CUTTER_DOWNLOAD_URL } from "@/data/products";
 import MobileMenu from "./MobileMenu";
 import NavLinks, { type NavLink } from "./NavLinks";
 
@@ -18,7 +18,7 @@ export interface BrandHeaderProps {
 }
 
 export default function BrandHeader({
-  downloadHref = REEL_CUTTER_V106_URL,
+  downloadHref = REEL_CUTTER_DOWNLOAD_URL,
   downloadLabel = "Download",
   className,
 }: BrandHeaderProps) {

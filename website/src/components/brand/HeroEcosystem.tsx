@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Button, Container, Eyebrow, Section, Surface } from "@/components/ui";
-import { REEL_CUTTER_V106_URL, type Product } from "@/data/products";
+import { REEL_CUTTER_DOWNLOAD_URL, type Product } from "@/data/products";
 import EcosystemDiagram from "./EcosystemDiagram";
 
 export interface HeroEcosystemAction {
@@ -26,7 +26,7 @@ export default function HeroEcosystem({
   heading = "Software for modern work.",
   description = "One brand, a focused set of desktop products. Each one is built to do a single job well and stay out of your way.",
   primaryAction = { label: "Explore products", href: "/products" },
-  secondaryAction = { label: "Download", href: REEL_CUTTER_V106_URL },
+  secondaryAction = { label: "Download", href: REEL_CUTTER_DOWNLOAD_URL },
   visual,
   products,
   headingLevel = 1,

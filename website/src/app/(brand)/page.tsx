@@ -9,7 +9,7 @@ import {
   TrustSection,
   WhyDialDazzle,
 } from "@/components/brand";
-import { REEL_CUTTER_V106_URL, getAllProducts } from "@/lib/products";
+import { REEL_CUTTER_DOWNLOAD_URL, getAllProducts } from "@/lib/products";
 
 export const metadata: Metadata = {
   title: {
@@ -108,7 +108,7 @@ export default function BrandHomePage() {
           cta={{ label: "View Reel Cutter", href: "/products/reel-cutter" }}
           secondaryCta={{
             label: reelCutter.download?.label ?? "Download",
-            href: REEL_CUTTER_V106_URL,
+            href: REEL_CUTTER_DOWNLOAD_URL,
           }}
         />
       ) : null}
@@ -154,7 +154,7 @@ export default function BrandHomePage() {
         primaryAction={{ label: "View Reel Cutter", href: "/products/reel-cutter" }}
         secondaryAction={{
           label: "Download for Windows",
-          href: REEL_CUTTER_V106_URL,
+          href: REEL_CUTTER_DOWNLOAD_URL,
         }}
         id="home-cta"
       />
